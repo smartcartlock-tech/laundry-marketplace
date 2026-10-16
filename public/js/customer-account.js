@@ -89,22 +89,7 @@
     </div></div>`;
   };
 
-  /* חזרה לקישור הצטרפות אחרי התחברות (הקובץ נטען לפני router.js — עטיפה עצלנית) */
-  (function installRouteWrap(){
-    if (typeof window.route !== 'function'){ setTimeout(installRouteWrap, 50); return; }
-    if (window.route.__famWrapped) return;
-    const origR = window.route;
-    const wrapped = function(){
-      const out = origR.apply(this, arguments);
-      try{
-        const pend = sessionStorage.getItem('wlm_family_join');
-        if (pend && state.token){ sessionStorage.removeItem('wlm_family_join'); setTimeout(()=>go('#/join-family/'+pend), 50); }
-      }catch(e){}
-      return out;
-    };
-    wrapped.__famWrapped = true;
-    window.route = wrapped;
-  })();
+
 
   /* ---------- B4: חיפוש וסינון בהיסטוריית הזמנות ---------- */
   const STATUS_HE = {new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_progress:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
@@ -277,7 +262,7 @@
         catch(e){ document.execCommand('copy'); toast('הקישור הועתק'); }
       }
       else if (id === 'fam-login'){
-        try{ sessionStorage.setItem('wlm_family_join', t.dataset.token || ''); }catch(e){}
+        store.set('returnTo', '#/join-family/'+(t.dataset.token || '')); // מנגנון returnTo הקיים של ההתחברות
         go('#/login');
       }
       else if (id === 'fam-join'){
