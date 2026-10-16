@@ -6,6 +6,8 @@ async function apiLogin(request, phone, name) {
   const { demoCode } = await req.json();
   const ver = await request.post('/api/auth/otp/verify', { data: { target: phone, code: demoCode, name } });
   const body = await ver.json();
+  // C4: שער הסכמה בצ'ק-אאוט ראשון — ב-e2e מאשרים מרכזית אחרי ההתחברות
+  await request.post('/api/auth/consent', { headers: { authorization: 'Bearer ' + body.token } });
   return { token: body.token, user: body.user };
 }
 

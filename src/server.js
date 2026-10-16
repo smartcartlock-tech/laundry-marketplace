@@ -5,6 +5,7 @@ require('./async-wrap').installProcessGuards(); // לכידת rejections מ-asyn
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 1); // Render proxy — req.ip אמיתי ל-rate limiting פר-משתמש
 // כותרות אבטחה מתונות (בלי תלות חדשה) — SPA עם inline handlers, לכן CSP מתיר inline
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');

@@ -3,6 +3,7 @@ const express = require('express');
 const { q } = require('../db');
 const { buildReceiptPDF } = require('../receipt');
 const { notifyUser } = require('../notify');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 
@@ -20,7 +21,7 @@ async function loadOrder(req, res) {
   return o[0];
 }
 
-r.get('/:orderId', async (req, res) => {
+r.get('/:orderId', uuidParams('orderId'), async (req, res) => {
   const order = await loadOrder(req, res);
   if (!order) return;
   const { rows: items } = await q('SELECT name, price, qty FROM order_items WHERE order_id=$1', [order.id]);
@@ -38,7 +39,7 @@ r.get('/:orderId', async (req, res) => {
 });
 
 // אישור תשלום דמו — מסמן שולם בלבד, בלי חיוב אמיתי
-r.post('/:orderId/confirm', async (req, res) => {
+r.post('/:orderId/confirm', uuidParams('orderId'), async (req, res) => {
   const order = await loadOrder(req, res);
   if (!order) return;
   if (order.status === 'cancelled') return res.status(409).json({ error: 'ההזמנה בוטלה' });
@@ -63,7 +64,7 @@ async function verified(req, order) {
   return !!rows[0] && code.length === 4 && code === last4Of(rows[0].phone);
 }
 
-r.post('/:orderId/verify', limiter('pay-verify', 10, 10 * 60 * 1000, req => req.params.orderId), async (req, res) => {
+r.post('/:orderId/verify', uuidParams('orderId'), limiter('pay-verify', 10, 10 * 60 * 1000, req => req.params.orderId), async (req, res) => {
   const order = await loadOrder(req, res);
   if (!order) return;
   if (!(await verified(req, order))) return res.status(401).json({ error: 'קוד האימות שגוי' });
@@ -73,7 +74,7 @@ r.post('/:orderId/verify', limiter('pay-verify', 10, 10 * 60 * 1000, req => req.
 
 // קבלה-סיכום PDF אחרי תשלום (פומבי — הקישור הוא ה-capability).
 // B5: בלי קוד אימות תקין (?v=1234) הקבלה ממוסכת — סכומים ומספר הזמנה בלבד, בלי PII של הלקוח.
-r.get('/:orderId/receipt.pdf', async (req, res) => {
+r.get('/:orderId/receipt.pdf', uuidParams('orderId'), async (req, res) => {
   const order = await loadOrder(req, res);
   if (!order) return;
   const ok = await verified(req, order);

@@ -39,6 +39,9 @@ const normalizeBody = (req, res, next) => {
 };
 const ipLimit = (scope, max) => limiter(scope, max, 10 * 60 * 1000, (req) => req.ip);
 r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000), ipLimit('otp-request-ip', 30), async (req, res) => {
+  if (Array.isArray(req.body.target) || (req.body.target !== undefined && typeof req.body.target !== 'string')) {
+    return res.status(400).json({ error: 'target חייב להיות מחרוזת בודדת' });
+  }
   try {
     const { kind, target } = normalizeTarget(req.body.target);
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });

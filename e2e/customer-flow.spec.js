@@ -28,6 +28,9 @@ test('הזמנה מלאה: הוספה לסל, התחברות OTP דמו, איש�
   // 4. חזרה אוטומטית לצ'קאאוט — מילוי כתובת ואישור
   await expect(page.locator('#co-address')).toBeVisible();
   await page.fill('#co-address', 'רחוב בדיקה 1, תל אביב');
+  // C4: שער הסכמה — אם נטען הצ'קבוקס, מאשרים לפני השליחה
+  const consent = page.locator('#co-consent');
+  if (await consent.count()) await consent.check();
   await page.locator('#co-submit').click();
 
   // 5. דף מעקב הזמנה — סטטוס "התקבלה"
