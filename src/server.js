@@ -31,6 +31,7 @@ app.use('/api', require('./routes/csp-report')); // B7: דיווחי CSP
 app.use('/api/me', require('./routes/me')); // C2: זכויות נושא מידע
 app.use('/api/me/notification-prefs', require('./routes/me-prefs')); // CX5: העדפות התראות
 app.use('/api', require('./routes/public'));
+app.use('/api/track', require('./routes/track')); // G3b: מעקב הזמנה ציבורי
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: דיווחי תקלות לקוח
 app.use('/api', require('./routes/issue-photos')); // E9.T1: תמונות תקלה
@@ -83,6 +84,7 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
     else res.setHeader('Cache-Control', 'no-cache'); // html/css/js/sw תמיד עם אימות מחדש מול השרת
   }
 }));
+app.use('/b', require('./routes/brand-landing')); // G3: עמוד נחיתה ממותג פר-מכבסה
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 // eslint-disable-next-line no-unused-vars

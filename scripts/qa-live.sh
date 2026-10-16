@@ -31,5 +31,9 @@ echo "$CANCEL" | grep -q '"ok":true' && echo "PASS: cancel demo order" || { echo
 # QA-flow: ביטול חוזר של אותה הזמנה חייב להידחות ב-409 (מניעת החזרי נקודות/מכסה כפולים)
 CODE2=$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST "$BASE/api/orders/$OID/cancel" -H "authorization: Bearer $TOKEN")
 [ "$CODE2" = "409" ] && echo "PASS: double-cancel rejected 409" || { echo "FAIL: double-cancel -> $CODE2"; fail=1; }
+# G3: עמוד נחיתה ממותג + מעקב ציבורי
+check "branded landing" "$BASE/b/achuza" 'property="og:title"'
+TRC=$(curl -s -m 30 "$BASE/api/orders/$OID" -H "authorization: Bearer $TOKEN" | python3 -c "import json,sys;print(json.load(sys.stdin).get('order',{}).get('tracking_code',''))")
+if [ -n "$TRC" ]; then check "public order tracking" "$BASE/api/track/$TRC" '"status":"cancelled"'; else echo "FAIL: no tracking_code on order"; fail=1; fi
 [ $fail -eq 0 ] && echo "QA LIVE: ALL PASS" || echo "QA LIVE: FAILURES"
 exit $fail
