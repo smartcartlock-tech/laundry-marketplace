@@ -1231,19 +1231,20 @@ async function joinSubmit(){
 /* ---- router ---- */
 
 async function vVerify(code){
- const ST={issued:'st-delivered',partially_credited:'st-out_for_delivery',credited:'st-cancelled'};
+ const ICON={authentic:'✅',partial:'⚠️',credited:'⛔',altered:'❌'};
+ const PILL={authentic:'st-delivered',partial:'st-out_for_delivery',credited:'st-cancelled',altered:'st-cancelled'};
  let d=null,notFound=false;
  try{d=await api(`/verify/${encodeURIComponent(code||'')}`)}catch(e){if(e.status===404)notFound=true;else throw e}
- const ok=d&&!notFound&&d.status!=='credited';
  return `<div class="hdr"><h2>אימות מסמך</h2></div><div class="body">
   <div class="card" style="text-align:center">
-   <div style="font-size:44px">${ok?'✅':notFound?'❓':'⚠️'}</div>
+   <div style="font-size:44px">${notFound?'❓':ICON[d.result]||'❓'}</div>
    ${notFound?`<b>המסמך לא נמצא</b><div class="mut" style="margin-top:6px">בדקו שהקוד הוזן כראוי או סרקו שוב את ה-QR.</div>`
    :`<b>${d.kind_he} ${d.doc_number}/${d.doc_year}</b>
-    <div style="margin:6px 0"><span class="st-pill ${ST[d.status]||''}">${d.status_he}</span></div>
-    <div class="mut">${esc(d.tenant_name)} · ${esc(d.customer_name||'לקוח')}</div>
+    <div style="margin:6px 0"><span class="st-pill ${PILL[d.result]||''}">${d.result_he}</span></div>
+    <div class="mut">המפיק: ${esc(d.tenant_name)}</div>
     <div style="font-size:22px;font-weight:700;margin:6px 0">₪${d.total}</div>
     <div class="mut">הופק ב-${new Date(d.issued_at).toLocaleDateString('he-IL')}${d.orders_count?` · מכסה ${d.orders_count} הזמנות`:''}</div>
+    <div class="mut" style="margin-top:6px">${d.signature_valid?'חתימה דיגיטלית תקינה (HMAC-SHA256)':'⚠️ החתימה הדיגיטלית אינה תואמת'}${d.sha256?' · גיבוב מסמך נשמר':''}</div>
     <div class="mut" style="margin-top:10px;color:#b00">מסמך דמו — לא לצורכי מע"מ (טרם רישום תוכנה ברשות המסים)</div>`}
    <div style="margin-top:12px"><button class="btn2" onclick="go('#/');route()">לדף הבית</button></div>
   </div></div>`;

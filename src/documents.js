@@ -5,7 +5,18 @@
 const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
 const crypto = require('crypto');
 const VERIFY_ABC = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-function newVerifyCode() { const b = crypto.randomBytes(10); let c = ''; for (let i = 0; i < 10; i++) c += VERIFY_ABC[b[i] % VERIFY_ABC.length]; return c; }
+// טוקן אימות ~120 ביט (24 תווים base32), ללא PII — לפי האיפיון
+function newVerifyCode() { const b = crypto.randomBytes(24); let c = ''; for (let i = 0; i < 24; i++) c += VERIFY_ABC[b[i] % VERIFY_ABC.length]; return c; }
+
+// חתימת מסמך: HMAC-SHA256 של (מזהה, סוג/מספר/שנה, סכום, תאריך) במפתח השרת — אימות בשרת בלבד
+const SIGN_SECRET = process.env.DOC_SIGNING_SECRET || 'demo-doc-signing-secret';
+function signDocument(d) {
+  const date = new Date(d.issued_at).toISOString().slice(0, 10);
+  return crypto.createHmac('sha256', SIGN_SECRET)
+    .update(`${d.id}|${d.kind}|${d.doc_year}-${d.doc_number}|${Number(d.total).toFixed(2)}|${date}`)
+    .digest('base64url');
+}
+function verifySignature(d) { return !!d.signature && d.signature === signDocument(d); }
 const VAT_RATE = 0.18;
 
 // הקצאת מספר רציף לכל (מכבסה, סוג, שנה) — אטומי דרך UPDATE..RETURNING
@@ -52,6 +63,9 @@ async function issueDocument(client, opts) {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [tenant.id, order ? order.id : null, customer ? customer.id : null, kind, year, num,
      opts.allocationNumber || null, amount, vat, total, opts.originalId || null, opts.pdf || null, newVerifyCode()]);
+  const sig = signDocument(rows[0]);
+  await client.query('UPDATE documents SET signature=$2 WHERE id=$1', [rows[0].id, sig]);
+  rows[0].signature = sig;
   await audit(client, rows[0].id, 'issued', opts.actorId, { kind, number: num, total, demo: true });
   return rows[0];
 }
@@ -93,7 +107,7 @@ async function setAllocationNumber(client, docId, allocationNumber, actorId) {
   return rows[0];
 }
 
-module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE };
+module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature };
 
 // E12.T2: הנפקה אוטומטית של מסמכים בעת delivered — אידמפוטנטי, לפי סוג העוסק של המכבסה.
 // עוסק מורשה: חשבונית עסקה (מע"מ כלול במחיר) + קבלה על התשלום. עוסק פטור: קבלה בלבד.
@@ -122,7 +136,7 @@ async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
     const codes = await require('./receipt').docVerificationImages(d);
     const pdf = buildDocumentPDF({ doc: d, order, items, tenant, customer, copy: false, codes });
     const buf = await collectPdf(pdf);
-    await client.query('UPDATE documents SET pdf=$2 WHERE id=$1 AND pdf IS NULL', [d.id, buf]);
+    await client.query('UPDATE documents SET pdf=$2, sha256=$3 WHERE id=$1 AND pdf IS NULL', [d.id, buf, crypto.createHash('sha256').update(buf).digest('hex')]);
     return { ...d, pdf: buf };
   }
 
@@ -179,7 +193,7 @@ async function issueConsolidatedInvoice(client, { tenant, customer, orders, acto
     note: `חשבונית מרכזת המכסה ${orders.length} הזמנות`,
   });
   const buf = await collectPdf(pdf);
-  await client.query('UPDATE documents SET pdf=$2 WHERE id=$1 AND pdf IS NULL', [d.id, buf]);
+  await client.query('UPDATE documents SET pdf=$2, sha256=$3 WHERE id=$1 AND pdf IS NULL', [d.id, buf, crypto.createHash('sha256').update(buf).digest('hex')]);
   return { ...d, pdf: buf };
 }
 

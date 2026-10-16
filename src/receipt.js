@@ -157,13 +157,18 @@ const APP_BASE_URL = process.env.APP_BASE_URL || 'https://washup-qa0d.onrender.c
 
 
 // QR לסריקה (עמוד אימות ציבורי) + ברקוד Code128 של מזהה המסמך — אפס עלות, נוצר מקומית
+// קידומות מסמכים לפי מפת המספור באיפיון (INV/TR/RCT/CN...); consolidated = חשבונית מס מרכזת
+const KIND_PREFIX = { invoice: 'INV', receipt: 'RCT', credit: 'CN', consolidated: 'CINV' };
+function docBarcodeText(d) {
+  return `${KIND_PREFIX[d.kind] || 'DOC'}-${d.doc_year}-${String(d.doc_number).padStart(4, '0')}`;
+}
 async function docVerificationImages(d) {
   const verifyUrl = `${APP_BASE_URL}/#/verify/${d.verify_code}`;
   const [qr, barcode] = await Promise.all([
     bwipjs.toBuffer({ bcid: 'qrcode', text: verifyUrl, scale: 4, eclevel: 'M' }),
-    bwipjs.toBuffer({ bcid: 'code128', text: `WLM-${d.doc_year}-${d.doc_number}`, height: 10, includetext: false }),
+    bwipjs.toBuffer({ bcid: 'code128', text: docBarcodeText(d), height: 8, includetext: true, textxalign: 'center' }),
   ]);
-  return { qr, barcode, verifyUrl };
+  return { qr, barcode, verifyUrl, barcodeText: docBarcodeText(d) };
 }
 
 function collectPdf(doc) {
@@ -248,7 +253,7 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   if (codes && codes.qr && d.verify_code) {
     if (pdf.y > 660) pdf.addPage();
     const vy = pdf.y + 4;
-    pdf.image(codes.qr, 50, vy, { width: 52 });
+    pdf.image(codes.qr, 50, vy, { width: 56 });
     if (codes.barcode) pdf.image(codes.barcode, 116, vy + 10, { width: 130 });
     pdf.font('he').fontSize(9).fillColor('#333');
     drawRtl(pdf, `אימות מסמך: סרקו את ה-QR או הזינו את הקוד ${d.verify_code} בעמוד האימות`, PAGE_RIGHT, vy + 14);
@@ -265,3 +270,4 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
 module.exports.buildDocumentPDF = buildDocumentPDF;
 module.exports.collectPdf = collectPdf;
 module.exports.docVerificationImages = docVerificationImages;
+module.exports.docBarcodeText = docBarcodeText;

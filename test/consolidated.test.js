@@ -60,7 +60,9 @@ test('E12.T6: חשבונית מרכזת + אימות ציבורי + מצב הפ�
   assert.equal(ver.json.kind, 'consolidated');
   assert.equal(ver.json.orders_count, 2);
   assert.equal(ver.json.demo, true);
-  assert.ok(!ver.json.customer_phone, 'ללא חשיפת טלפון');
+  assert.equal(ver.json.result, 'authentic', 'חתימת HMAC תקינה');
+  assert.equal(ver.json.signature_valid, true);
+  assert.ok(!ver.json.customer_phone && !ver.json.customer_name, 'אימות ציבורי בלי פרטי לקוח');
   const nf = await api('/api/verify/ZZZZZZZZZ1');
   assert.equal(nf.status, 404);
   const bad = await api('/api/verify/x!');

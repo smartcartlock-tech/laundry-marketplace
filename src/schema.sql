@@ -425,7 +425,6 @@ CREATE TABLE IF NOT EXISTS courier_tenant_ratings (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(courier_id, order_id)
 );
-<<<<<<< HEAD
 -- E3: דף עסקי ממותג (White Label)
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slogan text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp text;
@@ -437,7 +436,7 @@ ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check;
 ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('app','bot','admin','branded'));
 INSERT INTO platform_settings(key, value) VALUES ('branded_commission_pct','5'), ('marketplace_commission_pct','12')
 ON CONFLICT (key) DO NOTHING;
-=======
+
 
 -- E6.T1: פורום מנהלים
 CREATE TABLE IF NOT EXISTS forum_posts (
@@ -556,3 +555,9 @@ CREATE TABLE IF NOT EXISTS content_articles (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 >>>>>>> 4eb9e4a (E6.T1-T5: B2B community layer — managers forum, tenders with bid comparison & deadline lock, group purchasing, capacity exchange with demo payment, industry content (admin-published, members-only))
+
+
+
+-- E12.T7 (spec): חתימת HMAC-SHA256 + גיבוב sha256 של ה-PDF המקורי (מסמך בלתי משתנה)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS signature text;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS sha256 text;
