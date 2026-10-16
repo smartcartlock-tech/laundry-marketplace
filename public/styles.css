@@ -74,7 +74,7 @@ label.lb{font-size:12px;font-weight:700;color:#45606c;display:block;margin:8px 0
 table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 table.tbl th{background:#eef6f7;text-align:right;padding:8px;border-bottom:2px solid #d3e8ec}
 table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
-.upload{border:2px dashed #9fc6cf;border-radius:12px;padding:26px 14px;text-align:center;background:#f2fafb;cursor:pointer}
+.upload{display:block;border:2px dashed #9fc6cf;border-radius:12px;padding:26px 14px;text-align:center;background:#f2fafb;cursor:pointer}
 .upload:hover{background:#e6f4f6}
 .upload input{display:none}
 .st-pill{font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;display:inline-block}

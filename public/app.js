@@ -213,7 +213,7 @@ async function vOrder(id){
  const o=d.order;
  const idx=FLOW.indexOf(o.status);
  const isMine=o.customer_id===(state.me&&state.me.id);
- return `<div class="hdr"><h2>הזמנה #${o.id.slice(0,8)}</h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
+ return `<div class="hdr"><h2>הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   <div class="card">
    <div class="tl">
@@ -260,7 +260,7 @@ async function vCourier(){
  return `<div class="hdr"><h2>שלום ${esc(me.user.name||'')}</h2><p>${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'} · ${profile.stats.delivered} מסירות בוצעו</p></div>
  <div class="body">
   ${offers.offers.length?`<div class="sec">הצעות שיבוץ חדשות</div>${offers.offers.map(o=>`
-   <div class="card"><b>${esc(o.tenant_name)}</b> — הזמנה #${o.order_id.slice(0,8)}
+   <div class="card"><b>${esc(o.tenant_name)}</b> — הזמנה <span dir="ltr">#${o.order_id.slice(0,8)}</span>
     <div class="mut">${esc(o.address)} · ${o.kind==='pickup'?'איסוף':'החזרה'} · ₪${o.total}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
      <button class="btn2 green" onclick="offerAction('${o.offer_id}','accept')">אישור</button>
@@ -300,7 +300,7 @@ async function vManage(sub){
   const NEXT={new:'confirmed',confirmed:'picked_up',picked_up:'in_work',in_work:'ready',ready:'out_for_delivery',out_for_delivery:'delivered'};
   body=d.orders.map(o=>`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-     <div><b>#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+     <div><b dir="ltr">#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
       <div class="mut">${fmtDT(o.created_at)} · ₪${o.total} · ${esc(o.address)}${o.source==='bot'?' · מהבוט':''}</div>
       ${o.payment_method==='cash'&&o.payment_status==='pending'?'<div class="mut">💵 גבייה במזומן</div>':''}
      </div>
@@ -416,7 +416,7 @@ async function vAdmin(sub){
  } else if(sub==='orders'){
   const d=await api('/admin/orders');
   body=`<div class="card"><table class="tbl"><tr><th>הזמנה</th><th>מכבסה</th><th>סטטוס</th><th>₪</th></tr>
-   ${d.orders.map(o=>`<tr><td>#${o.id.slice(0,8)}<div class="mut">${esc(o.customer_name||'')}</div></td><td>${esc(o.tenant_name)}</td><td><span class="st-pill st-${o.status}">${HE[o.status]}</span></td><td>${o.total}</td></tr>`).join('')}</table></div>`;
+   ${d.orders.map(o=>`<tr><td><span dir="ltr">#${o.id.slice(0,8)}</span><div class="mut">${esc(o.customer_name||'')}</div></td><td>${esc(o.tenant_name)}</td><td><span class="st-pill st-${o.status}">${HE[o.status]}</span></td><td>${o.total}</td></tr>`).join('')}</table></div>`;
  }
  return `<div class="hdr"><h2>ניהול פלטפורמה</h2></div>
  <div class="body"><div class="subtabs">${tabs.map(t=>`<span class="chip ${sub===t[0]?'on':''}" onclick="go('#/admin/${t[0]}')">${t[1]}</span>`).join('')}</div>${body}</div>`;
