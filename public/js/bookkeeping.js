@@ -9,11 +9,15 @@
 
   async function bookkeepingBody(slug){
     const B = `/t/${slug}/bookkeeping`;
-    const [accs, parties, docs, exps, bankTx, tb, pnl, vat, pend, uni, recon] = await Promise.all([
+    const [accs, parties, docs, exps, bankTx, tb, pnl, vat, pend, uni, recon, sett] = await Promise.all([
       api(`${B}/accounts`), api(`${B}/parties`), api(`${B}/documents`), api(`${B}/expenses`),
       api(`${B}/bank/transactions`), api(`${B}/trial-balance`),
       api(`${B}/reports/pnl`), api(`${B}/reports/vat`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
+      api(`/t/${slug}/settings`),
     ]);
+    // עוסק פטור: מסתירים סוגי חשבונית מס ובאנר הקצאה (השרת חוסם — כאן מונעים הצעה מבלבלת)
+    const isMorasha = !!(sett.tenant && sett.tenant.dealer_type === 'morasha');
+    const kinds = isMorasha ? KINDS : KINDS.filter(k => k[0] === 'invoice' || k[0] === 'receipt');
     const supOpts = parties.parties.filter(p => p.kind === 'supplier' && p.active)
       .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     const expAccOpts = accs.accounts.filter(a => a.type === 'expense')
@@ -53,8 +57,8 @@
     return `
     <div class="card" style="border:2px solid #c26a12">
       <div class="sec">הנהלת חשבונות אמיתית — בעלים בלבד</div>
-      <div style="background:#fdf3e3;border:1px solid #e8c07a;border-radius:8px;padding:8px;font-weight:600">
-        חשבונית מס אינה נשלחת ללקוח בלי מספר הקצאה. מספר מבקשים באזור האישי של רשות המסים ומזינים כאן.</div>
+      ${isMorasha ? `<div style="background:#fdf3e3;border:1px solid #e8c07a;border-radius:8px;padding:8px;font-weight:600">
+        חשבונית מס אינה נשלחת ללקוח בלי מספר הקצאה. מספר מבקשים באזור האישי של רשות המסים ומזינים כאן.</div>` : ''}
       <div class="kpis" style="margin-top:8px">
         <div class="kpi"><b>${tb.totals.balanced ? '✓' : '⚠️'}</b>${tb.totals.balanced ? 'ספר מאוזן' : 'ספר לא מאוזן'}</div>
         <div class="kpi"><b>${pend.count}</b>ממתינים להקצאה</div>
@@ -64,7 +68,7 @@
 
     <div class="card"><div class="sec">מסמכים</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-        <select class="inp" id="bk-doc-kind" style="flex:1">${KINDS.map(k => `<option value="${k[0]}">${k[1]}</option>`).join('')}</select>
+        <select class="inp" id="bk-doc-kind" style="flex:1">${kinds.map(k => `<option value="${k[0]}">${k[1]}</option>`).join('')}</select>
         <input class="inp" id="bk-doc-cust" placeholder="שם לקוח" style="flex:2">
         <input class="inp" id="bk-doc-net" type="number" min="0" step="0.01" placeholder="נטו ₪" style="width:90px">
         <input class="inp" id="bk-doc-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">
