@@ -318,7 +318,7 @@ async function vCheckout(slug){
    <label class="lb">הערות</label>
    <input class="inp" id="co-notes" placeholder="כתם עקשן, קומה, קוד שער…">
   </div>
-  <button class="btn" onclick="submitOrder('${slug}')">אישור הזמנה</button>
+  <button class="btn" id="co-submit" onclick="submitOrder('${slug}')">אישור הזמנה</button>
  </div>`;
 }
 function updTotal(){
@@ -354,8 +354,14 @@ async function applyCoupon(slug){
   updTotal();
  }
 }
+let __submitting=false;
 async function submitOrder(slug){
  if(!state.token)return needLogin();
+ if(__submitting)return; // נעילה נגד דאבל-קליק
+ __submitting=true;
+ const btn=$('#co-submit');const orig=btn&&btn.textContent;
+ if(btn){btn.disabled=true;btn.style.opacity='.6';btn.textContent='שולח…'}
+ const kill=setTimeout(()=>{__submitting=false;if(btn){btn.disabled=false;btn.style.opacity='';btn.textContent=orig};toast('השליחה לוקחת זמן רק מהרגיל — אם ההזמנה לא אושרה, נסו שוב')},30000);
  try{
   const items=state.cart.filter(c=>c.slug===slug).map(c=>({item_id:c.item_id,qty:c.qty}));
   const addrEl=$('#co-address');const address=addrEl.value.trim();
@@ -366,10 +372,11 @@ async function submitOrder(slug){
   const w2=($('#co-delivery')&&$('#co-delivery').value||'').split('|');
   const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
   const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim(),use_subscription:!!($('#co-sub')&&$('#co-sub').checked),source:state.brandSlug===slug?'branded':undefined};
-  const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
+  const r=await Promise.race([api('/orders',{method:'POST',body:JSON.stringify(body)}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('פג הזמן — בדקו חיבור ונסו שוב')),25000))]);
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);
  }catch(e){toast(e.message)}
+ finally{clearTimeout(kill);__submitting=false;if(btn){btn.disabled=false;btn.style.opacity='';btn.textContent=orig}}
 }
 
 /* ---- orders ---- */
