@@ -351,7 +351,8 @@ async function vClub(){
 async function vCourier(){
  if(!state.token)return needLogin();
  let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
- if(!me.courier)return `<div class="hdr"><h2>אפליקציית שליח</h2></div><div class="body"><div class="card mut">החשבון שלך אינו רשום כשליח. שליח מכבסה נרשם דרך לוח המכבסה; שליח פלטפורמה דרך מנהל הפלטפורמה.</div></div>`;
+ if(!me.courier||me.courier.rejected_reason)return vCourierRegister(me.user,me.courier);
+ if(!me.courier.approved)return `<div class="hdr"><h2>אפליקציית שליח</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:34px">⏳</div><b>הבקשה שלך ממתינה לאישור</b><div class="mut" style="margin-top:6px">מנהל הפלטפורמה סוקר את הפרטים והמסמכים. נעדכן אותך כשהבקשה תאושר.</div></div></div>`;
  const [offers,route,profile]=await Promise.all([api('/courier/offers'),api('/courier/route'),api('/courier/profile')]);
  return `<div class="hdr"><h2>שלום ${esc(me.user.name||'')}</h2><p>${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'} · ${profile.stats.delivered} מסירות בוצעו</p></div>
  <div class="body">
@@ -389,6 +390,49 @@ async function offerAction(id,a){try{await api(`/courier/offers/${id}/${a}`,{met
 async function markOrder(id,a){try{await api(`/courier/orders/${id}/mark`,{method:'POST',body:JSON.stringify({action:a})});toast(a==='picked_up'?'סומן כנאסף':'סומן כהוחזר');route()}catch(e){toast(e.message)}}
 
 /* ---- manage (owner) ---- */
+/* E5.T1: טופס הרשמה לשליח עצמאי (מוקאפ 19) */
+function vCourierRegister(user,courier){
+ const days=WD.map((d,i)=>`<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="cr-day" value="${i}">${d}</label>`).join('');
+ return `<div class="hdr"><h2>הצטרפות כשליח</h2><p>${courier&&courier.rejected_reason?'הבקשה הקודמת נדחתה — ניתן להגיש מחדש':'הרשמה לשליח עצמאי של הפלטפורמה'}</p></div>
+ <div class="body">
+ ${courier&&courier.rejected_reason?`<div class="card warn"><b>הבקשה נדחתה:</b> ${esc(courier.rejected_reason)}</div>`:''}
+ <div class="card">
+  <label class="lb">שם מלא</label><input class="inp" id="cr-name" value="${esc(user.name||'')}">
+  <label class="lb">טלפון</label><input class="inp" value="${esc(user.phone||'')}" disabled>
+  <label class="lb">סוג רכב</label><select class="inp" id="cr-vehicle"><option value="">— בחר —</option><option>אופנוע</option><option>קטנוע</option><option>רכב</option><option>אופניים חשמליים</option></select>
+  <label class="lb">אזורי פעילות (מופרדים בפסיק)</label><input class="inp" id="cr-areas" placeholder="תל אביב, רמת גן, גבעתיים">
+  <label class="lb">זמינות שבועית</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">${days}</div>
+  <label class="lb">מודל עבודה</label><select class="inp" id="cr-model"><option value="platform">שליח פלטפורמה — משימות מכל המכבסות</option><option value="shared">שליח משותף — משימות משולבות של מכבסות שכנות</option></select>
+ </div>
+ <div class="card">
+  <div class="sec">מסמכים</div>
+  <label class="lb">רישיון נהיגה (חובה)</label><input class="inp" id="cr-license" type="file" accept="image/*,application/pdf">
+  <label class="lb">ביטוח (רשות)</label><input class="inp" id="cr-insurance" type="file" accept="image/*,application/pdf">
+  <label class="lb">תמונה אישית (רשות)</label><input class="inp" id="cr-photo" type="file" accept="image/*">
+ </div>
+ <button class="btn" onclick="courierRegister()">שליחת בקשה לאישור</button>
+ </div>`;
+}
+async function courierRegister(){
+ try{
+  const vehicle=$('#cr-vehicle').value;
+  if(!vehicle)return toast('יש לבחור סוג רכב');
+  if(!$('#cr-license').files[0])return toast('יש לצרף רישיון נהיגה');
+  const fd=new FormData();
+  fd.append('name',$('#cr-name').value);
+  fd.append('vehicle',vehicle);
+  fd.append('model',$('#cr-model').value);
+  fd.append('areas',JSON.stringify($('#cr-areas').value.split(',').map(x=>x.trim()).filter(Boolean)));
+  const avail={};document.querySelectorAll('.cr-day:checked').forEach(c=>avail[c.value]=[['08:00','20:00']]);
+  fd.append('availability',JSON.stringify(avail));
+  for(const k of ['license','insurance','photo']){const f=$('#cr-'+k).files[0];if(f)fd.append(k,f);}
+  const r=await fetch('/api/courier/register',{method:'POST',headers:{Authorization:'Bearer '+state.token},body:fd});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||'שגיאה '+r.status);
+  state.courier={id:d.courier.id,model:d.courier.model,approved:false};save();
+  toast('הבקשה נשלחה לאישור');route();
+ }catch(e){toast(e.message)}
+}
 async function vManage(sub){
  if(!state.token)return needLogin();
  const me=await api('/auth/me');
@@ -598,7 +642,15 @@ async function vAdmin(sub){
    :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
-  body=`<div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
+  const pd=await api('/admin/couriers/pending');
+  body=`${pd.pending.length?`<div class="sec">ממתינים לאישור (${pd.pending.length})</div>`+pd.pending.map(c=>`<div class="card">
+    <b>${esc(c.name||'')}</b> · <span dir="ltr">${esc(c.phone||'')}</span>
+    <div class="mut">${c.model==='shared'?'שליח משותף':'שליח פלטפורמה'} · ${esc(c.vehicle||'')} · אזורים: ${(c.areas||[]).map(esc).join(', ')}</div>
+    <div class="mut">זמינות: ${Object.keys(c.availability||{}).length?Object.keys(c.availability||{}).map(d=>WD[+d]).join(', '):'לא צוינה'} · נרשם ${fmtDate(c.created_at)}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${(c.documents||[]).map(doc=>`<button class="btn2" onclick="viewCourierDoc('${doc.id}')">${doc.kind==='license'?'רישיון':doc.kind==='insurance'?'ביטוח':'תמונה'}</button>`).join('')||'<span class="mut">אין מסמכים</span>'}</div>
+    <div style="display:flex;gap:8px"><button class="btn2 green" style="flex:1" onclick="adminCourier('${c.id}','approve')">אישור</button><button class="btn2" style="flex:1" onclick="adminRejectCourier('${c.id}')">דחייה</button></div>
+   </div>`).join(''):''}
+  <div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
    ${d.couriers.map(c=>`<tr><td>${esc(c.name)}<div class="mut">${esc(c.phone||'')}</div></td><td>${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</td><td>${esc(c.tenant_name||'—')}</td>
     <td>${c.approved?`<button class="btn2" onclick="adminCourier('${c.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminCourier('${c.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='register'){
@@ -655,6 +707,19 @@ async function vAdminTenant(id){
  </div>`;
 }
 async function adminCourier(id,a){try{await api(`/admin/couriers/${id}/${a}`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
+async function adminRejectCourier(id){
+ const v=await xmodal({title:'דחיית שליח',body:'הסיבה תוצג לשליח ותאפשר לו להגיש בקשה מתוקנת.',okText:'דחייה',fields:[{id:'reason',label:'סיבת דחייה'}]});
+ if(!v)return;
+ if(!v.reason||!v.reason.trim())return toast('יש לציין סיבת דחייה');
+ try{await api(`/admin/couriers/${id}/reject`,{method:'POST',body:JSON.stringify({reason:v.reason.trim()})});toast('השליח נדחה');route()}catch(e){toast(e.message)}
+}
+async function viewCourierDoc(id){
+ try{
+  const r=await fetch('/api/admin/courier-documents/'+id,{headers:{Authorization:'Bearer '+state.token}});
+  if(!r.ok)throw new Error('שגיאה '+r.status);
+  const b=await r.blob();window.open(URL.createObjectURL(b),'_blank');
+ }catch(e){toast(e.message)}
+}
 async function adminRegisterCourier(){try{await api('/admin/couriers/register',{method:'POST',body:JSON.stringify({name:$('#rc-name').value,phone:$('#rc-phone').value,vehicle:$('#rc-vehicle').value,model:$('#rc-model').value,tenant_slug:$('#rc-tenant').value||undefined})});toast('השליח נרשם');go('#/admin/couriers');route()}catch(e){toast(e.message)}}
 
 /* ---- join: onboarding מכבסה עם AI ---- */

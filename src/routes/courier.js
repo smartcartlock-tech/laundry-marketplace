@@ -1,10 +1,89 @@
 const express = require('express');
+const multer = require('multer');
 const { q, pool } = require('../db');
 const { requireAuth, requireCourier } = require('../auth');
 const { notifyUser } = require('../notify');
 
 const r = express.Router();
-r.use(requireAuth, requireCourier);
+r.use(requireAuth);
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 3 },
+  fileFilter(req, file, cb) {
+    const ok = /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.mimetype);
+    cb(ok ? null : new Error('קובץ חייב להיות תמונה (JPG/PNG/WEBP) או PDF'), ok);
+  },
+});
+
+const DOC_KINDS = ['license', 'insurance', 'photo'];
+const DOC_LABELS = { license: 'רישיון נהיגה', insurance: 'ביטוח', photo: 'תמונה' };
+
+// E5.T1: הרשמה עצמית של שליח עצמאי (ממתין לאישור אדמין). שליח שדחו יכול להגיש מחדש.
+r.post('/register', upload.fields(DOC_KINDS.map(k => ({ name: k, maxCount: 1 }))), async (req, res) => {
+  try {
+    const { vehicle, areas, availability, model, name } = req.body || {};
+    if (!vehicle || !String(vehicle).trim()) return res.status(400).json({ error: 'סוג רכב חובה' });
+    const files = req.files || {};
+    if (!files.license || !files.license[0]) return res.status(400).json({ error: 'יש לצרף רישיון נהיגה' });
+    let areasArr = [];
+    try { areasArr = Array.isArray(areas) ? areas : JSON.parse(areas || '[]'); } catch (e) { areasArr = String(areas || '').split(',').map(x => x.trim()).filter(Boolean); }
+    if (!areasArr.length) return res.status(400).json({ error: 'יש לציין לפחות אזור פעילות אחד' });
+    let avail = {};
+    try { avail = typeof availability === 'string' ? JSON.parse(availability || '{}') : (availability || {}); } catch (e) { return res.status(400).json({ error: 'זמינות לא תקינה' }); }
+    const mdl = ['shared', 'platform'].includes(model) ? model : 'platform';
+    if (name && String(name).trim() && !req.user.name) await q('UPDATE users SET name=$2 WHERE id=$1', [req.user.id, String(name).trim()]);
+    const { rows: existing } = await q('SELECT * FROM couriers WHERE user_id=$1', [req.user.id]);
+    let courier;
+    if (existing[0]) {
+      if (existing[0].approved) return res.status(409).json({ error: 'אתה כבר רשום כשליח מאושר' });
+      if (!existing[0].rejected_reason) return res.status(409).json({ error: 'הבקשה שלך כבר ממתינה לאישור' });
+      // הגשה מחדש אחרי דחייה
+      courier = (await q(
+        `UPDATE couriers SET vehicle=$2, areas=$3, availability=$4, model=$5, rejected_reason=NULL WHERE id=$1 RETURNING *`,
+        [existing[0].id, String(vehicle).trim(), areasArr, avail, mdl])).rows[0];
+      await q('DELETE FROM courier_documents WHERE courier_id=$1', [courier.id]);
+    } else {
+      courier = (await q(
+        `INSERT INTO couriers(user_id, tenant_id, model, vehicle, areas, availability, approved) VALUES ($1,NULL,$2,$3,$4,$5,false) RETURNING *`,
+        [req.user.id, mdl, String(vehicle).trim(), areasArr, avail])).rows[0];
+    }
+    for (const kind of DOC_KINDS) {
+      const f = (files[kind] || [])[0];
+      if (!f) continue;
+      await q('INSERT INTO courier_documents(courier_id, kind, filename, mime, data) VALUES ($1,$2,$3,$4,$5)',
+        [courier.id, kind, f.originalname || kind, f.mimetype, f.buffer]);
+    }
+    if (req.user.role === 'customer') await q(`UPDATE users SET role='courier' WHERE id=$1`, [req.user.id]);
+    res.status(201).json({ courier, status: 'pending' });
+  } catch (e) {
+    if (e && e.message && e.message.includes('קובץ')) return res.status(400).json({ error: e.message });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// סטטוס הבקשה שלי + מטא-דאטה של מסמכים שהוגשו
+r.get('/registration', async (req, res) => {
+  const { rows: c } = await q('SELECT * FROM couriers WHERE user_id=$1', [req.user.id]);
+  if (!c[0]) return res.json({ registration: null });
+  const { rows: docs } = await q(
+    'SELECT id, kind, filename, mime, created_at FROM courier_documents WHERE courier_id=$1 ORDER BY created_at', [c[0].id]);
+  res.json({ registration: { ...c[0], documents: docs, doc_labels: DOC_LABELS } });
+});
+
+// צפייה במסמך: בעל המסמך בלבד (אדמין דרך /api/admin)
+r.get('/documents/:id', async (req, res) => {
+  const { rows } = await q(
+    `SELECT d.* FROM courier_documents d JOIN couriers c ON c.id=d.courier_id WHERE d.id=$1 AND c.user_id=$2`,
+    [req.params.id, req.user.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'מסמך לא נמצא' });
+  res.setHeader('content-type', rows[0].mime);
+  res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(rows[0].filename)}`);
+  res.send(rows[0].data);
+});
+
+// מכאן והלאה: רק שליח רשום (ממתין לאישור עדיין לא מקבל הצעות אוטומטיות)
+r.use(requireCourier);
 
 // הצעות שיבוץ ממתינות
 r.get('/offers', async (req, res) => {

@@ -87,7 +87,7 @@ r.post('/google', async (req, res) => {
 r.get('/me', requireAuth, async (req, res) => {
   const { rows: memberships } = await q(
     'SELECT t.slug, t.name, m.role FROM tenant_members m JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1', [req.user.id]);
-  const { rows: courier } = await q('SELECT id, model, approved FROM couriers WHERE user_id=$1', [req.user.id]);
+  const { rows: courier } = await q('SELECT id, model, approved, rejected_reason FROM couriers WHERE user_id=$1', [req.user.id]);
   res.json({ user: publicUser(req.user), memberships, courier: courier[0] || null });
 });
 

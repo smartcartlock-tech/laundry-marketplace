@@ -255,3 +255,18 @@ CREATE TABLE IF NOT EXISTS document_events (
   details jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- E5: שליחים משותפים ושליחי פלטפורמה
+ALTER TABLE couriers ADD COLUMN IF NOT EXISTS rejected_reason text;
+ALTER TABLE couriers ADD COLUMN IF NOT EXISTS priority numeric(3,2) DEFAULT 1.0;  -- E5.T7: יורד עם דירוג נמוך חוזר
+
+CREATE TABLE IF NOT EXISTS courier_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id uuid NOT NULL REFERENCES couriers(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('license','insurance','photo')),
+  filename text NOT NULL,
+  mime text NOT NULL,
+  data bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS courier_docs_idx ON courier_documents(courier_id);

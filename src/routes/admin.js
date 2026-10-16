@@ -65,6 +65,36 @@ r.post('/tenants/:id/reject', async (req, res) => {
   res.json({ ok: true });
 });
 
+// E5.T2: תור אישורי שליחים עם מסמכים
+r.get('/couriers/pending', async (req, res) => {
+  const { rows } = await q(
+    `SELECT c.id, c.model, c.vehicle, c.areas, c.availability, c.created_at, u.name, u.phone,
+       (SELECT json_agg(json_build_object('id',d.id,'kind',d.kind,'filename',d.filename,'mime',d.mime) ORDER BY d.created_at)
+        FROM courier_documents d WHERE d.courier_id=c.id) AS documents
+     FROM couriers c JOIN users u ON u.id=c.user_id
+     WHERE c.approved=false AND c.rejected_reason IS NULL
+     ORDER BY c.created_at`, []);
+  res.json({ pending: rows });
+});
+
+// E5.T2: צפיית אדמין במסמך שליח
+r.get('/courier-documents/:id', async (req, res) => {
+  const { rows } = await q('SELECT * FROM courier_documents WHERE id=$1', [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'מסמך לא נמצא' });
+  res.setHeader('content-type', rows[0].mime);
+  res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(rows[0].filename)}`);
+  res.send(rows[0].data);
+});
+
+// E5.T2: דחיית שליח עם סיבה
+r.post('/couriers/:id/reject', async (req, res) => {
+  const reason = String((req.body || {}).reason || '').trim();
+  if (!reason) return res.status(400).json({ error: 'יש לציין סיבת דחייה' });
+  const { rows } = await q('UPDATE couriers SET approved=false, rejected_reason=$2 WHERE id=$1 RETURNING id', [req.params.id, reason]);
+  if (!rows[0]) return res.status(404).json({ error: 'שליח לא נמצא' });
+  res.json({ ok: true });
+});
+
 r.get('/couriers', async (req, res) => {
   const { rows } = await q(
     `SELECT c.id, c.model, c.vehicle, c.areas, c.approved, c.rating, c.created_at, u.name, u.phone, t.name AS tenant_name
@@ -73,7 +103,7 @@ r.get('/couriers', async (req, res) => {
   res.json({ couriers: rows });
 });
 r.post('/couriers/:id/approve', async (req, res) => {
-  await q('UPDATE couriers SET approved=true WHERE id=$1', [req.params.id]);
+  await q('UPDATE couriers SET approved=true, rejected_reason=NULL WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
 r.post('/couriers/:id/suspend', async (req, res) => {
