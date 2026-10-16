@@ -316,6 +316,15 @@ r.post('/orders/purge-test', async (req, res) => {
 });
 
 
+// E10.T1: מפתח הבוט המרכזי (נוצר פעם אחת; מוצג לאדמין לצורך קונפיגורציית הבוט)
+r.get('/bot-central-key', async (req, res) => {
+  const { rows } = await q(
+    `INSERT INTO platform_keys(name) VALUES ('bot_central') ON CONFLICT (name) DO NOTHING RETURNING key`, []);
+  if (rows[0]) return res.json({ key: rows[0].key });
+  const { rows: k } = await q('SELECT key FROM platform_keys WHERE name=$1', ['bot_central']);
+  res.json({ key: k[0] && k[0].key });
+});
+
 // E11.T3: דוח פלטפורמה שבועי לאדמין — 7 הימים האחרונים
 async function weeklyReport() {
   const [totals, byTenant, newUsers, newTenants, couriers] = await Promise.all([

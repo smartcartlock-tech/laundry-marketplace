@@ -560,3 +560,18 @@ CREATE TABLE IF NOT EXISTS content_articles (
 -- E12.T7 (spec): חתימת HMAC-SHA256 + גיבוב sha256 של ה-PDF המקורי (מסמך בלתי משתנה)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS signature text;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS sha256 text;
+-- E10.T1: בוט מרכזי — מפתח פלטפורמה וסשני שיחה זמניים (handoff)
+CREATE TABLE IF NOT EXISTS platform_keys (
+  name text PRIMARY KEY,
+  key text NOT NULL DEFAULT encode(gen_random_bytes(24),'hex'),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS bot_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token text UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(24),'hex'),
+  phone text NOT NULL,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS bot_sessions_token_idx ON bot_sessions(token);

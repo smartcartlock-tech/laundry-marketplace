@@ -5,13 +5,20 @@ const { notifyUser } = require('../notify');
 
 const r = express.Router();
 
+const STATUS_HE = { new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך אליך',delivered:'הוחזרה',cancelled:'בוטלה' };
+
 async function botAuth(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!key) return res.status(401).json({ error: 'missing api key' });
+  // מפתח קבוע של מכבסה
   const { rows } = await q('SELECT * FROM tenants WHERE api_key=$1 AND approved', [key]);
-  if (!rows[0]) return res.status(401).json({ error: 'invalid api key' });
-  req.tenant = rows[0];
-  next();
+  if (rows[0]) { req.tenant = rows[0]; return next(); }
+  // E10.T1: מפתח שיחה זמני מהבוט המרכזי (handoff) — מוגבל לטלפון השיחה ולמכבסה אחת
+  const { rows: sess } = await q(
+    `SELECT bs.phone AS bot_phone, t.* FROM bot_sessions bs JOIN tenants t ON t.id=bs.tenant_id
+     WHERE bs.token=$1 AND bs.expires_at > now() AND t.approved`, [key]);
+  if (sess[0]) { req.tenant = sess[0]; req.botPhone = sess[0].bot_phone; return next(); }
+  return res.status(401).json({ error: 'invalid api key' });
 }
 r.use(botAuth);
 
@@ -29,10 +36,12 @@ r.get('/windows', async (req, res) => {
 r.post('/orders', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { phone, name, items, address, pickup_at, notes } = req.body || {};
+    let { phone, name, items, address, pickup_at, notes } = req.body || {};
+    if (req.botPhone) phone = phone || req.botPhone; // סשן בוט מרכזי: הטלפון נקבע מההקשר
     if (!phone || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'phone, items, address required' });
     let p = String(phone).replace(/[^\d+]/g, '');
     if (p.startsWith('0')) p = '+972' + p.slice(1);
+    if (req.botPhone && p !== req.botPhone) return res.status(403).json({ error: 'מפתח השיחה מוגבל לטלפון שאיתו נוצר' });
     let { rows: u } = await client.query('SELECT * FROM users WHERE phone=$1', [p]);
     if (!u[0]) u = (await client.query('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [p, name || null])).rows;
     const user = u[0];
@@ -60,7 +69,8 @@ r.post('/orders', async (req, res) => {
     await client.query(`INSERT INTO order_events(order_id, status, note) VALUES ($1,'new','הזמנה מהבוט')`, [o[0].id]);
     await client.query('COMMIT');
     notifyUser(user.id, req.tenant.id, `הזמנתך ב${req.tenant.name} התקבלה (#${o[0].id.slice(0,8)}) — סה״כ ₪${total}.`, user.phone).catch(() => {});
-    res.status(201).json({ order_id: o[0].id, total, points_earned: points });
+    const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    res.status(201).json({ order_id: o[0].id, total, points_earned: points, pay_url: `${base}/#/pay/${o[0].id}` });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(e); res.status(500).json({ error: 'server error' });
@@ -72,7 +82,7 @@ r.get('/orders/:id', async (req, res) => {
     `SELECT o.id, o.status, o.total, o.pickup_at, o.delivery_at, o.created_at FROM orders o
      WHERE o.id=$1 AND o.tenant_id=$2`, [req.params.id, req.tenant.id]);
   if (!rows[0]) return res.status(404).json({ error: 'not found' });
-  res.json({ order: rows[0] });
+  res.json({ order: { ...rows[0], status_he: STATUS_HE[rows[0].status] || rows[0].status } });
 });
 
 // סטטוס אחרון ללקוח לפי טלפון (לשימוש הבוט בשאלת "מה נשמע ההזמנה שלי")
@@ -82,7 +92,9 @@ r.get('/customers/:phone/latest-order', async (req, res) => {
   const { rows } = await q(
     `SELECT o.id, o.status, o.total, o.created_at FROM orders o JOIN users u ON u.id=o.customer_id
      WHERE o.tenant_id=$1 AND u.phone=$2 ORDER BY o.created_at DESC LIMIT 1`, [req.tenant.id, p]);
-  res.json({ order: rows[0] || null });
+  const ord = rows[0] || null;
+  if (ord) ord.status_he = STATUS_HE[ord.status] || ord.status;
+  res.json({ order: ord });
 });
 
 module.exports = r;
