@@ -11,7 +11,29 @@ function twilio() {
   return false;
 }
 
+// E10.T4: שליחה יזומה דרך הבוט של CleanShop — הוא בעל המספר והסשן, אז ההודעה יוצאת ממנו.
+// מופעל רק כש-BOT_OUTBOUND_URL + BOT_OUTBOUND_KEY מוגדרים; אחרת נופל ל-Twilio ישיר/לוג.
+async function sendViaBot(toE164, body, tag) {
+  const url = process.env.BOT_OUTBOUND_URL, key = process.env.BOT_OUTBOUND_KEY;
+  if (!url || !key) return { sent: false, reason: 'bot-not-configured' };
+  try {
+    const r = await fetch(`${url.replace(/\/+$/, '')}/api/outbound/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-outbound-key': key },
+      body: JSON.stringify({ to: toE164, body, tag }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && (d.status === 'sent' || d.status === 'simulated')) return { sent: d.status === 'sent', via: `bot-${d.status}` };
+    return { sent: false, reason: d.error || d.status || `http-${r.status}` };
+  } catch (e) {
+    console.warn('[notify] bot outbound failed:', e.message);
+    return { sent: false, reason: e.message };
+  }
+}
+
 async function sendWhatsApp(toE164, body) {
+  const viaBot = await sendViaBot(toE164, body, 'notify');
+  if (viaBot.sent || viaBot.via === 'bot-simulated') return viaBot;
   const client = twilio();
   const from = process.env.TWILIO_WHATSAPP_FROM; // e.g. whatsapp:+14155238886
   if (!client || !from) return { sent: false, reason: 'twilio-not-configured' };
@@ -36,4 +58,4 @@ async function notifyUser(userId, tenantId, body, phone) {
     [userId, tenantId, channel, body, sent]);
 }
 
-module.exports = { sendWhatsApp, notifyUser };
+module.exports = { sendWhatsApp, sendViaBot, notifyUser };
