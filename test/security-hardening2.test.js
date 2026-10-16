@@ -19,13 +19,15 @@ test('JWT: fail-fast בלי JWT_SECRET מחוץ ל-test', () => {
 });
 
 // 2) csv.js: ניטרול נוסחאות
-test('CSV: תאים שמתחילים ב-= + - @ מנוטרלים', () => {
+test('CSV: תאים מסוכנים מנוטרלים; מספר תקין (כולל שלילי) לא', () => {
   const { toCsv } = require('../src/csv.js');
-  const csv = toCsv([['=CMD()', '+972500000001', '-5', '@mention', 'רגיל, עם פסיק']]);
+  const csv = toCsv([['=CMD()', '+972500000001', '-5', '-8.47', '@mention', 'רגיל, עם פסיק']]);
   const lines = csv.split('\r\n')[0];
   assert.ok(lines.includes("'=CMD()"), csv);
   assert.ok(lines.includes("'+972500000001"), csv);
-  assert.ok(lines.includes("'-5"), csv);
+  assert.ok(lines.includes(",-5,"), 'מספר שלילי נשאר מספר (סיכומי אקסל) — ' + csv);
+  assert.ok(lines.includes(",-8.47,"), 'שלילי עשרוני נשאר מספר — ' + csv);
+  assert.ok(!lines.includes("'-5") && !lines.includes("'-8.47"), csv);
   assert.ok(lines.includes("'@mention"), csv);
   assert.ok(lines.includes('"רגיל, עם פסיק"'), 'פסיק עדיין מצוטט');
 });
