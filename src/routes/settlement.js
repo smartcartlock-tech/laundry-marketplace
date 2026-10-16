@@ -37,7 +37,7 @@ r.get('/settlement/payments', async (req, res) => {
   const p = period(req);
   if (p.error) return res.status(400).json({ error: p.error });
   const tid = req.tenant.id;
-  const [kpi, byMethod, byDay, cancelled] = await Promise.all([
+  const [kpi, byMethod, byDay, cancelled, subsRows] = await Promise.all([
     q(`SELECT count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS revenue,
          COALESCE(sum(o.total) FILTER (WHERE o.payment_status IN ${PAID}),0)::numeric(10,2) AS collected,
          COALESCE(sum(o.total) FILTER (WHERE o.payment_status='pending'),0)::numeric(10,2) AS pending
@@ -56,6 +56,10 @@ r.get('/settlement/payments', async (req, res) => {
     q(`SELECT count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS total
        FROM orders o WHERE o.tenant_id=$1 AND o.status='cancelled'
          AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, p.from, p.to]),
+    q(`SELECT count(*)::int AS subs, COALESCE(sum(pl.price),0)::numeric(10,2) AS total
+       FROM subscriptions s JOIN subscription_plans pl ON pl.id=s.plan_id
+       WHERE s.tenant_id=$1 AND s.payment_status='paid_demo'
+         AND (s.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, p.from, p.to]),
   ]);
   res.json({
     from: p.from, to: p.to, demo: true,
@@ -63,6 +67,7 @@ r.get('/settlement/payments', async (req, res) => {
     by_method: byMethod.rows.map(x => ({ ...x, method_he: PAY_METHOD_HE[x.payment_method] || x.payment_method, status_he: PAY_STATUS_HE[x.payment_status] || x.payment_status, total: Number(x.total) })),
     by_day: byDay.rows.map(x => ({ ...x, total: Number(x.total), collected: Number(x.collected) })),
     cancelled: { orders: cancelled.rows[0].orders, total: Number(cancelled.rows[0].total) },
+    subscriptions: { count: subsRows.rows[0].subs, total: Number(subsRows.rows[0].total) },
   });
 });
 
@@ -217,6 +222,120 @@ r.get('/settlement/sequence-check', async (req, res) => {
     out.push({ kind, kind_he: KIND_HE[kind], docs: row.docs, min: Number(row.min_n), max: Number(row.max_n), counter_next: row.counter_next === null ? null : Number(row.counter_next), missing, ok: missing.length === 0 && counterOk });
   }
   res.json({ kinds: out, ok: out.every(k => k.ok), demo: true });
+});
+
+// --- שאילתות משותפות לסיכום החודשי ולבדיקת העקביות ---
+async function subsInPeriod(tid, from, to) {
+  const { rows } = await q(
+    `SELECT count(*)::int AS subs, COALESCE(sum(pl.price),0)::numeric(10,2) AS total
+     FROM subscriptions s JOIN subscription_plans pl ON pl.id=s.plan_id
+     WHERE s.tenant_id=$1 AND s.payment_status='paid_demo'
+       AND (s.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, from, to]);
+  return { count: rows[0].subs, total: Number(rows[0].total) };
+}
+async function docsInPeriod(tid, from, to) {
+  const { rows } = await q(
+    `SELECT d.kind, count(*)::int AS docs, COALESCE(sum(d.total),0)::numeric(10,2) AS total
+     FROM documents d WHERE d.tenant_id=$1
+       AND (d.issued_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
+     GROUP BY d.kind ORDER BY d.kind`, [tid, from, to]);
+  return rows.map(x => ({ kind: x.kind, kind_he: KIND_HE[x.kind] || x.kind, docs: x.docs, total: Number(x.total) }));
+}
+
+// --- סיכום חודשי PDF מעוצב (מסמך דמו) ---
+r.get('/settlement/monthly-summary.pdf', async (req, res) => {
+  const p = period(req);
+  if (p.error) return res.status(400).json({ error: p.error });
+  const tid = req.tenant.id;
+  const [kpi, cancelled, byMethod, subs, docs, seq] = await Promise.all([
+    q(`SELECT count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS revenue,
+         COALESCE(sum(o.total) FILTER (WHERE o.payment_status IN ${PAID}),0)::numeric(10,2) AS collected,
+         COALESCE(sum(o.total) FILTER (WHERE o.payment_status='pending'),0)::numeric(10,2) AS pending
+       FROM orders o WHERE o.tenant_id=$1 AND o.status<>'cancelled'
+         AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, p.from, p.to]),
+    q(`SELECT count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS total
+       FROM orders o WHERE o.tenant_id=$1 AND o.status='cancelled'
+         AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, p.from, p.to]),
+    q(`SELECT o.payment_method, o.payment_status, count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS total
+       FROM orders o WHERE o.tenant_id=$1 AND o.status<>'cancelled'
+         AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
+       GROUP BY 1,2 ORDER BY 1,2`, [tid, p.from, p.to]),
+    subsInPeriod(tid, p.from, p.to),
+    docsInPeriod(tid, p.from, p.to),
+    sequenceStatus(tid),
+  ]);
+  const y = Number(p.from.slice(0, 4)), m = Number(p.from.slice(5, 7));
+  const commission = await commissionExpected(tid, y, m);
+  const { buildMonthlySummaryPDF } = require('../monthly-summary');
+  const pdf = buildMonthlySummaryPDF({
+    tenant: req.tenant, label: `${m}/${y}`, from: p.from, to: p.to,
+    kpi: { orders: kpi.rows[0].orders, revenue: Number(kpi.rows[0].revenue), collected: Number(kpi.rows[0].collected), pending: Number(kpi.rows[0].pending) },
+    cancelled: { orders: cancelled.rows[0].orders, total: Number(cancelled.rows[0].total) },
+    byMethod: byMethod.rows.map(x => ({ ...x, method_he: PAY_METHOD_HE[x.payment_method] || x.payment_method, status_he: PAY_STATUS_HE[x.payment_status] || x.payment_status, total: Number(x.total) })),
+    subs, docs, commission, sequence: seq,
+  });
+  res.set('content-type', 'application/pdf');
+  res.set('content-disposition', `inline; filename="monthly-summary-${p.from}-${p.to}-demo.pdf"`);
+  pdf.pipe(res);
+});
+
+// --- מצב מספור רציף (אותה לוגיקה כמו sequence-check, כנתונים) ---
+async function sequenceStatus(tid) {
+  const { rows } = await q(
+    `SELECT d.kind, count(*)::int AS docs, min(d.doc_number) AS min_n, max(d.doc_number) AS max_n,
+            (SELECT c.next_number FROM doc_counters c WHERE c.tenant_id=d.tenant_id AND c.kind=d.kind AND c.year=0) AS counter_next
+     FROM documents d WHERE d.tenant_id=$1 GROUP BY d.kind, d.tenant_id`, [tid]);
+  const out = [];
+  for (const kind of ['invoice', 'receipt', 'credit', 'consolidated']) {
+    const row = rows.find(x => x.kind === kind);
+    if (!row) { out.push({ kind, kind_he: KIND_HE[kind], docs: 0, ok: true, missing: [] }); continue; }
+    const { rows: nums } = await q('SELECT doc_number FROM documents WHERE tenant_id=$1 AND kind=$2 ORDER BY doc_number', [tid, kind]);
+    const missing = [];
+    let prev = 0;
+    for (const n of nums) {
+      const cur = Number(n.doc_number);
+      if (prev && cur > prev + 1) for (let g = prev + 1; g < cur && missing.length < 50; g++) missing.push(g);
+      prev = cur;
+    }
+    const counterOk = row.counter_next === null || Number(row.counter_next) === Number(row.max_n) + 1;
+    out.push({ kind, kind_he: KIND_HE[kind], docs: row.docs, min: Number(row.min_n), max: Number(row.max_n), counter_next: row.counter_next === null ? null : Number(row.counter_next), missing, ok: missing.length === 0 && counterOk });
+  }
+  return out;
+}
+
+// --- בדיקת עקביות: דוח תשלומים מול מסמכים מול התחשבנות ---
+r.get('/settlement/consistency', async (req, res) => {
+  const p = period(req);
+  if (p.error) return res.status(400).json({ error: p.error });
+  const tid = req.tenant.id;
+  const [delivered, docs, undoc, seq] = await Promise.all([
+    q(`SELECT count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS total
+       FROM orders o WHERE o.tenant_id=$1 AND o.status='delivered'
+         AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3`, [tid, p.from, p.to]),
+    docsInPeriod(tid, p.from, p.to),
+    q(`SELECT count(*)::int AS n FROM orders o
+       WHERE o.tenant_id=$1 AND o.status='delivered'
+         AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
+         AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.order_id=o.id AND d.kind<>'credit')
+         AND NOT EXISTS (SELECT 1 FROM document_orders dor WHERE dor.order_id=o.id)`, [tid, p.from, p.to]),
+    sequenceStatus(tid),
+  ]);
+  // חשבונית וקבלה על אותה הזמנה נושאות אותו סכום — משווים לפי סוג העוסק כדי לא לספור כפל:
+  // מורשה: חשבוניות (+מרכזות); פטור/ללא: קבלות בלבד
+  const vatDocs = req.tenant.dealer_type === 'morasha';
+  const gross = docs.filter(d => vatDocs ? (d.kind === 'invoice' || d.kind === 'consolidated') : d.kind === 'receipt').reduce((a, d) => a + d.total, 0);
+  const credits = docs.filter(d => d.kind === 'credit').reduce((a, d) => a + d.total, 0); // שלילי
+  const deliveredTotal = Number(delivered.rows[0].total);
+  const diffDeliveredVsDocs = Math.round((deliveredTotal - gross) * 100) / 100;
+  const checks = [
+    { key: 'delivered_vs_docs', label: vatDocs ? 'סכום הזמנות שהוחזרו מול חשבוניות ברוטו' : 'סכום הזמנות שהוחזרו מול קבלות ברוטו', a: deliveredTotal, b: Math.round(gross * 100) / 100, ok: Math.abs(diffDeliveredVsDocs) < 0.005 },
+    { key: 'undocumented', label: 'הזמנות שהוחזרו ללא מסמך', a: undoc.rows[0].n, b: 0, ok: undoc.rows[0].n === 0 },
+    { key: 'sequence', label: 'מספור רציף בכל סוגי המסמכים', ok: seq.every(k => k.ok) },
+  ];
+  res.json({ from: p.from, to: p.to, demo: true,
+    delivered: { orders: delivered.rows[0].orders, total: deliveredTotal },
+    docs, docs_gross: Math.round(gross * 100) / 100, credits_total: Math.round(credits * 100) / 100,
+    checks, ok: checks.every(c => c.ok) });
 });
 
 module.exports = r;

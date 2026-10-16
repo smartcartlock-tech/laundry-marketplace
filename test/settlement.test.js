@@ -137,3 +137,53 @@ test('settlement: דוח תשלומים, עמלה + הפרש, ייצוא רו"ח
   assert.ok(inv1.missing.length > inv.missing.length || inv1.counter_next !== inv1.max + 1 || inv1.ok === false, 'ok=false מוצדק');
   await pool.end();
 });
+
+test('settlement: מנויים בדוח, סיכום חודשי PDF, עקביות כללית', async (t) => {
+  const { api, base } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const courierUser = await api.login('+972500000004');
+  await api('/api/t/achuza/settings', { method: 'PATCH', token: owner, body: { dealer_type: 'morasha', dealer_id: '512345678' } });
+  const page = await api('/api/laundries/achuza');
+  const bag = page.json.items.find(i => i.name.includes('שק'));
+  const plan = (page.json.plans || [])[0];
+  const raw = async (p, token) => {
+    const r = await fetch(base + p, { headers: token ? { authorization: 'Bearer ' + token } : {} });
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { status: r.status, buf, text: buf.toString('utf8'), ct: r.headers.get('content-type') || '' };
+  };
+
+  // הרשאות: סיכום/עקביות סגורים לחברי מכבסה בלבד
+  assert.equal((await raw('/api/t/achuza/settlement/monthly-summary.pdf', customer)).status, 403);
+  assert.equal((await api('/api/t/achuza/settlement/consistency', { token: customer })).status, 403);
+
+  // מנוי דמו חדש נספר בדוח התשלומים
+  const pay0 = await api('/api/t/achuza/settlement/payments', { token: owner });
+  if (plan) {
+    const join = await api('/api/subscriptions/join', { method: 'POST', token: customer, body: { slug: 'achuza', plan_id: plan.id } });
+    assert.equal(join.status, 201, JSON.stringify(join.json));
+    const pay1 = await api('/api/t/achuza/settlement/payments', { token: owner });
+    assert.equal(pay1.json.subscriptions.count, pay0.json.subscriptions.count + 1, 'מנוי נספר בדוח');
+    assert.ok(Number(pay1.json.subscriptions.total) - Number(pay0.json.subscriptions.total) >= Number(plan.price), 'הכנסת מנוי');
+  }
+
+  // סיכום חודשי PDF: מסמך תקין עם סימון דמו בתוכן
+  const pdf = await raw('/api/t/achuza/settlement/monthly-summary.pdf', owner);
+  assert.equal(pdf.status, 200);
+  assert.match(pdf.ct, /application\/pdf/);
+  assert.equal(pdf.buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(pdf.buf.length > 3000, 'PDF לא ריק');
+
+  // עקביות: בסיס (הסיד עשוי להכיל הזמנות ישנות בלי מסמכים) — דלתא חייבת להישאר מאוזנת
+  const cons0 = await api('/api/t/achuza/settlement/consistency', { token: owner });
+  assert.equal(cons0.status, 200, JSON.stringify(cons0.json));
+  await deliverOrder(api, { owner, customer, courierUser, slug: 'achuza', items: [{ item_id: bag.id, qty: 1 }], address: 'עקביות 1', payMethod: 'cash' });
+  const cons1 = await api('/api/t/achuza/settlement/consistency', { token: owner });
+  const dd0 = cons0.json.checks.find(c => c.key === 'delivered_vs_docs');
+  const dd1 = cons1.json.checks.find(c => c.key === 'delivered_vs_docs');
+  assert.equal(dd1.a - dd1.b, dd0.a - dd0.b, 'הזמנה שהוחזרה + מסמכיה שומרים על האיזון');
+  const un0 = cons0.json.checks.find(c => c.key === 'undocumented');
+  const un1 = cons1.json.checks.find(c => c.key === 'undocumented');
+  assert.equal(un1.a, un0.a, 'לא נוספה הזמנה ללא מסמך');
+  if (cons0.json.ok) assert.equal(cons1.json.ok, true, 'אם הבסיס מאוזן — גם אחרי ההזמנה');
+});

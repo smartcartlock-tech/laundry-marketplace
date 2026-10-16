@@ -52,11 +52,15 @@
       </div>
       <div class="kpis">${kpi(k.orders,'הזמנות')}${kpi(money(k.revenue),'מחזור')}${kpi(money(k.collected),'נגבה')}${kpi(money(k.pending),'ממתין לגבייה')}</div>
       ${pay.cancelled.orders ? `<div class="mut">בוטלו בתקופה: ${pay.cancelled.orders} הזמנות (${money(pay.cancelled.total)}) — לא נכלל במחזור</div>` : ''}
+      ${pay.subscriptions && pay.subscriptions.count ? `<div class="mut">מנויים שהצטרפו/חודשו בתקופה: ${pay.subscriptions.count} · הכנסה ${money(pay.subscriptions.total)} (תשלום דמו)</div>` : ''}
       ${payRows ? `<table class="tbl"><tr><th>אמצעי</th><th>סטטוס גבייה</th><th>הזמנות</th><th>סה"כ</th></tr>${payRows}</table>` : '<div class="mut">אין הזמנות בחודש זה</div>'}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
         <button class="btn2" data-stl-act="csv-payments">ייצוא תשלומים CSV</button>
         <button class="btn2" data-stl-act="csv-accountant">ייצוא לרואה חשבון CSV</button>
-      </div></div>
+        <button class="btn2" data-stl-act="pdf-summary">סיכום חודשי PDF</button>
+        <button class="btn2" data-stl-act="consistency">בדיקת עקביות</button>
+      </div>
+      <div id="stl-cons" style="margin-top:6px"></div></div>
     <div class="card"><div class="sec">התחשבנות עמלה מול הפלטפורמה · ${esc(label)} <span class="mut">(דמו, ללא חיוב אמיתי)</span></div>
       <div class="row"><div>לקוחות שלך (ממותג)</div><div class="mut">${comm.expected.own.orders} הזמנות · ${money(comm.expected.own.revenue)} · ${comm.expected.own.pct}% ≈ ${money(comm.expected.own.commission)}</div></div>
       <div class="row"><div>לקוחות מרקטפלייס</div><div class="mut">${comm.expected.marketplace.orders} הזמנות · ${money(comm.expected.marketplace.revenue)} · ${comm.expected.marketplace.pct}% ≈ ${money(comm.expected.marketplace.commission)}</div></div>
@@ -115,6 +119,15 @@
         downloadCsv(`/t/${slug}/settlement/payments.csv?from=${from}&to=${to}`, `payments-${from}-${to}-demo.csv`);
       } else if (act === 'csv-accountant'){
         downloadCsv(`/t/${slug}/settlement/accountant-export.csv?from=${from}&to=${to}`, `accountant-export-${from}-${to}-demo.csv`);
+      } else if (act === 'pdf-summary'){
+        downloadCsv(`/t/${slug}/settlement/monthly-summary.pdf?from=${from}&to=${to}`, `monthly-summary-${from}-${to}-demo.pdf`);
+      } else if (act === 'consistency'){
+        const box = document.getElementById('stl-cons');
+        if (box) box.innerHTML = '<div class="mut">בודק עקביות…</div>';
+        const c = await api(`/t/${slug}/settlement/consistency?from=${from}&to=${to}`);
+        const rows = c.checks.map(ch =>
+          `<div class="row"><div>${esc(ch.label)}</div><div>${ch.ok ? '<span class="st-pill st-delivered">תקין ✓</span>' : `<span class="st-pill st-cancelled">פער: ${esc(String(ch.a))} מול ${esc(String(ch.b))}</span>`}</div></div>`).join('');
+        if (box) box.innerHTML = `<div class="card" style="margin:0"><div class="sec" style="font-size:13px">עקביות דוח תשלומים · מסמכים · התחשבנות <span class="mut">(דמו)</span></div>${rows}</div>`;
       } else if (act === 'save-commission'){
         const inp = document.getElementById('stl-actual');
         const note = document.getElementById('stl-note');
