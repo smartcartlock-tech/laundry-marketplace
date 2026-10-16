@@ -1,0 +1,30 @@
+# Blueprint ל-Render. DB: חסרון — Render free Postgres מוגבל לאחד לחשבון (תפוס ע"י cleanshop-db)
+# לכן השירות משתמש באותו אינסטנס עם PGSCHEMA=marketplace. חלופה יציבה מומלצת: Neon free (ללא תפוגה).
+services:
+  - type: web
+    name: laundry-marketplace
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: PGSCHEMA
+        value: marketplace
+      - key: SEED_DEMO
+        value: "true"   # לסביבת הדמו בלבד — לכבות בפרודקשן אמיתי
+      - key: DEMO_OTP
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL   # internal connection string של cleanshop-db
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        value: whatsapp:+14155238886

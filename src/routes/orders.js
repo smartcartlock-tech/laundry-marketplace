@@ -1,0 +1,153 @@
+const express = require('express');
+const { q, pool } = require('../db');
+const { requireAuth } = require('../auth');
+const { notifyUser } = require('../notify');
+
+const r = express.Router();
+r.use(requireAuth);
+
+const STATUS_HE = { new:'התקבלה', confirmed:'אושרה', picked_up:'נאספה', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה', cancelled:'בוטלה' };
+
+async function event(orderId, status, actorId, note) {
+  await q('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)', [orderId, status, actorId, note || null]);
+}
+
+// יצירת הזמנה (לקוח)
+r.post('/', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, notes } = req.body || {};
+    if (!slug || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'חסרים פרטי הזמנה' });
+    const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
+    const tenant = t[0];
+    if (!tenant) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+    if (!tenant.is_open) return res.status(409).json({ error: 'המכבסה סגורה כרגע' });
+
+    await client.query('BEGIN');
+    const ids = items.map(i => i.item_id);
+    const { rows: dbItems } = await client.query(
+      'SELECT * FROM price_items WHERE tenant_id=$1 AND active AND id = ANY($2)', [tenant.id, ids]);
+    let subtotal = 0;
+    const lines = [];
+    for (const it of items) {
+      const db = dbItems.find(d => d.id === it.item_id);
+      if (!db) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'פריט לא קיים במחירון' }); }
+      const qty = Number(it.qty) || 1;
+      if (qty <= 0 || qty > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'כמות לא תקינה' }); }
+      subtotal += Number(db.price) * qty;
+      lines.push({ item_id: db.id, name: db.name, price: db.price, qty });
+    }
+    const deliveryFee = Number(tenant.delivery_fee) || 0;
+    if (Number(tenant.min_order) > 0 && subtotal < Number(tenant.min_order)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `מינימום הזמנה ₪${tenant.min_order}` });
+    }
+    // מימוש נקודות: 1 נקודה = ₪1, עד תקרת אחוז מהסכום
+    let discount = 0, pointsRedeemed = 0;
+    if (redeem_points) {
+      const { rows: bal } = await client.query(
+        'SELECT COALESCE(sum(delta),0) AS bal FROM points_ledger WHERE tenant_id=$1 AND user_id=$2', [tenant.id, req.user.id]);
+      const maxDisc = Math.floor(subtotal * Number(tenant.points_redeem_max_pct || 0.2));
+      pointsRedeemed = Math.min(Number(bal[0].bal), maxDisc);
+      discount = pointsRedeemed;
+    }
+    const total = subtotal + deliveryFee - discount;
+    const pointsEarned = Math.floor(total * Number(tenant.points_earn_rate || 0));
+    const payMethod = payment_method === 'demo_online' ? 'demo_online' : 'cash';
+    const payStatus = payMethod === 'demo_online' ? 'paid_demo' : 'pending';
+
+    const { rows: o } = await client.query(
+      `INSERT INTO orders(tenant_id, customer_id, source, address, lat, lng, pickup_at, delivery_at,
+        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, notes)
+       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [tenant.id, req.user.id, address, lat || null, lng || null, pickup_at || null, delivery_at || null,
+       subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, notes || null]);
+    const order = o[0];
+    for (const ln of lines) {
+      await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
+        [order.id, ln.item_id, ln.name, ln.price, ln.qty]);
+    }
+    if (pointsRedeemed > 0) {
+      await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+        [tenant.id, req.user.id, -pointsRedeemed, 'מימוש נקודות בהזמנה', order.id]);
+    }
+    await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'new',$2,'הזמנה נוצרה')`, [order.id, req.user.id]);
+    await client.query('COMMIT');
+
+    notifyUser(req.user.id, tenant.id,
+      `הזמנתך ב${tenant.name} התקבלה (#${order.id.slice(0, 8)}) — סה״כ ₪${total}. נעדכן כשהיא תאושר.`, req.user.phone).catch(() => {});
+    res.status(201).json({ order });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+// ההזמנות שלי (לקוח)
+r.get('/mine', async (req, res) => {
+  const { rows } = await q(
+    `SELECT o.*, t.name AS tenant_name, t.slug, t.color, t.letter FROM orders o JOIN tenants t ON t.id=o.tenant_id
+     WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [req.user.id]);
+  res.json({ orders: rows, statusHe: STATUS_HE });
+});
+
+// מועדון: יתרות לפי מכבסה + תנועות אחרונות
+r.get('/club/summary', async (req, res) => {
+  const { rows } = await q(
+    `SELECT p.tenant_id, t.name, t.slug, t.color, t.letter, sum(p.delta)::int AS balance, max(p.created_at) AS last
+     FROM points_ledger p JOIN tenants t ON t.id=p.tenant_id WHERE p.user_id=$1 GROUP BY 1,2,3,4,5 ORDER BY last DESC`, [req.user.id]);
+  const { rows: recent } = await q(
+    `SELECT p.delta, p.reason, p.created_at, t.name FROM points_ledger p JOIN tenants t ON t.id=p.tenant_id
+     WHERE p.user_id=$1 ORDER BY p.created_at DESC LIMIT 20`, [req.user.id]);
+  res.json({ balances: rows, recent });
+});
+
+
+// פרטי הזמנה + פריטים + אירועים (לקוח שהזמין / בעל מכבסה / שליח משובץ / אדמין)
+r.get('/:id', async (req, res) => {
+  const { rows: o } = await q(
+    `SELECT o.*, t.name AS tenant_name, t.slug, t.phone AS tenant_phone FROM orders o JOIN tenants t ON t.id=o.tenant_id WHERE o.id=$1`,
+    [req.params.id]);
+  const order = o[0];
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  const isCustomer = order.customer_id === req.user.id;
+  const isAdmin = req.user.role === 'admin';
+  const { rows: mem } = await q('SELECT 1 FROM tenant_members WHERE tenant_id=$1 AND user_id=$2', [order.tenant_id, req.user.id]);
+  const isOwner = mem.length > 0;
+  const isCourier = order.courier_id && (await q('SELECT 1 FROM couriers WHERE id=$1 AND user_id=$2', [order.courier_id, req.user.id])).rows.length > 0;
+  if (!isCustomer && !isAdmin && !isOwner && !isCourier) return res.status(403).json({ error: 'אין הרשאה' });
+  const [items, events] = await Promise.all([
+    q('SELECT name, price, qty FROM order_items WHERE order_id=$1', [order.id]),
+    q('SELECT status, note, photo_url, created_at FROM order_events WHERE order_id=$1 ORDER BY created_at', [order.id]),
+  ]);
+  res.json({ order, items: items.rows, events: events.rows, statusHe: STATUS_HE });
+});
+
+// ביטול על ידי לקוח (לפני איסוף)
+r.post('/:id/cancel', async (req, res) => {
+  const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
+  const order = rows[0];
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (!['new', 'confirmed'].includes(order.status)) return res.status(409).json({ error: 'לא ניתן לבטל לאחר איסוף' });
+  await q(`UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1`, [order.id]);
+  await event(order.id, 'cancelled', req.user.id, 'בוטלה על ידי הלקוח');
+  res.json({ ok: true });
+});
+
+// דירוג אחרי הזמנה
+r.post('/:id/review', async (req, res) => {
+  const { rating, text } = req.body || {};
+  const rt = Number(rating);
+  if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
+  const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
+  const order = rows[0];
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (order.status !== 'delivered') return res.status(409).json({ error: 'ניתן לדרג רק הזמנה שהושלמה' });
+  await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text) VALUES ($1,$2,$3,$4,$5)',
+    [order.tenant_id, order.id, req.user.id, rt, text || null]);
+  const { rows: agg } = await q('SELECT avg(rating)::numeric(2,1) AS a, count(*)::int AS c FROM reviews WHERE tenant_id=$1 AND target_courier_id IS NULL', [order.tenant_id]);
+  await q('UPDATE tenants SET rating=$1, rating_count=$2 WHERE id=$3', [agg[0].a, agg[0].c, order.tenant_id]);
+  res.json({ ok: true });
+});
+
+module.exports = r;
