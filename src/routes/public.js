@@ -14,7 +14,12 @@ r.get('/laundries', async (req, res) => {
             t.delivery_fee, t.min_order, t.is_open, t.lat, t.lng,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active AND i.unit='kg') AS from_kg,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active) AS from_price
-     FROM tenants t ${where} ORDER BY t.rating DESC, t.created_at ASC LIMIT 100`, params);
+     FROM tenants t ${where} ORDER BY t.created_at ASC LIMIT 100`, params);
+  // דירוג אמיתי בלבד: מחושב מביקורות במערכת; מתחת ל-3 ביקורות מוצג "חדש" בצד לקוח
+  const { rows: agg } = await q('SELECT tenant_id, round(avg(rating)::numeric,1) AS r, count(*)::int AS n FROM reviews GROUP BY tenant_id');
+  const byT = Object.fromEntries(agg.map(a => [a.tenant_id, a]));
+  for (const l of rows) { const a = byT[l.id]; l.rating = a ? Number(a.r) : null; l.rating_count = a ? a.n : 0; }
+  rows.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   res.json({ laundries: rows });
 });
 
@@ -29,6 +34,11 @@ r.get('/laundries/:slug', async (req, res) => {
        WHERE r.tenant_id=$1 AND r.target_courier_id IS NULL ORDER BY r.created_at DESC LIMIT 20`, [t[0].id]),
   ]);
   const ten = t[0]; delete ten.api_key;
+  // דירוג אמיתי מהמערכת בלבד
+  if (reviews.rows.length) {
+    ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
+    ten.rating_count = reviews.rows.length;
+  } else { ten.rating = null; ten.rating_count = 0; }
   res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows });
 });
 

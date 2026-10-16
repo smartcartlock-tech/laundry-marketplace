@@ -53,6 +53,10 @@ r.post('/otp/verify', async (req, res) => {
         ? await q('INSERT INTO users(email, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null])
         : await q('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null]);
       u = ins.rows;
+    } else if (req.body.name && req.body.name.trim()) {
+      // עדכון שם גם למשתמש קיים (למשל אם נרשם בלי שם או עם שם דמו)
+      const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
+      u = upd.rows;
     }
     res.json({ token: sign(u[0]), user: publicUser(u[0]) });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }

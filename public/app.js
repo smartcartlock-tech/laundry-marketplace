@@ -8,7 +8,8 @@ const store={
 let state={token:store.get('token',null),me:store.get('me',null),cfg:null,cart:store.get('cart',[])};
 function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart)}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function toast(m){let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
+let toastTimer=null;
+function toast(m){let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.classList.add('show');if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),4000)}
 async function api(path,opts={}){
  const r=await fetch('/api'+path,{...opts,headers:{'Content-Type':'application/json',...(state.token?{Authorization:'Bearer '+state.token}:{})}});
  const data=await r.json().catch(()=>({}));
@@ -64,15 +65,17 @@ async function requestOtp(){
 async function verifyOtp(){
  try{
   const r=await api('/auth/otp/verify',{method:'POST',body:JSON.stringify({target:$('#login-target').value.trim(),code:$('#login-code').value.trim(),name:$('#login-name').value.trim()})});
-  state.token=r.token;state.me=r.user;save();go('#/');route();
+  state.token=r.token;state.me=r.user;save();
+  const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);route();
  }catch(e){toast(e.message)}
 }
+function needLogin(){store.set('returnTo',location.hash||'#/');return vLogin()}
 function initGoogle(){
  if(!state.cfg||!state.cfg.googleClientId||!window.google||!google.accounts)return;
  google.accounts.id.initialize({client_id:state.cfg.googleClientId,callback:async(resp)=>{
   try{
    const r=await api('/auth/google',{method:'POST',body:JSON.stringify({credential:resp.credential})});
-   state.token=r.token;state.me=r.user;save();go('#/');route();
+   state.token=r.token;state.me=r.user;save();const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);route();
   }catch(e){toast(e.message)}
  }});
  const el=document.getElementById('g-signin');
@@ -91,17 +94,17 @@ async function vHome(q){
  </div>
  <div class="body">
   <div style="margin:4px 2px 10px">
-   <span class="chip ${!q?'on':''}" onclick="go('#/')">הכל</span><span class="chip" onclick="go('#/?q='+encodeURIComponent('כביסה'))">כביסה</span><span class="chip" onclick="go('#/?q='+encodeURIComponent('ניקוי יבש'))">ניקוי יבש</span><span class="chip" onclick="go('#/?q='+encodeURIComponent('גיהוץ'))">גיהוץ</span><span class="chip" onclick="go('#/?q='+encodeURIComponent('שטיח'))">שטיחים</span>
+   <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
-  ${laundries.map(l=>`<div class="card lcard" style="cursor:pointer" onclick="go('#/laundry/${l.slug}')">
+  ${laundries.map(l=>`<a class="card lcard" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
     <span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${l.is_open?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
-     <div class="mut" style="margin-top:3px"><span class="stars">★</span> ${l.rating||'—'} (${l.rating_count||0}) · ${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
+     <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
      <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
-    </div><span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">לא נמצאו מכבסות מתאימות</div>'}
+    </div><span style="color:#8a99a3">‹</span></a>`).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
   <div class="card" style="cursor:pointer;background:#e6f4f6;text-align:center" onclick="go('#/join')"><b style="color:#0e7a8a">＋ יש לך מכבסה? הצטרפו לפלטפורמה — גם בצילום מחירון בלבד</b></div>
-  ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="javascript:logout()" style="color:#0e7a8a">התנתקות</a></div>`:''}
+  ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="#/" onclick="logout();return false" style="color:#0e7a8a">התנתקות</a></div>`:''}
  </div>`;
 }
 
@@ -114,12 +117,13 @@ async function vLaundry(slug){
  const hoursTxt=Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>r.join('–')).join(', ')}`:null).filter(Boolean).join(' · ')||'—';
  return `<div class="hdr">
   <div style="display:flex;gap:12px;align-items:center">
+   <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
    <span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>
-   <div><h2>${esc(l.name)}</h2><p><span class="stars">★</span> ${l.rating||'—'} (${l.rating_count||0} ביקורות) · ${esc(l.city||'')} · ${l.is_open?'פתוח':'סגור'}</p></div>
+   <div><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${l.is_open?'פתוח':'סגור'}</p></div>
   </div>
  </div>
  <div class="body">
-  <div class="subtabs"><span class="chip on">מחירון</span><span class="chip" onclick="document.getElementById('info').scrollIntoView({behavior:'smooth'})">מידע</span><span class="chip" onclick="document.getElementById('revs').scrollIntoView({behavior:'smooth'})">ביקורות</span></div>
+  <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" onclick="document.getElementById('info').scrollIntoView({behavior:'smooth'})">מידע</button><button class="chip" type="button" onclick="document.getElementById('revs').scrollIntoView({behavior:'smooth'})">ביקורות</button></div>
   <div class="card">
    ${d.items.map(it=>{const c=state.cart.find(x=>x.item_id===it.id);return `<div class="row">
      <div><b>${esc(it.name)}</b><div class="mut">${esc(it.category)} · ₪${it.price}${it.unit==='kg'?' לק״ג':''}</div></div>
@@ -127,12 +131,13 @@ async function vLaundry(slug){
         :`<button class="btn2" onclick="setQty('${slug}','${it.id}',1)">הוספה</button>`}
     </div>`}).join('')||'<div class="mut">המחירון טרם הוזן</div>'}
   </div>
-  ${cartItems.length?`<button class="btn" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:''}
+  ${cartItems.length?(cartTotal>=Number(l.min_order||0)?`<button class="btn" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.6;cursor:not-allowed">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`):''}
   <div class="sec" id="info">מידע</div>
   <div class="card mut" style="line-height:1.8">
-   שעות פעילות: ${esc(hoursTxt)}<br>
+   שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>r.join('–')).join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
    ${l.address?`כתובת: ${esc(l.address)}${l.city?', '+esc(l.city):''}<br>`:''}
-   ${l.terms?`תקנון: ${esc(l.terms)}`:'אין תקנון מוצג'}
+   ${l.phone?`טלפון: <a href="tel:${esc(l.phone)}" style="color:#0e7a8a" dir="ltr">${esc(l.phone)}</a><br>`:''}
+   ${l.terms?`תקנון: ${esc(l.terms)}`:''}
   </div>
   <div class="sec" id="revs">ביקורות</div>
   <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div></div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
@@ -142,7 +147,7 @@ function setQty(slug,itemId,delta){
  api('/laundries/'+slug).then(d=>{
   const it=d.items.find(x=>x.id===itemId);if(!it)return;
   let c=state.cart.find(x=>x.item_id===itemId);
-  if(!c){c={slug,item_id:itemId,name:it.name,price:Number(it.price),qty:0};state.cart.push(c)}
+  if(!c){c={slug,item_id:itemId,name:it.name,price:Number(it.price),unit:it.unit,qty:0};state.cart.push(c)}
   c.qty+=delta;if(c.qty<=0)state.cart=state.cart.filter(x=>x!==c);
   save();route();
  });
@@ -150,7 +155,7 @@ function setQty(slug,itemId,delta){
 
 /* ---- checkout ---- */
 async function vCheckout(slug){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  const d=await api('/laundries/'+slug);
  const l=d.laundry;
  const items=state.cart.filter(c=>c.slug===slug);
@@ -159,20 +164,24 @@ async function vCheckout(slug){
  let points=0;
  try{const cl=await api('/orders/club/summary');const b=cl.balances.find(x=>x.slug===slug);points=b?b.balance:0}catch(e){}
  const maxRedeem=Math.min(points,Math.floor(subtotal*(l.points_redeem_max_pct??0.2)));
- const winOpts=d.windows.map(w=>`<option value="${w.weekday}|${w.start_time}|${w.kind}">${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)} (${w.kind==='pickup'?'איסוף':'החזרה'})</option>`).join('');
- return `<div class="hdr"><h2>הזמנה — ${esc(l.name)}</h2></div>
+ const winOpts=kind=>d.windows.filter(w=>w.kind===kind).map(w=>{const dt=new Date(nextWindowDate(w.weekday,w.start_time));const dstr=dt.toLocaleDateString('he-IL',{day:'numeric',month:'numeric'});return `<option value="${w.weekday}|${w.start_time}">${WD[w.weekday]} ${dstr} · ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</option>`}).join('');
+ return `<div class="hdr"><h2><a href="#/laundry/${slug}" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה — ${esc(l.name)}</h2></div>
  <div class="body">
   <div class="card">
-   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${c.qty} × ₪${c.price}</div></div>`).join('')}
-   <div class="row"><div class="mut">ביניים</div><div>₪${subtotal}</div></div>
+   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${c.qty}${c.unit==='kg'?' ק״ג':''} × ₪${c.price}</div></div>`).join('')}
+   <div class="row"><div class="mut">סכום ביניים</div><div>₪${subtotal}</div></div>
    <div class="row"><div class="mut">שליחות</div><div>₪${l.delivery_fee||0}</div></div>
-   <div class="row"><div class="mut">יתרת נקודות: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</label>`:'—'}</div></div>
+   <div class="row" id="co-discount-row" style="display:none"><div class="mut">הנחת נקודות</div><div id="co-discount">−₪0</div></div>
+   <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
+   <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
   </div>
   <div class="card">
    <label class="lb">כתובת לאיסוף והחזרה</label>
    <input class="inp" id="co-address" placeholder="רחוב, מספר, עיר">
    <label class="lb">חלון איסוף</label>
-   <select class="inp" id="co-pickup">${winOpts||'<option value="">—</option>'}</select>
+   <select class="inp" id="co-pickup"><option value="">ללא העדפה</option>${winOpts('pickup')}</select>
+   <label class="lb">חלון החזרה (אופציונלי)</label>
+   <select class="inp" id="co-delivery"><option value="">ללא העדפה</option>${winOpts('delivery')}</select>
    <label class="lb">אמצעי תשלום</label>
    <select class="inp" id="co-pay"><option value="cash">מזומן לשליח</option><option value="demo_online">תשלום מקוון (דמו — ללא סליקה אמיתית)</option></select>
    <label class="lb">הערות</label>
@@ -181,13 +190,18 @@ async function vCheckout(slug){
   <button class="btn" onclick="submitOrder('${slug}')">אישור הזמנה</button>
  </div>`;
 }
+function updTotal(){const t=$('#co-total');if(!t)return;const on=$('#redeem')&&$('#redeem').checked;const disc=on?Number(t.dataset.redeem):0;$('#co-discount').textContent='−₪'+disc;$('#co-discount-row').style.display=disc?'flex':'none';t.textContent='₪'+(Number(t.dataset.base)-disc)}
 async function submitOrder(slug){
  try{
   const items=state.cart.filter(c=>c.slug===slug).map(c=>({item_id:c.item_id,qty:c.qty}));
-  const address=$('#co-address').value.trim();if(!address)return toast('חסרה כתובת');
+  const addrEl=$('#co-address');const address=addrEl.value.trim();
+  if(!address){addrEl.style.borderColor='#c22';let ie=$('#co-address-err');if(!ie){ie=document.createElement('div');ie.id='co-address-err';ie.className='mut';ie.style.color='#c22';ie.textContent='חסרה כתובת לאיסוף והחזרה';addrEl.after(ie)}addrEl.focus();return}
+  addrEl.style.borderColor='';const ie=$('#co-address-err');if(ie)ie.remove();
   const w=($('#co-pickup').value||'').split('|');
-  const pickup_at=w.length===3?nextWindowDate(Number(w[0]),w[1]):null;
-  const body={slug,items,address,pickup_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),notes:$('#co-notes').value.trim()};
+  const pickup_at=w.length===2?nextWindowDate(Number(w[0]),w[1]):null;
+  const w2=($('#co-delivery')&&$('#co-delivery').value||'').split('|');
+  const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
+  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),notes:$('#co-notes').value.trim()};
   const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);route();
@@ -196,24 +210,24 @@ async function submitOrder(slug){
 
 /* ---- orders ---- */
 async function vOrders(){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  const r=await api('/orders/mine');
  return `<div class="hdr"><h2>ההזמנות שלי</h2></div>
  <div class="body">
   ${r.orders.map(o=>`<div class="card lcard" style="cursor:pointer" onclick="go('#/orders/${o.id}')">
     <span class="logo sm" style="background:${o.color||'#0e7a8a'}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
-    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.source==='bot'?' · דרך הבוט':''}</div></div>
+    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}</div></div>
     <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'}
  </div>`;
 }
 async function vOrder(id){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  const d=await api('/orders/'+id);
  const o=d.order;
  const idx=FLOW.indexOf(o.status);
  const isMine=o.customer_id===(state.me&&state.me.id);
- return `<div class="hdr"><h2>הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
+ return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   <div class="card">
    <div class="tl">
@@ -235,14 +249,14 @@ async function vOrder(id){
     <button class="btn2 on" onclick="sendReview('${o.id}')">שליחת דירוג</button></div>`:''}
  </div>`;
 }
-async function cancelOrder(id){try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
+async function cancelOrder(id){if(!confirm('לבטל את ההזמנה? לא ניתן לשחזר לאחר הביטול.'))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
 async function sendReview(id){try{await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value})});toast('תודה על הדירוג!');route()}catch(e){toast(e.message)}}
 
 /* ---- club ---- */
 async function vClub(){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  const d=await api('/orders/club/summary');
- return `<div class="hdr"><h2>מועדון לקוחות</h2><p>נקודות צוברות בכל הזמנה — ושוות כסף בהזמנה הבאה</p></div>
+ return `<div class="hdr"><h2>מועדון לקוחות</h2> <p>הנקודות נצברות וניתנות למימוש בכל מכבסה בנפרד — ושוות כסף בהזמנה הבאה</p></div>
  <div class="body">
   ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${b.color||'#0e7a8a'}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
@@ -253,8 +267,8 @@ async function vClub(){
 
 /* ---- courier ---- */
 async function vCourier(){
- if(!state.token)return vLogin();
- let me;try{me=await api('/auth/me')}catch(e){return vLogin()}
+ if(!state.token)return needLogin();
+ let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
  if(!me.courier)return `<div class="hdr"><h2>אפליקציית שליח</h2></div><div class="body"><div class="card mut">החשבון שלך אינו רשום כשליח. שליח מכבסה נרשם דרך לוח המכבסה; שליח פלטפורמה דרך מנהל הפלטפורמה.</div></div>`;
  const [offers,route,profile]=await Promise.all([api('/courier/offers'),api('/courier/route'),api('/courier/profile')]);
  return `<div class="hdr"><h2>שלום ${esc(me.user.name||'')}</h2><p>${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'} · ${profile.stats.delivered} מסירות בוצעו</p></div>
@@ -262,6 +276,8 @@ async function vCourier(){
   ${offers.offers.length?`<div class="sec">הצעות שיבוץ חדשות</div>${offers.offers.map(o=>`
    <div class="card"><b>${esc(o.tenant_name)}</b> — הזמנה <span dir="ltr">#${o.order_id.slice(0,8)}</span>
     <div class="mut">${esc(o.address)} · ${o.kind==='pickup'?'איסוף':'החזרה'} · ₪${o.total}</div>
+    ${o.pickup_at?`<div class="mut">איסוף: ${fmtDT(o.pickup_at)}</div>`:''}${o.delivery_at?`<div class="mut">החזרה: ${fmtDT(o.delivery_at)}</div>`:''}
+    <div class="mut">איסוף מ: ${esc(o.tenant_address||'')}${o.tenant_city?', '+esc(o.tenant_city):''}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
      <button class="btn2 green" onclick="offerAction('${o.offer_id}','accept')">אישור</button>
      <button class="btn2" onclick="offerAction('${o.offer_id}','decline')">דחייה</button>
@@ -280,7 +296,7 @@ async function vCourier(){
      ${o.status==='confirmed'?`<button class="btn2 on" onclick="markOrder('${o.id}','picked_up')">סימון נאסף</button>`:''}
      ${['ready','out_for_delivery'].includes(o.status)?`<button class="btn2 green" onclick="markOrder('${o.id}','delivered')">סימון הוחזר</button>`:''}
     </div>
-   </div>`).join('')||'<div class="card mut">אין משימות פעילות</div>'}
+   </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="javascript:route()" style="color:#0e7a8a">רענון</a></div>'}
  </div>`;
 }
 async function offerAction(id,a){try{await api(`/courier/offers/${id}/${a}`,{method:'POST',body:'{}'});toast(a==='accept'?'שובצת!':'נדחה');route()}catch(e){toast(e.message)}}
@@ -288,10 +304,10 @@ async function markOrder(id,a){try{await api(`/courier/orders/${id}/mark`,{metho
 
 /* ---- manage (owner) ---- */
 async function vManage(sub){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  const me=await api('/auth/me');
  const slug=me.memberships[0]&&me.memberships[0].slug;
- if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a></div></div>`;
+ if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
  const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
@@ -305,9 +321,9 @@ async function vManage(sub){
       ${o.payment_method==='cash'&&o.payment_status==='pending'?'<div class="mut">💵 גבייה במזומן</div>':''}
      </div>
      <div style="display:flex;gap:6px">
-      ${NEXT[o.status]?`<button class="btn2 on" onclick="setStatus('${slug}','${o.id}','${NEXT[o.status]}')">${HE[NEXT[o.status]]} ←</button>`:''}
+      ${NEXT[o.status]?`<button class="btn2 on" onclick="setStatus('${slug}','${o.id}','${NEXT[o.status]}')">העבר ל״${HE[NEXT[o.status]]}״</button>`:''}
       ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" onclick="setStatus('${slug}','${o.id}','cancelled')">ביטול</button>`:''}
-      ${['new','confirmed','ready'].includes(o.status)?`<button class="btn2" onclick="assignCourier('${slug}','${o.id}')">שיבוץ שליח</button>`:''}
+      ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':`<button class="btn2" onclick="assignCourier('${slug}','${o.id}',this)">שיבוץ שליח</button>`):''}
      </div>
     </div></div>`).join('')||'<div class="card mut">אין הזמנות</div>';
  } else if(sub==='items'){
@@ -320,7 +336,7 @@ async function vManage(sub){
     <select class="inp" id="it-cat" style="flex:1"><option>כביסה</option><option>ניקוי יבש</option><option>גיהוץ</option><option>שטיחים</option><option>אחר</option></select></div>
     <button class="btn2 on" onclick="addItem('${slug}')">הוספה</button></div>
    <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='kg'?'לק״ג':'ליחידה'}</div></div>
-    <div>₪${i.price} <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'מוסתר'}</button></div></div>`).join('')}</div>`;
+    <div>₪${i.price} <button class="btn2" onclick="editItem('${slug}','${i.id}',this)" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
  } else if(sub==='windows'){
   const d=await api(`/t/${slug}/windows`);
   body=`<div class="card">
@@ -365,19 +381,35 @@ async function vManage(sub){
    <button class="btn" onclick="saveSettings('${slug}')">שמירה</button></div>`;
  }
  return `<div class="hdr"><h2>לוח ניהול — ${esc(me.memberships[0].name)}</h2></div>
- <div class="body"><div class="subtabs">${tabs.map(t=>`<span class="chip ${sub===t[0]?'on':''}" onclick="go('#/manage/${t[0]}')">${t[1]}</span>`).join('')}</div>${body}</div>`;
+ <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
-async function setStatus(slug,id,st){try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
-async function assignCourier(slug,oid){
+async function setStatus(slug,id,st){if(st==='cancelled'&&!confirm('לבטל את ההזמנה? הלקוח יקבל עדכון על הביטול.'))return;try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
+async function assignCourier(slug,oid,el){
  try{
   const d=await api(`/t/${slug}/couriers`);
   if(!d.couriers.length)return toast('אין שליחים זמינים');
-  const c=d.couriers[0];
-  const r=await api(`/t/${slug}/orders/${oid}/assign`,{method:'POST',body:JSON.stringify({courier_id:c.id})});
-  toast(r.mode==='assigned'?'שובץ שליח מכבסה':'נשלחה הצעה לשליח');route();
+  const card=el.closest('.card');
+  const old=card.querySelector('.assignbox');if(old)old.remove();
+  const box=document.createElement('div');box.className='assignbox';box.style.cssText='margin-top:8px;display:flex;gap:6px';
+  box.innerHTML=`<select class="inp" id="as-${oid}" style="flex:1">${d.couriers.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'} · ${c.active_orders} פעילות</option>`).join('')}</select>
+   <button class="btn2 on" onclick="doAssign('${slug}','${oid}',this)">שליחת הצעה</button>`;
+  card.appendChild(box);
  }catch(e){toast(e.message)}
 }
+async function doAssign(slug,oid,btn){
+ btn.disabled=true;btn.textContent='שולח…';
+ try{
+  const cid=document.getElementById('as-'+oid).value;
+  const r=await api(`/t/${slug}/orders/${oid}/assign`,{method:'POST',body:JSON.stringify({courier_id:cid})});
+  toast(r.mode==='assigned'?'שובץ שליח מכבסה':'הצעה נשלחה לשליח');route();
+ }catch(e){btn.disabled=false;btn.textContent='שליחת הצעה';toast(e.message)}
+}
 async function addItem(slug){try{await api(`/t/${slug}/items`,{method:'POST',body:JSON.stringify({name:$('#it-name').value,price:$('#it-price').value,unit:$('#it-unit').value,category:$('#it-cat').value})});route()}catch(e){toast(e.message)}}
+async function editItem(slug,id,btn){
+ const name=prompt('שם הפריט:',btn.dataset.name);if(name===null)return;
+ const price=prompt('מחיר בש״ח:',btn.dataset.price);if(price===null)return;
+ try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({name:name.trim()||undefined,price:price?Number(price):undefined})});toast('הפריט עודכן');route()}catch(e){toast(e.message)}
+}
 async function delItem(slug,id){try{await api(`/t/${slug}/items/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
 async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
@@ -385,7 +417,7 @@ async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'P
 
 /* ---- admin ---- */
 async function vAdmin(sub){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  sub=sub||'overview';
  const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['register','רישום שליח'],['orders','הזמנות']];
  let body='';
@@ -419,7 +451,7 @@ async function vAdmin(sub){
    ${d.orders.map(o=>`<tr><td><span dir="ltr">#${o.id.slice(0,8)}</span><div class="mut">${esc(o.customer_name||'')}</div></td><td>${esc(o.tenant_name)}</td><td><span class="st-pill st-${o.status}">${HE[o.status]}</span></td><td>${o.total}</td></tr>`).join('')}</table></div>`;
  }
  return `<div class="hdr"><h2>ניהול פלטפורמה</h2></div>
- <div class="body"><div class="subtabs">${tabs.map(t=>`<span class="chip ${sub===t[0]?'on':''}" onclick="go('#/admin/${t[0]}')">${t[1]}</span>`).join('')}</div>${body}</div>`;
+ <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/admin/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
 async function adminTenant(id,a){try{await api(`/admin/tenants/${id}/${a}`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
 async function adminCourier(id,a){try{await api(`/admin/couriers/${id}/${a}`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
@@ -428,11 +460,11 @@ async function adminRegisterCourier(){try{await api('/admin/couriers/register',{
 /* ---- join: onboarding מכבסה עם AI ---- */
 let joinDraft=null;
 async function vJoin(){
- if(!state.token)return vLogin();
+ if(!state.token)return needLogin();
  return `<div class="hdr"><h2>הצטרפות מכבסה לפלטפורמה</h2><p>צלמו מחירון, שעות פעילות ותקנון — וה-AI יבנה את הפרופיל</p></div>
  <div class="body">
   <div class="card">
-   <div class="subtabs"><span class="chip on" id="tab-ai" onclick="joinMode('ai')">העלאת תמונות (AI)</span><span class="chip" id="tab-manual" onclick="joinMode('manual')">הזנה ידנית</span></div>
+   <div class="subtabs"><button class="chip on" type="button" id="tab-ai" onclick="joinMode('ai')">העלאת תמונות (AI)</button><button class="chip" type="button" id="tab-manual" onclick="joinMode('manual')">הזנה ידנית</button></div>
    <div id="join-ai">
     <label class="upload" for="join-files">📷 לחצו להעלאת תמונות מחירון / שעות / תקנון<input id="join-files" type="file" accept="image/*,application/pdf" multiple></label>
     <div id="join-extract"></div>
@@ -506,6 +538,8 @@ async function route(){
  const parts=p.split('/').filter(Boolean);
  renderTabs(h.split('?')[0]);
  let html='';
+ $('#app').innerHTML='<div class="body"><div class="card mut" style="text-align:center;padding:40px 0">טוען…</div></div>';
+ const tst=$('.toast');if(tst)tst.classList.remove('show');
  try{
   if(!state.token&&parts[0]!=='login'&&parts[0]!==undefined&&![''].includes(parts[0])&&parts.length>0){/* צפייה חופשית בדף הבית ובמכבסות */}
   if(parts.length===0)html=await vHome(q.get('q'));

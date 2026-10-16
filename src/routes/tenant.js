@@ -161,6 +161,9 @@ r.post('/orders/:id/assign', async (req, res) => {
   if (!c[0]) return res.status(404).json({ error: 'שליח לא נמצא או לא מאושר' });
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (o[0].courier_id) return res.status(409).json({ error: 'להזמנה כבר שובץ שליח' });
+  const { rows: openOff } = await q(`SELECT id FROM courier_offers WHERE order_id=$1 AND status='offered'`, [o[0].id]);
+  if (openOff.length) return res.status(409).json({ error: 'כבר קיימת הצעת שיבוץ פתוחה להזמנה זו' });
   // שליח פרטי: שיבוץ מיידי. שליח משותף/פלטפורמה: הצעה לאישור
   if (c[0].model === 'private') {
     await q('UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2', [courier_id, o[0].id]);

@@ -22,8 +22,8 @@ r.post('/offers/:id/accept', async (req, res) => {
      WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING *`, [req.params.id, req.courier.id]);
   if (!rows[0]) return res.status(404).json({ error: 'הצעה לא נמצאה או כבר טופלה' });
   await q('UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2', [req.courier.id, rows[0].order_id]);
-  await q(`UPDATE courier_offers SET status='expired' WHERE order_id=$1 AND courier_id<>$2 AND status='offered'`,
-    [rows[0].order_id, req.courier.id]);
+  await q(`UPDATE courier_offers SET status='expired' WHERE order_id=$1 AND id<>$2 AND status='offered'`,
+    [rows[0].order_id, rows[0].id]);
   await q('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,(SELECT status FROM orders WHERE id=$1),$2,$3)',
     [rows[0].order_id, req.user.id, 'שליח אישר שיבוץ']);
   res.json({ ok: true });
