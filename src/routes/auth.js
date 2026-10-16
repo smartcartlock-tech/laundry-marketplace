@@ -87,7 +87,9 @@ r.post('/google', async (req, res) => {
     if (!resp.ok) return res.status(401).json({ error: 'טוקן גוגל לא תקין' });
     const info = await resp.json();
     const expected = process.env.GOOGLE_CLIENT_ID;
-    if (expected && info.aud !== expected) return res.status(401).json({ error: 'audience לא תואם' });
+    if (!expected) return res.status(503).json({ error: 'התחברות עם גוגל אינה מוגדרת' }); // לא מדלגים על בדיקת audience
+    if (info.aud !== expected) return res.status(401).json({ error: 'audience לא תואם' });
+    if (info.email_verified !== true && info.email_verified !== 'true') return res.status(401).json({ error: 'נדרשת כתובת גוגל מאומתת' });
     let { rows: u } = await q('SELECT * FROM users WHERE google_sub=$1 OR email=$2', [info.sub, info.email]);
     let isNew = false;
     if (!u[0]) {

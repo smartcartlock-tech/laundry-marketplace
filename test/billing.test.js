@@ -81,3 +81,48 @@ test('consolidated_billing toggle: default on, generate blocked when disabled', 
   const ok = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices/generate`, { method: 'POST', token: owner, body: { year: y, month: m } });
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
 });
+
+test('QA: הפקה חוזרת של חשבונית מרכזת — סימון "הופק מחדש" + היסטוריה נשמרת', async (t) => {
+  const { api, schema } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const acc = (await api('/api/t/achuza/business-accounts', { method: 'POST', token: owner, body: {
+    name: 'בית ספר הגליל', company_id: '514000002', payment_terms: 'net30' } })).json.account;
+  await api(`/api/t/achuza/business-accounts/${acc.id}/users`, { method: 'POST', token: owner, body: { phone: '+972500000002' } });
+  const item = (await api('/api/laundries/achuza')).json.items[0];
+  await api('/api/orders', { method: 'POST', token: customer, body: { slug: 'achuza', items: [{ item_id: item.id, qty: 1 }], address: 'בדיקה 2' } });
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const y = now.getFullYear(), m = now.getMonth() + 1;
+  const g1 = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices/generate`, { method: 'POST', token: owner, body: { year: y, month: m } });
+  assert.equal(g1.status, 200, JSON.stringify(g1.json));
+  assert.equal(g1.json.invoice.regenerated_count || 0, 0);
+  const g2 = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices/generate`, { method: 'POST', token: owner, body: { year: y, month: m } });
+  assert.equal(g2.status, 200);
+  assert.equal(g2.json.invoice.regenerated_count, 1, 'סומן שהופק מחדש');
+  // היסטוריה: הגרסה הקודמת נשמרה
+  const { Pool } = require('pg');
+  const { TEST_DB } = require('./helpers');
+  const pool = new Pool({ connectionString: TEST_DB, max: 1, options: `-c search_path=${schema},public` });
+  const { rows: hist } = await pool.query('SELECT * FROM business_invoice_history WHERE invoice_id=$1', [g2.json.invoice.id]);
+  await pool.end();
+  assert.equal(hist.length, 1, 'גרסה קודמת בהיסטוריה');
+  assert.equal(Number(hist[0].total), Number(g1.json.invoice.total));
+});
+
+test('QA: לקוח משויך לחשבון עסקי רואה מחיר הסכם בקטלוג', async (t) => {
+  const { api } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const acc = (await api('/api/t/achuza/business-accounts', { method: 'POST', token: owner, body: {
+    name: 'מסעדת הכרמל', company_id: '514000003', payment_terms: 'net30' } })).json.account;
+  await api(`/api/t/achuza/business-accounts/${acc.id}/users`, { method: 'POST', token: owner, body: { phone: '+972500000002' } });
+  const item = (await api('/api/laundries/achuza')).json.items[0];
+  await api(`/api/t/achuza/business-accounts/${acc.id}/prices`, { method: 'PUT', token: owner, body: { prices: [{ item_id: item.id, price: 1.5 }] } });
+  const linked = await api('/api/laundries/achuza', { token: customer });
+  const li = linked.json.items.find(i => i.id === item.id);
+  assert.equal(Number(li.price), 1.5, 'מחיר הסכם בקטלוג');
+  assert.equal(li.agreement_price, true);
+  // אורח רואה את המחיר הרגיל
+  const guest = await api('/api/laundries/achuza');
+  assert.notEqual(Number(guest.json.items.find(i => i.id === item.id).price), 1.5);
+});

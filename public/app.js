@@ -365,7 +365,7 @@ async function vLaundry(slug){
   ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
   <div class="card">
    ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);const cp=cmp[it.name+'|'+it.unit];return `<div class="row pl-row" data-name="${esc(it.name)}">
-     <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div>${cp?`<a href="#/laundry/${cp.slug}" style="text-decoration:none"><span class="tag tg" style="margin-top:3px">זול יותר ב־₪${cp.other_price} ב${esc(cp.laundry_name)}</span></a>`:''}</div>
+     <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}${it.agreement_price?' · מחיר הסכם':''}</div>${cp?`<a href="#/laundry/${cp.slug}" style="text-decoration:none"><span class="tag tg" style="margin-top:3px">זול יותר ב־₪${cp.other_price} ב${esc(cp.laundry_name)}</span></a>`:''}</div>
      ${cr?`<span class="stepper"><button onclick="setQty('${slug}','${it.id}',-1)">−</button><b>${cr.qty}</b><button onclick="setQty('${slug}','${it.id}',1)">+</button></span>`
         :`<button class="btn2" onclick="setQty('${slug}','${it.id}',1)">הוספה</button>`}
     </div>`}).join('')}
@@ -1313,7 +1313,7 @@ async function vManageBiz(slug){
   <div class="mut">הפקה אוטומטית ב-1 לחודש · מסמך דמו — לא חשבונית מס · ברירת מחדל מופעלת לחשבון עסקי</div>
   <label style="display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="bz-cons" ${acc.consolidated_billing!==false?'checked':''} onchange="bizConsToggle('${slug}','${acc.id}',this.checked)"> חשבונית מרכזת חודשית מופעלת</label>
   <button class="btn2 on" onclick="bizInvGen('${slug}','${acc.id}')">הפקה לחודש ${now.getMonth()+1}/${now.getFullYear()}</button>
-  ${inv.map(i=>`<div class="row" style="margin-top:6px"><div><b>${i.month}/${i.year}</b> <div class="mut">${i.orders_count} הזמנות · הופק ${fmtDate(i.issued_at)}</div></div>
+  ${inv.map(i=>`<div class="row" style="margin-top:6px"><div><b>${i.month}/${i.year}</b>${i.regenerated_count>0?' <span class="tag tb">הופק מחדש ×'+i.regenerated_count+'</span>':''} <div class="mut">${i.orders_count} הזמנות · הופק ${fmtDate(i.issued_at)}${i.regenerated_at?' · עודכן '+fmtDate(i.regenerated_at):''}</div></div>
    <div><b>₪${i.total}</b> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','pdf')">PDF</button> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','csv')">CSV</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין חשבוניות עדיין</div>'}</div>`;
  return html;
 }

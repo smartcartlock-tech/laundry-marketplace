@@ -1,7 +1,20 @@
 const express = require('express');
 const bwip = require('bwip-js');
+const jwt = require('jsonwebtoken');
 const { q } = require('../db');
 const r = express.Router();
+
+// אימות אופציונלי: מחזיר user אם יש טוקן תקין, אחרת null (בלי להפיל בקשה ציבורית)
+async function optionalUser(req) {
+  try {
+    const h = req.headers.authorization || '';
+    const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+    if (!token) return null;
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-insecure-secret');
+    const { rows } = await q('SELECT id FROM users WHERE id=$1', [payload.uid]);
+    return rows[0] || null;
+  } catch (e) { return null; }
+}
 // ביצועים: מטמון קצר לנתונים ציבוריים (רשימת מכבסות/דף מכבסה) — חוסך חסימות בשרת החינמי
 const pubCache = (res, sec=30) => res.set('Cache-Control', `public, max-age=${sec}`);
 
@@ -40,6 +53,19 @@ r.get('/laundries/:slug', async (req, res) => {
     q('SELECT id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks FROM subscription_plans WHERE tenant_id=$1 AND active ORDER BY sort, price', [t[0].id]),
   ]);
   const ten = t[0]; delete ten.api_key; ten.has_logo = !!ten.logo; delete ten.logo; delete ten.logo_mime;
+  // לקוח משויך לחשבון עסקי פעיל רואה את מחיר ההסכם בקטלוג (גובר על המחירון הרגיל)
+  const viewer = await optionalUser(req);
+  if (viewer) {
+    const { rows: bp } = await q(
+      `SELECT bp.item_id, bp.price FROM business_prices bp
+       JOIN business_accounts ba ON ba.id=bp.account_id AND ba.active AND ba.tenant_id=$1
+       JOIN business_account_users bau ON bau.account_id=ba.id AND bau.user_id=$2`, [ten.id, viewer.id]);
+    if (bp.length) {
+      const byId = Object.fromEntries(bp.map(x => [x.item_id, Number(x.price)]));
+      for (const it of items.rows) if (byId[it.id] !== undefined) { it.price = byId[it.id]; it.agreement_price = true; }
+      ten.agreement_pricing = true;
+    }
+  }
   // דירוג אמיתי מהמערכת בלבד
   if (reviews.rows.length) {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;

@@ -78,11 +78,20 @@ async function issueInvoice(q, account, tenant, year, month) {
   if (!orders.length) return null;
   const pdfBuf = await buildConsolidatedPdf({ tenant, account, orders, year, month });
   const total = orders.reduce((s, o) => s + Number(o.total), 0);
+  // הפקה חוזרת: הגרסה הקודמת נשמרת בהיסטוריה והשורה מסומנת "הופק מחדש"
+  const { rows: prev } = await q('SELECT * FROM business_invoices WHERE account_id=$1 AND year=$2 AND month=$3', [account.id, year, month]);
+  if (prev[0]) {
+    await q(
+      `INSERT INTO business_invoice_history(invoice_id, account_id, year, month, orders_count, total, pdf)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [prev[0].id, prev[0].account_id, prev[0].year, prev[0].month, prev[0].orders_count, prev[0].total, prev[0].pdf]);
+  }
   const { rows } = await q(
     `INSERT INTO business_invoices(account_id, year, month, orders_count, total, pdf)
      VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (account_id, year, month) DO UPDATE SET orders_count=EXCLUDED.orders_count, total=EXCLUDED.total, pdf=EXCLUDED.pdf, issued_at=now()
-     RETURNING id, year, month, orders_count, total, issued_at`,
+     ON CONFLICT (account_id, year, month) DO UPDATE SET orders_count=EXCLUDED.orders_count, total=EXCLUDED.total, pdf=EXCLUDED.pdf,
+       regenerated_count = business_invoices.regenerated_count + 1, regenerated_at = now()
+     RETURNING id, year, month, orders_count, total, issued_at, regenerated_count, regenerated_at`,
     [account.id, year, month, orders.length, total, pdfBuf]);
   return rows[0];
 }

@@ -12,12 +12,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 r.post('/extract', upload.array('files', 5), async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) return res.status(503).json({ error: "GEMINI_API_KEY לא מוגדר" });
+    if (!key) return res.status(503).json({ error: 'שירות החילוץ אינו זמין כרגע' });
     if (!req.files || !req.files.length) return res.status(400).json({ error: 'יש לצרף לפחות תמונה אחת' });
     const images = req.files.map(f => ({ mimeType: f.mimetype, base64: f.buffer.toString('base64') }));
     const draft = await extractFromImages(key, images);
     res.json({ draft });
-  } catch (e) { console.error(e); res.status(502).json({ error: 'חילוץ נכשל: ' + e.message }); }
+  } catch (e) { console.error(e); res.status(502).json({ error: 'חילוץ נכשל — נסו שוב או הזינו את הפרטים ידנית' }); }
 });
 
 // שלב 2: יצירת מכבסה מהטיוטה המאושרת (אחרי מסך סקירה)

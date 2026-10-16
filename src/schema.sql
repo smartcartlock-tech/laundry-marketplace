@@ -725,3 +725,15 @@ CREATE TABLE IF NOT EXISTS user_carts (
   items jsonb NOT NULL DEFAULT '[]',
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- QA: חשבונית מרכזת שהופקה מחדש — סימון + היסטוריית גרסאות קודמות
+ALTER TABLE business_invoices ADD COLUMN IF NOT EXISTS regenerated_count int NOT NULL DEFAULT 0;
+ALTER TABLE business_invoices ADD COLUMN IF NOT EXISTS regenerated_at timestamptz;
+CREATE TABLE IF NOT EXISTS business_invoice_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_id uuid NOT NULL REFERENCES business_invoices(id) ON DELETE CASCADE,
+  account_id uuid NOT NULL,
+  year int NOT NULL, month int NOT NULL,
+  orders_count int NOT NULL, total numeric(10,2) NOT NULL,
+  pdf bytea, superseded_at timestamptz NOT NULL DEFAULT now()
+);
