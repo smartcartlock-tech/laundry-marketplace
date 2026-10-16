@@ -11,7 +11,7 @@ r.use(require('../ratelimit').writeLimiter('admin-write', 120));
 // יומן ביקורת: כל כתיבה אדמיניסטרטיבית מוצלחת נרשמת עם מבצע, פעולה ויעד
 r.use((req,res,next)=>{
   if(req.method==='GET'||req.method==='HEAD')return next();
-  res.on('finish',()=>{if(res.statusCode<300)require('../audit').audit(req,req.method+' '+req.baseUrl+req.path,null,req.params&&(req.params.id||req.params.slug||null),{params:req.params,status:res.statusCode})});
+  res.on('finish',()=>{if(res.statusCode<300&&!req._audited){req._audited=1;require('../audit').audit(req,req.method+' '+req.baseUrl+req.path,null,req.params&&(req.params.id||req.params.slug||null),{params:req.params,status:res.statusCode})}});
   next();
 });
 
