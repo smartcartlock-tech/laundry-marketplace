@@ -22,7 +22,7 @@ r.get('/checklist', async (req, res) => {
     { key: 'phone',    label: 'טלפון עסקי',            done: !!(t.phone && String(t.phone).trim()),    action: 'הוסף מספר טלפון ליצירת קשר' },
     { key: 'logo',     label: 'לוגו',                  done: !!t.logo,                                 action: 'העלה לוגו של המכבסה' },
     { key: 'address',  label: 'כתובת עם מיקום מפה',    done: !!(t.address && t.lat != null && t.lng != null), action: 'השלם כתובת וסמן מיקום על המפה' },
-    { key: 'courier',  label: 'שליח אחד לפחות',        done: couriers.rows[0].n > 0,                        action: 'צרף שליח למכבסה' },
+    { key: 'courier',  label: 'שליח צמוד למכבסה',     done: couriers.rows[0].n > 0,                        action: 'צרף שליח צמוד — לא חובה אם אתם מסתמכים על שליחי הפלטפורמה/המשותפים' },
   ];
   const doneCount = items.filter(i => i.done).length;
   res.json({ items, done: doneCount, total: items.length,

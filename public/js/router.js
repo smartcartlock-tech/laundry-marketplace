@@ -28,7 +28,9 @@ async function route(){
  const [,path]=h.split('#');
  const [p,qstr]=path.split('?');
  const q=new URLSearchParams(qstr||'');
- const parts=p.split('/').filter(Boolean);
+ // P0: חלקי ה-route מקודדים (סלאג עברי ב-hash מגיע percent-encoded) — פענוח בטוח
+ const dec=s=>{try{return decodeURIComponent(s)}catch(_){return s}};
+ const parts=p.split('/').filter(Boolean).map(dec);
  let html='';
  $('#app').innerHTML='<div class="body"><div class="card mut" style="text-align:center;padding:40px 0">טוען…</div></div>';
  const tst=$('.toast');if(tst)tst.classList.remove('show');
