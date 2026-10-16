@@ -48,6 +48,8 @@ async function route(){
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);
   else if(parts[0]==='join')html=await vJoin();
   else if(parts[0]==='help')html=vHelp(); // D1
+  else if(parts[0]==='messages')html=await vMessages(); // N1
+  else if(parts[0]==='bot-sim')html=vBotSim(); // N3
   else if(parts[0]==='pay')html=await vPay(parts[1]);
   else if(parts[0]==='verify')html=await vVerify(parts[1]);
   else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/')">חזרה לדף הבית</button></div></div>`;
