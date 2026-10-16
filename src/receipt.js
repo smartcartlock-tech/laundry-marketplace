@@ -278,3 +278,54 @@ module.exports.buildDocumentPDF = buildDocumentPDF;
 module.exports.collectPdf = collectPdf;
 module.exports.docVerificationImages = docVerificationImages;
 module.exports.docBarcodeText = docBarcodeText;
+
+// C4: דף איסוף/תווית שקית להדפסה — מספר הזמנה גדול, פרטי לקוח, פריטים, מספר שקיות, QR לסטטוס
+function buildLabelPDF({ order, items, tenant, customer, qr }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, info: { Title: `תווית הזמנה ${order.id.slice(0, 8)}` } });
+  doc.registerFont('he', FONT_REG);
+  doc.registerFont('heb', FONT_BOLD);
+
+  doc.font('heb').fontSize(18).fillColor(tenant.color || '#0e7a8a');
+  line(doc, tenant.name);
+  doc.moveDown(0.3);
+  doc.font('heb').fontSize(30).fillColor('#111');
+  line(doc, `הזמנה #${order.id.slice(0, 8)}`);
+  doc.moveDown(0.5);
+  doc.font('he').fontSize(12).fillColor('#333');
+  const d = new Date(order.created_at);
+  line(doc, `תאריך: ${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`);
+  line(doc, `לקוח/ה: ${customer.name || ''} ${customer.phone || ''}`.trim());
+  line(doc, `כתובת: ${order.address || ''}`);
+  if (order.notes) line(doc, `הערות: ${order.notes}`);
+  doc.moveDown(0.6);
+
+  doc.font('heb').fontSize(12).fillColor('#0e7a8a');
+  line(doc, 'פריטים');
+  doc.moveTo(50, doc.y).lineTo(PAGE_RIGHT, doc.y).strokeColor('#0e7a8a').lineWidth(1).stroke();
+  doc.moveDown(0.3);
+  doc.font('he').fontSize(11).fillColor('#111');
+  for (const it of items) {
+    const qn = Number(it.qty);
+    line(doc, `${it.name} x${qn % 1 ? qn : Math.round(qn)}`);
+  }
+  doc.moveDown(0.6);
+
+  doc.font('heb').fontSize(14).fillColor('#111');
+  line(doc, 'מספר שקיות: ________');
+  doc.moveDown(0.8);
+
+  if (qr) {
+    const y = doc.y;
+    doc.image(qr, 50, y, { width: 110 });
+    doc.font('he').fontSize(10).fillColor('#555');
+    drawRtl(doc, 'סריקה לצפייה בסטטוס ההזמנה', PAGE_RIGHT, y + 45);
+    doc.y = y + 120;
+  }
+  doc.moveDown(0.5);
+  doc.font('he').fontSize(9).fillColor('#999');
+  line(doc, 'הופק אוטומטית על ידי מערכת מכבסה בקליק — מסמך תפעולי פנימי.');
+  doc.end();
+  return doc;
+}
+
+module.exports.buildLabelPDF = buildLabelPDF;
