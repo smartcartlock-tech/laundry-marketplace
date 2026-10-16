@@ -81,13 +81,14 @@ async function api(path,opts={}){
 let routeSeq=0;
 function go(h){if(location.hash===h)route();else location.hash=h}
 async function openPdf(path){
- /* פתיחה באותו טאב (blob בחלון קופץ נחסם/נשאר ריק בחלק מהדפדפנים); חזרה = כפתור Back. fallback: הורדה */
+ /* הורדה אמינה: window.open נחסם (קופץ) וניווט top-level ל-blob חסום ב-Chrome — לכן <a download> */
  try{
   const r=await fetch('/api'+path,{headers:state.token?{Authorization:'Bearer '+state.token}:{}});
   if(!r.ok){const d=await r.json().catch(()=>({}));toast(d.error||'שגיאה בפתיחת PDF');return}
   const b=await r.blob();const url=URL.createObjectURL(b);
-  try{ location.href=url; }
-  catch(e){ const a=document.createElement('a');a.href=url;a.download='מסמך.pdf';document.body.appendChild(a);a.click();a.remove(); }
+  const a=document.createElement('a');a.href=url;a.download='מסמך.pdf';document.body.appendChild(a);a.click();a.remove();
+  toast('המסמך ירד למכשיר');
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
  }catch(e){toast('שגיאה בפתיחת PDF')}
 }
 async function downloadCsv(path,filename){
