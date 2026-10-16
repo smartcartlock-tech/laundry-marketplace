@@ -25,22 +25,22 @@ async function vCheckout(slug){
    <div class="row" id="co-coupon-row" style="display:none"><div class="mut">הנחת קופון <b id="co-coupon-code"></b></div><div id="co-coupon-disc" style="color:#0a7">−₪0</div></div>
    <div class="row" id="co-discount-row" style="display:none"><div class="mut">הנחת נקודות</div><div id="co-discount">−₪0</div></div>
    <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-subtotal="${subtotal}" data-fee="${Number(l.delivery_fee||0)}" data-points="${points}" data-pct="${l.points_redeem_max_pct??0.2}" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}" data-noneligible="${items.filter(c=>{const it=d.items.find(i=>i.id===c.item_id);return !it||!it.subscription_eligible}).reduce((s2,c)=>s2+c.price*c.qty,0)}" data-subremaining="${mySub?mySub.bags_remaining:0}" data-extrabag="${mySub&&mySub.extra_bag_price!==null&&mySub.extra_bag_price!==undefined?mySub.extra_bag_price:''}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
-   <div class="row"><div class="mut">יש קופון?</div><div style="display:flex;gap:6px"><input class="inp" id="co-coupon" placeholder="קוד קופון" style="margin:0;flex:1"><button class="btn2 on" onclick="applyCoupon('${slug}')">החלה</button></div></div>
+   <div class="row"><div class="mut">יש קופון?</div><div style="display:flex;gap:6px"><input class="inp" id="co-coupon" placeholder="קוד קופון" style="margin:0;flex:1"><button class="btn2 on" data-apply-coupon="${esc(slug)}">החלה</button></div></div>
    <div id="co-coupon-msg" class="mut" style="display:none;margin-top:4px"></div>
-   ${mySub&&eligQty>0?`<div class="row" id="co-sub-row"><div class="mut">מנוי: ${esc(mySub.plan_name)} · נותרו ${fmtQ(mySub.bags_remaining)} שקים</div><label style="font-size:13px"><input type="checkbox" id="co-sub" onchange="updTotal()"> שלם עם המנוי — פריטים מכוסים ב־₪0, איסוף חינם</label></div>`:''}
-   <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"><span id="co-redeem-lbl"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</span></label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
+   ${mySub&&eligQty>0?`<div class="row" id="co-sub-row"><div class="mut">מנוי: ${esc(mySub.plan_name)} · נותרו ${fmtQ(mySub.bags_remaining)} שקים</div><label style="font-size:13px"><input type="checkbox" id="co-sub" data-upd-total="1"> שלם עם המנוי — פריטים מכוסים ב־₪0, איסוף חינם</label></div>`:''}
+   <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" data-upd-total="1"><span id="co-redeem-lbl"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</span></label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
   </div>
   <div class="card">
    ${__coAddrs.length?`<label class="lb">כתובות שמורות</label>
    <div style="display:flex;gap:6px">
-    <select class="inp" id="co-saved-addr" style="margin-bottom:6px;flex:1" onchange="pickAddr(this)">
+    <select class="inp" id="co-saved-addr" style="margin-bottom:6px;flex:1" data-pick-addr="1">
      <option value="">כתובת חדשה…</option>
      ${__coAddrs.map(a=>`<option value="${a.id}">${esc(a.label)} — ${esc(a.address)}</option>`).join('')}
     </select>
-    <button class="btn2" id="co-del-addr" style="display:none;margin-bottom:6px" onclick="delAddr()">מחיקה</button>
+    <button class="btn2" id="co-del-addr" style="display:none;margin-bottom:6px" data-del-addr="1">מחיקה</button>
    </div>`:''}
    <label class="lb">כתובת לאיסוף והחזרה</label>
-   <input class="inp" id="co-address" placeholder="רחוב, מספר, עיר" oninput="this.style.borderColor='';const e=document.getElementById('co-address-err');if(e)e.remove()">
+   <input class="inp" id="co-address" placeholder="רחוב, מספר, עיר" data-clear-err="1">
    <div id="co-save-wrap">
     <label style="font-size:12.5px"><input type="checkbox" id="co-save-addr" checked> שמירת הכתובת לפעם הבאה</label>
     <input class="inp" id="co-addr-label" placeholder="תווית לכתובת (בית, עבודה…)" style="margin-top:6px">
@@ -54,7 +54,7 @@ async function vCheckout(slug){
    <label class="lb">הערות</label>
    <input class="inp" id="co-notes" placeholder="כתם עקשן, קומה, קוד שער…">
   </div>
-  <button class="btn" id="co-submit" onclick="submitOrder('${slug}')">אישור הזמנה</button>
+  <button class="btn" id="co-submit" data-submit-order="${esc(slug)}">אישור הזמנה</button>
  </div>`;
 }
 function updTotal(){
@@ -135,3 +135,20 @@ async function submitOrder(slug){
  finally{clearTimeout(kill);__submitting=false;if(btn){btn.disabled=false;btn.style.opacity='';btn.textContent=orig}}
 }
 
+
+/* B7: מאזינים מרוכזים במקום inline handlers */
+document.addEventListener('click',e=>{
+ const c=e.target.closest('[data-apply-coupon]');
+ if(c){applyCoupon(c.dataset.applyCoupon);return}
+ const d=e.target.closest('[data-del-addr]');
+ if(d){delAddr();return}
+ const so=e.target.closest('[data-submit-order]');
+ if(so){submitOrder(so.dataset.submitOrder)}
+});
+document.addEventListener('change',e=>{
+ if(e.target.closest('[data-upd-total]'))updTotal();
+ if(e.target.closest('[data-pick-addr]'))pickAddr(e.target);
+});
+document.addEventListener('input',e=>{
+ if(e.target.closest('[data-clear-err]')){e.target.style.borderColor='';const er=document.getElementById('co-address-err');if(er)er.remove()}
+});
