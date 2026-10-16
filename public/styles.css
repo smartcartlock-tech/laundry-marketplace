@@ -119,3 +119,6 @@ table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
 @media(max-width:1279px){
  .home-side.open{display:block;background:#fff;border:1px solid #e2eaee;border-radius:14px;padding:16px;margin-bottom:12px}
 }
+
+/* E13.T5: באנר אופליין */
+#off-banner{position:fixed;top:0;left:0;right:0;z-index:300;background:#c26a12;color:#fff;text-align:center;font-size:12px;font-weight:700;padding:5px 10px}

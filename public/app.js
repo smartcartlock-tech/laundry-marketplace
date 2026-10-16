@@ -59,7 +59,9 @@ function xmodal({title,body,okText='אישור',cancelText='ביטול',fields})
 }
 function xconfirm(msg,opts={}){return xmodal({title:opts.title||'אישור פעולה',body:msg,okText:opts.okText||'אישור'})}
 async function api(path,opts={}){
- const r=await fetch('/api'+path,{...opts,headers:{'Content-Type':'application/json',...(state.token?{Authorization:'Bearer '+state.token}:{})}});
+ let r;
+ try{r=await fetch('/api'+path,{...opts,headers:{'Content-Type':'application/json',...(state.token?{Authorization:'Bearer '+state.token}:{})}})}
+ catch(e){const err=new Error('אין חיבור לרשת — בדקו את החיבור ונסו שוב');err.status=0;throw err}
  const data=await r.json().catch(()=>({}));
  if(!r.ok){const err=new Error(data.error||('שגיאה '+r.status));err.status=r.status;throw err}
  return data;
@@ -200,8 +202,9 @@ function homeFilterReset(){
  homeFilter();
 }
 async function vHome(q){
- let laundries=[];
- try{const r=await api('/laundries'+(q?'?q='+encodeURIComponent(q):''));laundries=r.laundries}catch(e){toast(e.message)}
+ let laundries=[],offlineData=false;
+ try{const r=await api('/laundries'+(q?'?q='+encodeURIComponent(q):''));laundries=r.laundries;if(!q)store.set('homeCache',{laundries:laundries,ts:Date.now()})}
+ catch(e){const c=store.get('homeCache',null);if(c&&c.laundries&&c.laundries.length){laundries=c.laundries;offlineData=true}else toast(e.message)}
  const geo=store.get('geo',null);
  const svcSet=[...new Set(laundries.flatMap(l=>l.services||[]))].sort();
  const distOf=l=>geo&&l.lat!=null&&l.lng!=null?haversine(geo.lat,geo.lng,l.lat,l.lng):null;
@@ -211,6 +214,7 @@ async function vHome(q){
   <div class="searchbar" style="margin-top:14px"><input id="q" placeholder="מכבסה, עיר, שירות…" value="${esc(q||'')}" onkeydown="if(event.key==='Enter')go('#/?q='+encodeURIComponent(this.value))"><button class="go" onclick="go('#/?q='+encodeURIComponent($('#q').value))">חיפוש</button></div>
  </div>
  <div class="body">
+  ${offlineData?'<div class="card warn" style="text-align:center">אין חיבור לרשת — מוצגת רשימת המכבסות שנשמרה במכשיר, וחלק מהפרטים עשויים להשתנות</div>':''}
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
@@ -1855,3 +1859,13 @@ async function pushSubscribe(){
   const b=document.getElementById('push-btn');if(b){b.textContent='🔔 התראות פעילות';b.classList.add('green')}
  }catch(e){toast('הפעלת התראות נכשלה: '+e.message)}
 }
+
+/* E13.T5: מצב אופליין בסיסי — באנר קבוע + רענון כשהחיבור חוזר */
+function offlineBanner(){
+ let b=document.getElementById('off-banner');
+ if(navigator.onLine){if(b)b.remove();return}
+ if(!b){b=document.createElement('div');b.id='off-banner';b.textContent='אין חיבור לאינטרנט — מוצג מידע שנשמר במכשיר';document.body.appendChild(b)}
+}
+window.addEventListener('online',()=>{offlineBanner();toast('החיבור חזר ✓');route()});
+window.addEventListener('offline',offlineBanner);
+offlineBanner();
