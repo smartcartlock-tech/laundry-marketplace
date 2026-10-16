@@ -60,3 +60,46 @@ test('favorites-sync/perf: רישום ב-index.html ו-sw.js', () => {
   assert.match(perf, /preconnect/, 'resource hints');
   assert.match(perf, /pointerover/, 'hover prefetch');
 });
+
+// תקרת 50 מועדפים למשתמש + סינון מכבסות לא-מאושרות מהרשימה
+test('favorites: תקרת כמות (50) עם הודעה ידידותית + GET מסנן לא-מאושרות', async (t) => {
+  const { api, schema } = await startApp(t);
+  const { Client } = require('pg');
+  const db = new Client({ connectionString: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/laundry_test' });
+  await db.connect(); t.after(() => db.end());
+  await db.query(`SET search_path TO ${schema}, public`);
+
+  const token = await api.login('0503334444', 'משתמש תקרה');
+  const { json: me } = await api('/api/auth/me', { token });
+  const uid = me.user.id;
+
+  // מכבסה לא מאושרת עם רשומת מועדף קיימת — לא תופיע ב-GET
+  const { rows: [un] } = await db.query(`INSERT INTO tenants(slug, name, approved) VALUES ('fav-unapproved', 'מכבסה ממתינה', false) RETURNING id`);
+  await db.query('INSERT INTO user_favorites(user_id, tenant_id) VALUES ($1,$2)', [uid, un.id]);
+  const listUn = await api('/api/me/favorites', { token });
+  assert.ok(!listUn.json.favorites.some(f => f.slug === 'fav-unapproved'), 'מכבסה לא מאושרת מסוננת מהרשימה');
+  await db.query('DELETE FROM user_favorites WHERE user_id=$1 AND tenant_id=$2', [uid, un.id]);
+
+  // מילוי עד התקרה: 50 מועדפים ישירות ב-DB
+  for (let i = 0; i < 50; i++) {
+    const { rows: [ten] } = await db.query(`INSERT INTO tenants(slug, name, approved) VALUES ($1, $2, true) RETURNING id`, [`fav-cap-${i}`, `מכבסה ${i}`]);
+    await db.query('INSERT INTO user_favorites(user_id, tenant_id) VALUES ($1,$2)', [uid, ten.id]);
+  }
+
+  // ה-51 נחסם עם הודעה ידידותית
+  const over = await api('/api/me/favorites', { method: 'POST', token, body: { slug: 'achuza' } });
+  assert.strictEqual(over.status, 409, JSON.stringify(over.json));
+  assert.match(over.json.error, /50/);
+  assert.match(over.json.error, /הסירו/);
+  assert.strictEqual(over.json.code, 'favorites_limit');
+
+  // הוספה חוזרת של מועדף קיים לא נחסמת (idempotent)
+  const { rows: [firstTen] } = await db.query(`SELECT t.slug FROM user_favorites uf JOIN tenants t ON t.id=uf.tenant_id WHERE uf.user_id=$1 LIMIT 1`, [uid]);
+  const again = await api('/api/me/favorites', { method: 'POST', token, body: { slug: firstTen.slug } });
+  assert.strictEqual(again.status, 200, 'הוספה חוזרת של קיים לא נחסמת ע"י התקרה');
+
+  // אחרי הסרה אפשר שוב להוסיף
+  await api(`/api/me/favorites/${firstTen.slug}`, { method: 'DELETE', token });
+  const after = await api('/api/me/favorites', { method: 'POST', token, body: { slug: 'achuza' } });
+  assert.strictEqual(after.status, 200);
+});

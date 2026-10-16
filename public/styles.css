@@ -159,3 +159,6 @@ html.dark .theme-toggle{filter:invert(1) hue-rotate(180deg)}
 
 /* a11y: מצב כהה — כוכבי דירוג מקבלים היפוך חוזר כדי לשמור ניגודיות AA (3.34:1 ← 10:1+) */
 html.dark .stars{filter:invert(1) hue-rotate(180deg)}
+
+/* a11y: הודעת שגיאה מקושרת לשדה (aria-describedby) */
+.field-err{color:#c0392b;font-size:12.5px;font-weight:700;margin:4px 2px 0}

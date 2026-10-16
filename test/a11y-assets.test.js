@@ -35,6 +35,15 @@ test('a11y.js: ולידציית aria-invalid על טופסי ההצטרפות ו
   assert.match(js, /verifyOtp/, 'wraps OTP verify');
 });
 
+test('a11y.js: טפסי ניהול (פריט/חלון/קופון) — aria-invalid + הודעת שגיאה מקושרת aria-describedby', () => {
+  const js = pub('js/a11y.js');
+  for (const fn of ['addItem', 'addWindow', 'addCoupon']) assert.ok(js.includes(fn), `wraps ${fn}`);
+  for (const id of ['it-name', 'it-price', 'w-start', 'w-end', 'cp-code', 'cp-value']) assert.ok(js.includes(`'${id}'`), `covers #${id}`);
+  assert.match(js, /aria-describedby/, 'links error message');
+  assert.match(js, /field-err/, 'error element class');
+  assert.match(pub('styles.css'), /\.field-err/, 'error style exists');
+});
+
 test('styles.css: מצב כהה — כוכבים מקבלים היפוך חוזר לניגודיות', () => {
   assert.match(pub('styles.css'), /html\.dark \.stars\{filter:invert/, 'stars re-inverted in dark mode');
 });

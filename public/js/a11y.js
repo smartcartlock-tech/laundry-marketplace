@@ -59,8 +59,29 @@
  const FORMS={
   submitApplication:[['ap-name','שם המכבסה'],['ap-city','עיר'],['ap-phone','טלפון']],
   requestOtp:[['login-target','טלפון או אימייל']],
-  verifyOtp:[['login-target','טלפון או אימייל'],['login-code','קוד כניסה']]
+  verifyOtp:[['login-target','טלפון או אימייל'],['login-code','קוד כניסה']],
+  /* טפסי ניהול (community.js — עטיפה בלבד, הקובץ לא נערך): פריט, חלון, קופון */
+  addItem:[['it-name','שם הפריט'],['it-price','מחיר הפריט']],
+  addWindow:[['w-start','שעת התחלה'],['w-end','שעת סיום']],
+  addCoupon:[['cp-code','קוד הקופון'],['cp-value','ערך הקופון']]
  };
+ /* הודעת שגיאה מקושרת: div.field-err עם role=alert לצד השדה + aria-describedby */
+ function setFieldError(el,msg){
+  el.setAttribute('aria-invalid','true');
+  let err=document.getElementById(el.id+'-err');
+  if(!err){
+   err=document.createElement('div');
+   err.id=el.id+'-err';err.className='field-err';err.setAttribute('role','alert');
+   el.insertAdjacentElement('afterend',err);
+  }
+  err.textContent=msg;
+  el.setAttribute('aria-describedby',err.id);
+ }
+ function clearFieldError(el){
+  el.removeAttribute('aria-invalid');
+  el.removeAttribute('aria-describedby');
+  const err=document.getElementById(el.id+'-err');if(err)err.remove();
+ }
  function wrapForm(fnName){
   const orig=window[fnName];
   if(typeof orig!=='function')return;
@@ -69,10 +90,11 @@
    (FORMS[fnName]||[]).forEach(pair=>{
     const el=document.getElementById(pair[0]);if(!el)return;
     if(!el.value.trim()){
-     el.setAttribute('aria-invalid','true');
-     el.addEventListener('input',()=>el.removeAttribute('aria-invalid'),{once:true});
+     setFieldError(el,'שדה חובה: '+pair[1]);
+     el.addEventListener('input',()=>clearFieldError(el),{once:true});
+     el.addEventListener('change',()=>clearFieldError(el),{once:true});
      if(!firstBad)firstBad={el:el,label:pair[1]};
-    }else el.removeAttribute('aria-invalid');
+    }else clearFieldError(el);
    });
    if(firstBad){firstBad.el.focus();window.toast('חסר שדה חובה: '+firstBad.label);return}
    return orig.apply(this,arguments);
