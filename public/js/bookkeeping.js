@@ -141,10 +141,10 @@
     try{
       if (act === 'create-doc'){
         const body = { kind: val('bk-doc-kind'), customer_name: val('bk-doc-cust'), amount_net: Number(val('bk-doc-net')), vat_amount: Number(val('bk-doc-vat') || 0) };
-        await api(`${B}/documents`, { method: 'POST', body }); toast('טיוטה נוצרה'); route();
+        await api(`${B}/documents`, { method: 'POST', body: JSON.stringify(body) }); toast('טיוטה נוצרה'); route();
       } else if (act === 'allocate'){
         const num = val('bk-alloc-' + id);
-        await api(`${B}/documents/${id}/allocate`, { method: 'POST', body: { allocation_number: num } });
+        await api(`${B}/documents/${id}/allocate`, { method: 'POST', body: JSON.stringify({ allocation_number: num }) });
         toast('מספר הקצאה נרשם — אפשר להנפיק'); route();
       } else if (act === 'issue'){
         await api(`${B}/documents/${id}/issue`, { method: 'POST' }); toast('המסמך הונפק ונרשם בספר'); route();
@@ -183,7 +183,7 @@
         toast(`יובאו ${d.rows} תנועות` + (d.skipped ? ` (${d.skipped} דולגו)` : '')); route();
       } else if (act === 'book-bank'){
         const acc = val('bk-book-acc-' + id);
-        await api(`${B}/bank/transactions/${id}/book`, { method: 'POST', body: { account_code: acc } });
+        await api(`${B}/bank/transactions/${id}/book`, { method: 'POST', body: JSON.stringify({ account_code: acc }) });
         toast('התנועה נרשמה בספר'); route();
       } else if (act === 'csv-accountant'){
         downloadCsv(`${B}/accountant-export.csv`, 'bookkeeping-export.csv');
