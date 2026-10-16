@@ -317,3 +317,49 @@ CREATE TABLE IF NOT EXISTS courier_earnings (
   UNIQUE(courier_id, order_id, kind)
 );
 CREATE INDEX IF NOT EXISTS earnings_courier_idx ON courier_earnings(courier_id, week_start);
+-- E2: מנוי כביסה חודשי
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  bags_per_month int NOT NULL CHECK (bags_per_month > 0),
+  kg_per_bag numeric(5,1) NOT NULL DEFAULT 8,
+  price numeric(8,2) NOT NULL,
+  extra_bag_price numeric(8,2),        -- מחיר שק חורג; NULL = לפי מחירון
+  perks text,
+  active boolean NOT NULL DEFAULT true,
+  sort int NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS plans_tenant_idx ON subscription_plans(tenant_id) WHERE active;
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id uuid NOT NULL REFERENCES subscription_plans(id),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','cancelled')),
+  period_start date NOT NULL DEFAULT CURRENT_DATE,
+  period_end date NOT NULL DEFAULT (CURRENT_DATE + INTERVAL '1 month'),
+  bags_used numeric(6,1) NOT NULL DEFAULT 0,
+  auto_renew boolean NOT NULL DEFAULT true,
+  payment_status text NOT NULL DEFAULT 'paid_demo',  -- תשלום דמו בלבד
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+-- מנוי אחד פעיל/מושהה לכל (מכבסה, לקוח); אחרי ביטול אפשר להצטרף מחדש
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_one_live ON subscriptions(tenant_id, user_id) WHERE status <> 'cancelled';
+
+CREATE TABLE IF NOT EXISTS subscription_usage (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+  order_id uuid REFERENCES orders(id),
+  bags numeric(6,1) NOT NULL DEFAULT 0,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sub_usage_idx ON subscription_usage(subscription_id, created_at DESC);
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS subscription_id uuid REFERENCES subscriptions(id);
+
+ALTER TABLE price_items ADD COLUMN IF NOT EXISTS subscription_eligible boolean NOT NULL DEFAULT false;

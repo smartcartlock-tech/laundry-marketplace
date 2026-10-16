@@ -56,6 +56,20 @@ async function run() {
       `INSERT INTO reviews(tenant_id, user_id, rating, text) VALUES
        ($1,$2,5,'שירות מעולה, הכביסה חזרה ריחנית ומקופלת. האיסוף היה בזמן!'),
        ($1,$2,4,'מחיר הוגן ומהיר. ממליץ.') ON CONFLICT DO NOTHING`, [achuza, customerId]);
+    await client.query(`UPDATE price_items SET subscription_eligible=true WHERE tenant_id=$1 AND name LIKE 'שק%'`, [achuza]);
+    // E2: תוכניות מנוי דמו למכבסת האחוזה
+    const PLANS = [
+      ['מנוי בסיסי', 4, 8, 149, null, '4 שקים בחודש · איסוף והחזרה חינם'],
+      ['מנוי משפחתי', 8, 8, 259, 45, '8 שקים בחודש · איסוף והחזרה חינם · גיהוץ חולצות מתנה'],
+    ];
+    let pi = 0;
+    for (const [pn, bags, kg, price, extra, perks] of PLANS) {
+      await client.query(
+        `INSERT INTO subscription_plans(tenant_id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks, sort)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8
+         WHERE NOT EXISTS (SELECT 1 FROM subscription_plans WHERE tenant_id=$1 AND name=$2)`,
+        [achuza, pn, bags, kg, price, extra, perks, pi++]);
+    }
     await client.query(
       `INSERT INTO points_ledger(tenant_id, user_id, delta, reason) VALUES ($1,$2,42,'בונוס הצטרפות למועדון')`, [achuza, customerId]);
     await client.query('COMMIT');

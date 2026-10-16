@@ -3,6 +3,7 @@ const { q, pool } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
 const { issueDocumentsForOrder, creditDocument } = require('../documents');
+const { restoreBags } = require('../subscriptions');
 const { buildDocumentPDF } = require('../receipt');
 
 const r = express.Router({ mergeParams: true });
@@ -42,6 +43,7 @@ r.post('/orders/:id/status', async (req, res) => {
     await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
       [order.id, status, req.user.id, note || null]);
+    if (status === 'cancelled') await restoreBags(client, order.id);
     if (status === 'delivered' && order.points_earned > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
         [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
@@ -76,20 +78,22 @@ r.get('/items', async (req, res) => {
   res.json({ items: rows });
 });
 r.post('/items', async (req, res) => {
-  const { name, price, category, unit } = req.body || {};
+  const { name, price, category, unit, subscription_eligible } = req.body || {};
   if (!name || !(Number(price) >= 0)) return res.status(400).json({ error: 'שם ומחיר חובה' });
   const { rows } = await q(
-    'INSERT INTO price_items(tenant_id, name, price, category, unit) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-    [req.tenant.id, name, price, category || 'כביסה', unit === 'kg' ? 'kg' : 'item']);
+    'INSERT INTO price_items(tenant_id, name, price, category, unit, subscription_eligible) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+    [req.tenant.id, name, price, category || 'כביסה', unit === 'kg' ? 'kg' : 'item', !!subscription_eligible]);
   res.status(201).json({ item: rows[0] });
 });
 r.patch('/items/:id', async (req, res) => {
-  const { name, price, category, active } = req.body || {};
+  const { name, price, category, active, subscription_eligible } = req.body || {};
   const { rows } = await q(
     `UPDATE price_items SET name=COALESCE($1,name), price=COALESCE($2,price),
-       category=COALESCE($3,category), active=COALESCE($4,active)
-     WHERE id=$5 AND tenant_id=$6 RETURNING *`,
-    [name ?? null, price ?? null, category ?? null, active ?? null, req.params.id, req.tenant.id]);
+       category=COALESCE($3,category), active=COALESCE($4,active),
+       subscription_eligible=COALESCE($5,subscription_eligible)
+     WHERE id=$6 AND tenant_id=$7 RETURNING *`,
+    [name ?? null, price ?? null, category ?? null, active ?? null,
+     subscription_eligible === undefined ? null : !!subscription_eligible, req.params.id, req.tenant.id]);
   if (!rows[0]) return res.status(404).json({ error: 'לא נמצא' });
   res.json({ item: rows[0] });
 });

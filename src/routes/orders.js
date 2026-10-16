@@ -4,6 +4,7 @@ const { requireAuth } = require('../auth');
 const { notifyUser } = require('../notify');
 const { buildReceiptPDF } = require('../receipt');
 const { validateCoupon } = require('../coupons');
+const { ensureCurrentPeriod, applySubscriptionToOrder, restoreBags } = require('../subscriptions');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -18,7 +19,7 @@ async function event(orderId, status, actorId, note) {
 r.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes } = req.body || {};
+    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes, use_subscription } = req.body || {};
     if (!slug || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'חסרים פרטי הזמנה' });
     const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
     const tenant = t[0];
@@ -37,13 +38,32 @@ r.post('/', async (req, res) => {
       const qty = Number(it.qty) || 1;
       if (qty <= 0 || qty > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'כמות לא תקינה' }); }
       subtotal += Number(db.price) * qty;
-      lines.push({ item_id: db.id, name: db.name, price: db.price, qty });
+      lines.push({ item_id: db.id, name: db.name, price: db.price, qty, unit: db.unit, subscription_eligible: !!db.subscription_eligible });
     }
-    const deliveryFee = Number(tenant.delivery_fee) || 0;
-    if (Number(tenant.min_order) > 0 && subtotal < Number(tenant.min_order)) {
+    if (!use_subscription && Number(tenant.min_order) > 0 && subtotal < Number(tenant.min_order)) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `מינימום הזמנה ₪${tenant.min_order}` });
     }
+    // E2.T2: הזמנה במנוי — ניכוי מכסת שקים במקום חיוב על פריטים מכוסים
+    let subscription = null, subBags = 0;
+    if (use_subscription) {
+      const { rows: sr } = await client.query(
+        `SELECT s.*, p.bags_per_month, p.kg_per_bag, p.extra_bag_price, p.name AS plan_name
+         FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
+         WHERE s.tenant_id=$1 AND s.user_id=$2 AND s.status='active' FOR UPDATE OF s`, [tenant.id, req.user.id]);
+      if (!sr[0]) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'אין מנוי פעיל במכבסה זו' }); }
+      subscription = await ensureCurrentPeriod(client, sr[0]);
+      try {
+        const applied = await applySubscriptionToOrder(client, { sub: subscription, plan: sr[0], lines });
+        lines.length = 0; lines.push(...applied.lines);
+        subBags = applied.bagsConsumed;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        return res.status(err.status || 400).json({ error: err.error || 'לא ניתן לנצל את המנוי' });
+      }
+      subtotal = lines.reduce((sum, l) => sum + Number(l.price) * Number(l.qty), 0);
+    }
+    const deliveryFee = use_subscription ? 0 : (Number(tenant.delivery_fee) || 0);
     // קופון: תיקוף + הנחה על סכום הפריטים
     let coupon = null, couponDiscount = 0;
     if (coupon_code) {
@@ -72,14 +92,20 @@ r.post('/', async (req, res) => {
 
     const { rows: o } = await client.query(
       `INSERT INTO orders(tenant_id, customer_id, source, address, lat, lng, pickup_at, delivery_at,
-        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes)
-       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes, subscription_id)
+       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [tenant.id, req.user.id, address, lat || null, lng || null, pickup_at || null, delivery_at || null,
-       subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, coupon ? coupon.id : null, notes || null]);
+       subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, coupon ? coupon.id : null, notes || null,
+       subscription ? subscription.id : null]);
     const order = o[0];
     for (const ln of lines) {
       await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
         [order.id, ln.item_id, ln.name, ln.price, ln.qty]);
+    }
+    if (subscription && subBags > 0) {
+      await client.query('UPDATE subscriptions SET bags_used = bags_used + $1, updated_at=now() WHERE id=$2', [subBags, subscription.id]);
+      await client.query('INSERT INTO subscription_usage(subscription_id, order_id, bags, note) VALUES ($1,$2,$3,$4)',
+        [subscription.id, order.id, subBags, 'ניצול מכסת מנוי בהזמנה']);
     }
     if (pointsRedeemed > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
@@ -188,6 +214,7 @@ r.post('/:id/cancel', async (req, res) => {
   if (!['new', 'confirmed'].includes(order.status)) return res.status(409).json({ error: 'לא ניתן לבטל לאחר איסוף' });
   await q(`UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1`, [order.id]);
   await event(order.id, 'cancelled', req.user.id, 'בוטלה על ידי הלקוח');
+  await restoreBags({ query: (a, b) => q(a, b) }, order.id);
   res.json({ ok: true });
 });
 
