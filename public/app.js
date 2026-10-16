@@ -305,23 +305,38 @@ async function vLaundry(slug){
  if(state.token){try{const sm=await api('/subscriptions/mine');mySub=sm.subscriptions.find(x=>x.slug===slug&&x.status!=='cancelled')}catch(e){}}
  const cartItems=state.cart.filter(c=>c.slug===slug);
  const cartTotal=cartItems.reduce((s,c)=>s+c.price*c.qty,0);
- const hoursTxt=Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join(' · ')||'—';
+ /* E13.T4: מחירון מקובץ לקטגוריות עם קפיצה וחיפוש */
+ const cats=[];const byCat={};
+ d.items.forEach(it=>{const c=it.category||'כללי';if(!byCat[c]){byCat[c]=[];cats.push(c)}byCat[c].push(it)});
+ const winTxt=kind=>{
+  const m={};(d.windows||[]).filter(w=>w.kind===kind&&w.weekday!==6).forEach(w=>{(m[w.weekday]=m[w.weekday]||[]).push(w.start_time.slice(0,5)+'–'+w.end_time.slice(0,5))});
+  const out=Object.keys(m).sort().map(k=>WD[k]+': <span dir="ltr">'+m[k].join(', ')+'</span>').join(' · ');
+  return out||'—';
+ };
  return `<div class="hdr">
   <div style="display:flex;gap:12px;align-items:center">
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
-   <div><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
+   <div style="flex:1"><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
+   <button onclick="shareLaundry('${esc(l.name)}')" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
   </div>
  </div>
  <div class="body">
+  ${!l.is_open?`<div class="card warn" style="text-align:center"><b>המכבסה סגורה כרגע</b><div style="margin-top:2px">אפשר לעיין במחירון — הזמנה תהיה אפשרית כשהמכבסה תיפתח</div></div>`:''}
+  ${(l.services&&l.services.length)?`<div style="margin:0 2px 8px">${l.services.map(sv=>`<span class="tag tb" style="margin-left:4px;padding:3px 10px">${esc(sv)}</span>`).join('')}</div>`:''}
   <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" onclick="document.getElementById('info').scrollIntoView({behavior:'smooth'})">מידע</button><button class="chip" type="button" onclick="document.getElementById('revs').scrollIntoView({behavior:'smooth'})">ביקורות</button></div>
+  <div class="mut" style="margin:0 2px 8px">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום הזמנה ₪'+l.min_order:''}</div>
+  ${d.items.length>6?`<input class="inp" id="pl-search" placeholder="חיפוש במחירון…" oninput="plFilter(this.value)">`:''}
+  ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" onclick="document.getElementById('pcat-${i}').scrollIntoView({behavior:'smooth'})">${esc(c)}</a>`).join('')}</div>`:''}
+  ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
   <div class="card">
-   ${d.items.map(it=>{const c=state.cart.find(x=>x.item_id===it.id);return `<div class="row">
-     <div><b>${esc(it.name)}</b><div class="mut">${esc(it.category)} · ₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div></div>
-     ${c?`<span class="stepper"><button onclick="setQty('${slug}','${it.id}',-1)">−</button><b>${c.qty}</b><button onclick="setQty('${slug}','${it.id}',1)">+</button></span>`
+   ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);return `<div class="row pl-row" data-name="${esc(it.name)}">
+     <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div></div>
+     ${cr?`<span class="stepper"><button onclick="setQty('${slug}','${it.id}',-1)">−</button><b>${cr.qty}</b><button onclick="setQty('${slug}','${it.id}',1)">+</button></span>`
         :`<button class="btn2" onclick="setQty('${slug}','${it.id}',1)">הוספה</button>`}
-    </div>`}).join('')||'<div class="mut">המחירון טרם הוזן</div>'}
-  </div>
+    </div>`}).join('')}
+  </div>`).join('')||'<div class="card mut">המחירון טרם הוזן</div>'}
+  <div class="card mut" id="pl-empty" style="display:none;text-align:center">אין פריטים שמתאימים לחיפוש במחירון</div>
   ${cartItems.length?(cartTotal>=Number(l.min_order||0)?`<button class="btn" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.6;cursor:not-allowed">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`):''}
   ${(d.plans&&d.plans.length)||mySub?`<div class="sec">מנוי כביסה חודשי</div>
   <div class="card">
@@ -331,6 +346,8 @@ async function vLaundry(slug){
   <div class="sec" id="info">מידע</div>
   <div class="card mut" style="line-height:1.8">
    שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
+   <span style="color:#17303a;font-weight:700">חלונות איסוף:</span> ${winTxt('pickup')}<br>
+   <span style="color:#17303a;font-weight:700">חלונות החזרה:</span> ${winTxt('delivery')}<br>
    ${l.address?`כתובת: ${esc(l.address)}${l.city?', '+esc(l.city):''}<br>`:''}
    ${l.phone?`טלפון: <a href="tel:${esc(l.phone)}" style="color:#0e7a8a" dir="ltr">${esc(l.phone)}</a><br>`:''}
    ${l.terms?`תקנון: ${esc(l.terms)}`:''}
@@ -339,6 +356,22 @@ async function vLaundry(slug){
   <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div>${(rv.tags&&rv.tags.length)?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${rv.tags.map(t=>`<span class="tag tg">${esc(t)}</span>`).join('')}</div>`:''}</div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
   ${state.brandSlug===slug?`<div style="text-align:center;font-size:11px;color:#8a99a3;padding:2px 0 10px">מופעל ע״י מכבסה בקליק</div>`:''}
  </div>`;
+}
+/* E13.T4: חיפוש חי במחירון */
+function plFilter(txt){
+ const t=(txt||'').trim();
+ let shown=0;
+ document.querySelectorAll('.pl-row').forEach(r=>{const ok=!t||r.dataset.name.includes(t);r.style.display=ok?'':'none';if(ok)shown++});
+ const emp=document.getElementById('pl-empty');
+ if(emp)emp.style.display=shown?'none':'block';
+}
+/* E13.T4: שיתוף דף מכבסה */
+async function shareLaundry(name){
+ const url=location.href;
+ try{
+  if(navigator.share){await navigator.share({title:name,text:name+' — הזמנת כביסה במכבסה בקליק',url:url});return}
+  await navigator.clipboard.writeText(url);toast('הקישור הועתק — אפשר לשלוח לחברים');
+ }catch(e){if(e&&e.name!=='AbortError')toast('לא ניתן לשתף כרגע')}
 }
 function setQty(slug,itemId,delta){
  api('/laundries/'+slug).then(d=>{
