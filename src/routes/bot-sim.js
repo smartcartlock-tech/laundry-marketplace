@@ -31,7 +31,7 @@ async function botReply(message, user) {
   const m = String(message || '').trim();
   const low = m.toLowerCase();
   if (!m) return { reply: 'לא קיבלתי הודעה. נסו לכתוב משהו 🙂' };
-  if (/^(שלום|היי|הי|אהלן|בוקר טוב|ערב טוב|hi|hello)\b/.test(low)) {
+  if (/^(שלום|היי|הי|אהלן|בוקר טוב|ערב טוב|hello|hi)(?![a-z\u0590-\u05ff])/.test(low)) {
     return { reply: `שלום${user ? ' ' + user.name : ''}! 👋\n` + menuText() };
   }
   if (low.includes('מכבס')) {
