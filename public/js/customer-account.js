@@ -107,7 +107,7 @@
     if (!bar || bar.__wired) return;
     bar.__wired = true;
     let orders = [];
-    try{ const d = await api('/orders'); orders = d.orders || []; }catch(e){}
+    try{ const d = await api('/orders/mine'); orders = d.orders || []; }catch(e){}
     const apply = () => {
       const t = (document.getElementById('of-text').value || '').trim();
       const st = document.getElementById('of-status').value;
