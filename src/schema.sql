@@ -145,8 +145,21 @@ CREATE TABLE IF NOT EXISTS coupons (
   kind text NOT NULL CHECK (kind IN ('percent','amount')),
   value numeric(8,2) NOT NULL,
   active boolean DEFAULT true,
+  expires_at timestamptz,
+  min_order numeric(8,2) DEFAULT 0,
+  usage_limit int,
+  used_count int DEFAULT 0,
+  per_user_limit int,
+  reason text DEFAULT 'campaign',
   UNIQUE (tenant_id, code)
 );
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS min_order numeric(8,2) DEFAULT 0;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS usage_limit int;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS used_count int DEFAULT 0;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS per_user_limit int;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS reason text DEFAULT 'campaign';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id uuid REFERENCES coupons(id);
 
 CREATE TABLE IF NOT EXISTS courier_offers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -3,6 +3,7 @@ const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { notifyUser } = require('../notify');
 const { buildReceiptPDF } = require('../receipt');
+const { validateCoupon } = require('../coupons');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -17,7 +18,7 @@ async function event(orderId, status, actorId, note) {
 r.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, notes } = req.body || {};
+    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes } = req.body || {};
     if (!slug || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'חסרים פרטי הזמנה' });
     const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
     const tenant = t[0];
@@ -43,26 +44,38 @@ r.post('/', async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `מינימום הזמנה ₪${tenant.min_order}` });
     }
-    // מימוש נקודות: 1 נקודה = ₪1, עד תקרת אחוז מהסכום
-    let discount = 0, pointsRedeemed = 0;
+    // קופון: תיקוף + הנחה על סכום הפריטים
+    let coupon = null, couponDiscount = 0;
+    if (coupon_code) {
+      try {
+        const v = await validateCoupon(client, tenant, coupon_code, req.user.id, subtotal);
+        coupon = v.coupon; couponDiscount = v.discount;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        return res.status(err.status || 400).json({ error: err.error || 'קופון לא תקף' });
+      }
+    }
+    // מימוש נקודות: 1 נקודה = ₪1, עד תקרת אחוז מהסכום שנותר אחרי קופון
+    let discount = couponDiscount, pointsRedeemed = 0;
     if (redeem_points) {
       const { rows: bal } = await client.query(
         'SELECT COALESCE(sum(delta),0) AS bal FROM points_ledger WHERE tenant_id=$1 AND user_id=$2', [tenant.id, req.user.id]);
-      const maxDisc = Math.floor(subtotal * Number(tenant.points_redeem_max_pct || 0.2));
+      const remaining = Math.max(0, subtotal - couponDiscount);
+      const maxDisc = Math.floor(remaining * Number(tenant.points_redeem_max_pct || 0.2));
       pointsRedeemed = Math.min(Number(bal[0].bal), maxDisc);
-      discount = pointsRedeemed;
+      discount += pointsRedeemed;
     }
-    const total = subtotal + deliveryFee - discount;
+    const total = Math.max(0, subtotal + deliveryFee - discount);
     const pointsEarned = Math.floor(total * Number(tenant.points_earn_rate || 0));
     const payMethod = payment_method === 'demo_online' ? 'demo_online' : 'cash';
     const payStatus = payMethod === 'demo_online' ? 'paid_demo' : 'pending';
 
     const { rows: o } = await client.query(
       `INSERT INTO orders(tenant_id, customer_id, source, address, lat, lng, pickup_at, delivery_at,
-        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, notes)
-       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes)
+       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [tenant.id, req.user.id, address, lat || null, lng || null, pickup_at || null, delivery_at || null,
-       subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, notes || null]);
+       subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, coupon ? coupon.id : null, notes || null]);
     const order = o[0];
     for (const ln of lines) {
       await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
@@ -71,6 +84,9 @@ r.post('/', async (req, res) => {
     if (pointsRedeemed > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
         [tenant.id, req.user.id, -pointsRedeemed, 'מימוש נקודות בהזמנה', order.id]);
+    }
+    if (coupon) {
+      await client.query('UPDATE coupons SET used_count = used_count + 1 WHERE id=$1', [coupon.id]);
     }
     await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'new',$2,'הזמנה נוצרה')`, [order.id, req.user.id]);
     await client.query('COMMIT');
@@ -82,6 +98,22 @@ r.post('/', async (req, res) => {
     await client.query('ROLLBACK').catch(() => {});
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
+});
+
+
+// תצוגה מקדימה של קופון בעגלה: {slug, code, subtotal} -> {discount}
+r.post('/validate-coupon', async (req, res) => {
+  const { slug, code, subtotal } = req.body || {};
+  if (!slug || !code) return res.status(400).json({ error: 'חסרים פרטים' });
+  const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
+  const tenant = t[0];
+  if (!tenant) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  try {
+    const v = await validateCoupon({ query: (a, b) => q(a, b) }, tenant, code, req.user.id, Number(subtotal) || 0);
+    res.json({ ok: true, discount: v.discount, kind: v.coupon.kind, value: Number(v.coupon.value) });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.error || 'קופון לא תקף' });
+  }
 });
 
 // ההזמנות שלי (לקוח)

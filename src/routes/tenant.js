@@ -183,4 +183,55 @@ r.post('/orders/:id/assign', async (req, res) => {
   res.json({ ok: true, mode: 'offered', offer: off[0] });
 });
 
+
+// ניהול קופונים (מכבסה)
+r.get('/coupons', async (req, res) => {
+  const { rows } = await q(
+    `SELECT c.*, (SELECT count(*)::int FROM orders o WHERE o.coupon_id=c.id) AS redemptions
+     FROM coupons c WHERE c.tenant_id=$1 ORDER BY c.id DESC`, [req.tenant.id]);
+  res.json({ coupons: rows });
+});
+
+r.post('/coupons', async (req, res) => {
+  const { code, kind, value, expires_at, min_order, usage_limit, per_user_limit, reason } = req.body || {};
+  const c = String(code || '').trim();
+  if (!c || c.length > 40) return res.status(400).json({ error: 'קוד קופון חסר או ארוך מדי' });
+  if (!['percent', 'amount'].includes(kind)) return res.status(400).json({ error: 'סוג קופון לא תקין' });
+  const v = Number(value);
+  if (!(v > 0) || (kind === 'percent' && v > 100)) return res.status(400).json({ error: 'ערך קופון לא תקין' });
+  try {
+    const { rows } = await q(
+      `INSERT INTO coupons(tenant_id, code, kind, value, expires_at, min_order, usage_limit, per_user_limit, reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [req.tenant.id, c.toUpperCase(), kind, v, expires_at || null, Number(min_order) || 0,
+       usage_limit ? Math.max(1, parseInt(usage_limit)) : null,
+       per_user_limit ? Math.max(1, parseInt(per_user_limit)) : null,
+       String(reason || 'campaign').slice(0, 60)]);
+    res.status(201).json({ coupon: rows[0] });
+  } catch (e) {
+    if (String(e.message).includes('duplicate')) return res.status(409).json({ error: 'הקוד כבר קיים במכבסה' });
+    throw e;
+  }
+});
+
+r.patch('/coupons/:id', async (req, res) => {
+  const { active, expires_at, min_order, usage_limit, per_user_limit } = req.body || {};
+  const { rows } = await q(
+    `UPDATE coupons SET
+       active = COALESCE($3, active),
+       expires_at = COALESCE($4, expires_at),
+       min_order = COALESCE($5, min_order),
+       usage_limit = COALESCE($6, usage_limit),
+       per_user_limit = COALESCE($7, per_user_limit)
+     WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+    [req.params.id, req.tenant.id,
+     typeof active === 'boolean' ? active : null,
+     expires_at || null,
+     min_order !== undefined ? Number(min_order) : null,
+     usage_limit !== undefined ? (usage_limit === null ? null : Math.max(1, parseInt(usage_limit))) : null,
+     per_user_limit !== undefined ? (per_user_limit === null ? null : Math.max(1, parseInt(per_user_limit))) : null]);
+  if (!rows[0]) return res.status(404).json({ error: 'קופון לא נמצא' });
+  res.json({ coupon: rows[0] });
+});
+
 module.exports = r;
