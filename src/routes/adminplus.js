@@ -51,6 +51,7 @@ r.get('/onboarding', async (req, res) => {
   const { rows } = await q(
     `SELECT t.id, t.slug, t.name, t.city, t.approved, t.created_at,
             COALESCE(o.stage, 'agreement') AS stage, o.notes, o.updated_at AS stage_updated_at,
+            t.accepted_terms_at, t.accepted_terms_version,
             (SELECT count(*) FROM price_items p WHERE p.tenant_id=t.id)::int AS price_items
      FROM tenants t LEFT JOIN tenant_onboarding o ON o.tenant_id=t.id
      ORDER BY t.created_at DESC`, []);
