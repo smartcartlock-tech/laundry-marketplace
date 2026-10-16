@@ -38,6 +38,12 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
   // שגיאת לקוח (JSON לא תקין, גוף גדול מדי וכו׳) — לא תקלת שרת, לא נרשם ביומן
   const status = Number(err.status || err.statusCode);
   if (status >= 400 && status < 500) return res.status(status).json({ error: err.message || 'bad request' });
+  // שגיאות העלאה הן שגיאות לקוח — לא תקלת שרת, לא מפעילות התראת אדמין
+  if (err.name === 'MulterError') {
+    const st = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(st).json({ error: st === 413 ? 'הקובץ גדול מהמותר' : 'קובץ לא תקין' });
+  }
+  if (err.code === 'BAD_FILE_TYPE') return res.status(415).json({ error: err.message });
   console.error('[error]', req.method, req.originalUrl, err.message);
   logError(err, req).catch(() => {});
   res.status(500).json({ error: 'server error' });

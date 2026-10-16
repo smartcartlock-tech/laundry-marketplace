@@ -10,7 +10,7 @@ const { fileFilter, verifyFile, IMAGES } = require('../uploads');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 5 }, fileFilter: fileFilter(IMAGES) });
 
 // שלב 1: העלאת תמונות מחירון/שעות/תקנון → Gemini מחלץ טיוטת פרופיל
-r.post('/extract', upload.array('files', 5), async (req, res) => {
+r.post('/extract', require('../ratelimit').limiter('onboard-extract', 10, 10 * 60 * 1000, req => req.ip), upload.array('files', 5), async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return res.status(503).json({ error: 'שירות החילוץ אינו זמין כרגע' });

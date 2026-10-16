@@ -10,9 +10,21 @@ r.get('/push/vapid-public-key', async (req, res) => {
   res.json({ key: await publicKey() });
 });
 
+function validSubscription(sub) {
+  if (!sub || typeof sub.endpoint !== 'string' || sub.endpoint.length > 500) return false;
+  try {
+    const u = new URL(sub.endpoint);
+    if (u.protocol !== 'https:') return false; // שירותי push לגיטימיים הם https בלבד
+  } catch { return false; }
+  const k = sub.keys || {};
+  const b64u = /^[A-Za-z0-9\-_]+={0,2}$/;
+  return typeof k.p256dh === 'string' && k.p256dh.length <= 200 && b64u.test(k.p256dh)
+      && typeof k.auth === 'string' && k.auth.length <= 100 && b64u.test(k.auth);
+}
+
 r.post('/push/subscribe', requireAuth, async (req, res) => {
   const sub = (req.body || {}).subscription;
-  if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth)
+  if (!validSubscription(sub))
     return res.status(400).json({ error: 'מנוי לא תקין' });
   await q(
     `INSERT INTO push_subscriptions(user_id, endpoint, keys) VALUES ($1,$2,$3)

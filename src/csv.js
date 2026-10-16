@@ -1,6 +1,8 @@
 // E11.T2: ייצוא CSV עם BOM כדי שעברית תיפתח תקין ב-Excel
 function escCell(v) {
-  const s = String(v ?? '');
+  let s = String(v ?? '');
+  // ניטרול הזרקת נוסחאות ב-Excel/Sheets: תא שמתחיל ב-= + - @ מקבל קידומת גרש
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 function toCsv(rows) {

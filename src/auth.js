@@ -5,7 +5,7 @@ const { q } = require('./db');
 const SECRET = () => {
   const s = process.env.JWT_SECRET;
   if (s) return s;
-  if (process.env.NODE_ENV === 'test' || process.env.PGSCHEMA) return 'test-secret'; // הרמת טסטים תמיד עם PGSCHEMA
+  if (process.env.NODE_ENV === 'test') return 'test-secret';
   throw new Error('JWT_SECRET is required — refusing to use the insecure default');
 };
 

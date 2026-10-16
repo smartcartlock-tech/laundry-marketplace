@@ -10,6 +10,7 @@ app.set('trust proxy', 1); // Render proxy — req.ip אמיתי ל-rate limitin
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'DENY');
+  res.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains'); // HSTS — https בלבד למשך חצי שנה
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'");
   // B7 שלב א: מדיניות מחמירה (בלי unsafe-inline בסקריפטים) במצב Report-Only — אוספת הפרות בלי לשבור

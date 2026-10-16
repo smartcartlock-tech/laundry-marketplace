@@ -7,7 +7,7 @@ const SCHEMA = process.env.PGSCHEMA || null; // הפרדת סכימה כשחול
 
 const pool = new Pool({
   connectionString,
-  ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: false },
+  ssl: /localhost|127\.0\.0\.1/.test(connectionString) ? false : { rejectUnauthorized: true }, // אימות תעודה מלא — הגנה מ-MITM מול Neon
   max: 8,
   ...(SCHEMA ? { options: `-c search_path=${SCHEMA},public` } : {}),
 });
