@@ -42,6 +42,7 @@ app.use('/api', require('./routes/push')); // E9.T3: web push
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
 
+app.get('/favicon.ico', (req, res) => res.redirect(301, '/icon-192.png'));
 app.use('/', require('./routes/seo')); // E8.T2: /area/:city, sitemap.xml, robots.txt
 
 // PWA סטטי + נפילה ל-index.html לנתיבי SPA

@@ -52,8 +52,9 @@ function laundryCards(rows) {
 r.get('/area/:city', async (req, res) => {
   const city = decodeURIComponent(req.params.city).trim();
   if (!city || city.length > 60) return res.status(404).send('not found');
-  const rows = await laundriesByCity(city);
   const { rows: cities } = await q('SELECT DISTINCT city FROM tenants WHERE approved AND city IS NOT NULL ORDER BY city', []);
+  if (!cities.some(c => c.city === city)) return res.status(404).send('not found');
+  const rows = await laundriesByCity(city);
   const title = `מכבסות ב${city} — איסוף ומשלוח | מכבסה בקליק`;
   const description = rows.length
     ? `${rows.length} מכבסות ב${city} עם איסוף ומשלוח עד הבית: ${rows.slice(0, 3).map(x => x.name).join(', ')}${rows.length > 3 ? ' ועוד' : ''}. הזמנה אונליין, מחירון שקוף, תשלום מאובטח.`

@@ -16,10 +16,9 @@ test('E8.T2: דף SEO לעיר — HTML מלא, title/description/canonical די
   assert.ok(html.includes('/area/%D7%97%D7%99%D7%A4%D7%94') || html.includes('/area/חיפה'), 'canonical מצביע לדף העיר');
   assert.ok(html.includes('מכבסת הכרמל'), 'מכבסה אמיתית מה-DB מופיעה');
   assert.ok(html.includes('dir="rtl"'), 'RTL');
-  // עיר ללא מכבסות — עמוד תקין עם הודעה
+  // עיר לא קיימת — 404 (דרישת QA)
   const empty = await fetch(base + '/area/' + encodeURIComponent('עיירת פלא'));
-  assert.equal(empty.status, 200);
-  assert.ok((await empty.text()).includes('עדיין אין מכבסות'));
+  assert.equal(empty.status, 404);
 });
 
 test('E8.T2: sitemap.xml ו-robots.txt תקינים', async (t) => {

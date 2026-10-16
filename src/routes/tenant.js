@@ -39,7 +39,7 @@ r.post('/orders/:id/status', async (req, res) => {
     const order = o[0];
     if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
     const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
-    if (status !== 'cancelled' && nxt <= cur) return res.status(409).json({ error: 'לא ניתן לחזור אחורה בסטטוס' });
+    if (status !== 'cancelled' && nxt !== cur + 1) return res.status(409).json({ error: 'מעבר סטטוס חייב להיות לשלב הבא ברצף' });
     if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
       return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
     }
