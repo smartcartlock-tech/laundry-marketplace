@@ -39,13 +39,17 @@ function isQuietTime(now = jerusalemNow()) {
   return { quiet: false };
 }
 
+// שעון בר-החזרה לבדיקות (injectable clock): בפרוד תמיד jerusalemNow
+let clockFn = jerusalemNow;
+function __setClock(fn) { clockFn = fn || jerusalemNow; }
+
 // האם למשתמש מופעל שקט שבת/חג וכרגע זמן שקט
 async function shabbatMuted(userId) {
   try {
     const { rows } = await require('./db').q('SELECT quiet_shabbat FROM user_notification_prefs WHERE user_id=$1', [userId]);
     if (!rows[0] || !rows[0].quiet_shabbat) return false;
-    return isQuietTime().quiet;
+    return isQuietTime(clockFn()).quiet;
   } catch (e) { return false; } // טעות בקריאה — לא חוסמים הודעות
 }
 
-module.exports = { isQuietTime, shabbatMuted, jerusalemNow };
+module.exports = { isQuietTime, shabbatMuted, jerusalemNow, __setClock };

@@ -55,8 +55,12 @@ async function botReply(message, user, req) {
     const p = takePending(pendKey(user, req, codeM));
     if (!p || p.action !== 'cancel') return { reply: `אין בקשת ביטול ממתינה לקוד ${codeM.toUpperCase()}. כתבו "בטל הזמנה ${codeM.toUpperCase()}" כדי להתחיל.` };
     const o = p.order;
-    if (!['new', 'confirmed'].includes(o.status)) return { reply: `ההזמנה כבר בסטטוס "${ST_HE[o.status] || o.status}" ולא ניתן לבטל אותה בבוט.` };
-    await q("UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1", [o.id]);
+    // נעילה אופטימית: מבטלים רק אם הסטטוס עדיין new/confirmed ברגע האישור — מנצח אחד בלבד ב-race
+    const { rowCount } = await q("UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1 AND status IN ('new','confirmed')", [o.id]);
+    if (!rowCount) {
+      const cur = await findOrderByCode(codeM);
+      return { reply: `ההזמנה כבר בסטטוס "${ST_HE[cur ? cur.status : ''] || 'לא ידוע'}" — הביטול לא בוצע (ייתכן שאושר או בוטל במקביל).` };
+    }
     await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'cancelled',$2,'בוטל דרך סימולציית הבוט באישור מפורש')", [o.id, user ? user.id : null]);
     return { reply: `ההזמנה אצל ${o.tenant_name} (קוד ${codeM.toUpperCase()}) בוטלה ✅ (סימולציה — נתוני דמו).` };
   }
@@ -65,7 +69,8 @@ async function botReply(message, user, req) {
     const pick = (m.match(/([1-3])(?![0-9])/) || [])[1];
     if (!p || p.action !== 'reschedule' || !pick) return { reply: `אין בקשת שינוי ממתינה לקוד ${codeM.toUpperCase()}. כתבו "שנה חלון איסוף ${codeM.toUpperCase()}" כדי לראות אפשרויות.` };
     const slot = p.options[Number(pick) - 1];
-    await q('UPDATE orders SET pickup_at=$1, updated_at=now() WHERE id=$2', [slot.at, p.order.id]);
+    const { rowCount } = await q("UPDATE orders SET pickup_at=$1, updated_at=now() WHERE id=$2 AND status NOT IN ('delivered','cancelled')", [slot.at, p.order.id]);
+    if (!rowCount) return { reply: 'ההזמנה כבר נמסרה או בוטלה במקביל — חלון האיסוף לא שונה.' };
     await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)", [p.order.id, p.order.status, user ? user.id : null, `חלון איסוף שונה דרך סימולציית הבוט ל-${slot.label}`]);
     return { reply: `חלון האיסוף להזמנה ${codeM.toUpperCase()} עודכן: ${slot.label} ✅ (סימולציה — נתוני דמו).` };
   }
