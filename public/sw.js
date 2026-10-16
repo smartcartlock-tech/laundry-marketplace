@@ -1,5 +1,5 @@
 const C='mbk-v7';
-const A=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./js/core.js','./js/tabs.js','./js/auth.js','./js/marketplace.js','./js/checkout.js','./js/orders.js','./js/club.js','./js/courier.js','./js/manage.js','./js/community.js','./js/admin.js','./js/join.js','./js/pay.js','./js/router.js','./js/issues.js','./js/push.js','./js/mode-banner.js','./js/tenant-checklist.js','./js/apply.js'];
+const A=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./js/core.js','./js/tabs.js','./js/auth.js','./js/marketplace.js','./js/checkout.js','./js/orders.js','./js/club.js','./js/courier.js','./js/manage.js','./js/community.js','./js/admin.js','./js/join.js','./js/pay.js','./js/router.js','./js/issues.js','./js/push.js','./js/mode-banner.js','./js/tenant-checklist.js','./js/apply.js','./js/analytics.js'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(A)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(
   caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>clients.claim()))});
