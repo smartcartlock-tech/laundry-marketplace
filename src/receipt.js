@@ -153,7 +153,7 @@ module.exports = { buildReceiptPDF, drawRtl, splitRuns };
 // עד לרישום התוכנה ברשות המסים, וסימון "העתק" בהפקה חוזרת.
 const KIND_TITLE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
 const bwipjs = require('bwip-js');
-const APP_BASE_URL = process.env.APP_BASE_URL || 'https://washup-qa0d.onrender.com';
+const APP_BASE_URL = process.env.APP_BASE_URL || 'https://laundry-marketplace-ay5h.onrender.com';
 
 
 // QR לסריקה (עמוד אימות ציבורי) + ברקוד Code128 של מזהה המסמך — אפס עלות, נוצר מקומית
