@@ -31,7 +31,7 @@
   document.addEventListener('change', async (ev)=>{
     const inp = ev.target;
     if (!(inp instanceof HTMLInputElement) || inp.type !== 'file' || !inp.files || !inp.files.length) return;
-    if (![...inp.files].some(f=>/^image\//.test(f.type) && f.size > TARGET)) return;
+    if (![...inp.files].some(f=>!done.has(f) && /^image\//.test(f.type) && f.size > TARGET)) return;
     ev.stopImmediatePropagation(); /* ה-handler המקורי יורץ מחדש אחרי ההחלפה */
     const dt = new DataTransfer();
     for (const f of inp.files) dt.items.add(await compress(f));
