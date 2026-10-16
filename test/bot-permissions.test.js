@@ -27,8 +27,12 @@ test('סשן בוט מבודד: הזמנה של לקוח אחר → 404/403, ש�
   assert.equal(oB.status, 201);
 
   // סשן בוט מרכזי ללקוח A
-  const [sess] = await dbQuery(schema, 'INSERT INTO bot_sessions(phone, tenant_id) VALUES ($1,$2) RETURNING token', ['+972500000201', tid.id]);
-  const sKey = sess.token;
+  // N5: טוקני סשן נשמרים כ-sha256 — הבדיקה מכניסה hash ומשתמשת בטוקן הגלוי כמפתח
+  const crypto = require('crypto');
+  const rawToken = crypto.randomBytes(24).toString('hex');
+  const rawHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  await dbQuery(schema, 'INSERT INTO bot_sessions(phone, tenant_id, token, token_hash) VALUES ($1,$2,NULL,$3)', ['+972500000201', tid.id, rawHash]);
+  const sKey = rawToken;
 
   // ההזמנה של A נגישה
   const mine = await api('/api/bot/orders/' + oA.json.order_id, { apiKey: sKey });

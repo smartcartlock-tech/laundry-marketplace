@@ -18,6 +18,8 @@ async function sendCode(target, code, { kind = 'phone', demoOtp = false } = {}) 
   if (wantReal && kind === 'phone') {
     const r = await sendWhatsApp(target, `קוד הכניסה שלך ל״מכבסה בקליק״: ${code}`);
     if (r.sent) return { sent: true, channel: 'whatsapp', demoCode: demoOtp ? code : undefined };
+    // ממצא 6: הבוט בסימולציה (סנדבוקס) — ההודעה טופלה, לא להחזיר 503
+    if (r.via === 'bot-simulated') return { sent: true, channel: 'whatsapp-sim', demoCode: demoOtp ? code : undefined };
     if (provider !== 'auto') return { sent: false, channel: 'whatsapp', reason: r.reason };
   }
   // demo מותר רק במצב demo — ב-pilot לעולם לא מוצג קוד (A2)

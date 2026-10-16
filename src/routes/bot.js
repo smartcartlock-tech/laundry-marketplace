@@ -5,6 +5,7 @@ const { notifyUser } = require('../notify');
 const { uuidParams } = require('../validate');
 
 const r = express.Router();
+r.use(require('../ratelimit').limiter('bot', 300, 60 * 1000, (req) => req.ip)); // ממצא 7: rate limit
 
 const STATUS_HE = { new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך אליך',delivered:'הוחזרה',cancelled:'בוטלה' };
 
@@ -19,7 +20,7 @@ async function botAuth(req, res, next) {
   // E10.T1: מפתח שיחה זמני מהבוט המרכזי (handoff) — מוגבל לטלפון השיחה ולמכבסה אחת
   const { rows: sess } = await q(
     `SELECT bs.phone AS bot_phone, t.* FROM bot_sessions bs JOIN tenants t ON t.id=bs.tenant_id
-     WHERE bs.token=$1 AND bs.expires_at > now() AND t.approved`, [key]);
+     WHERE bs.token_hash=$1 AND bs.expires_at > now() AND t.approved`, [keyHash]);
   if (sess[0]) { req.tenant = sess[0]; req.botPhone = sess[0].bot_phone; return next(); }
   return res.status(401).json({ error: 'invalid api key' });
 }
@@ -39,12 +40,15 @@ r.get('/windows', async (req, res) => {
 r.post('/orders', async (req, res) => {
   const client = await pool.connect();
   try {
+    await client.query('BEGIN'); // ממצא 3: ה-COMMIT/ROLLBACK היו ריקים בלי טרנזקציה
     let { phone, name, items, address, pickup_at, notes } = req.body || {};
     if (req.botPhone) phone = phone || req.botPhone; // סשן בוט מרכזי: הטלפון נקבע מההקשר
-    if (!phone || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'phone, items, address required' });
+    if (!phone || !Array.isArray(items) || !items.length || !address) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'phone, items, address required' }); }
     let p = String(phone).replace(/[^\d+]/g, '');
     if (p.startsWith('0')) p = '+972' + p.slice(1);
-    if (req.botPhone && p !== req.botPhone) return res.status(403).json({ error: 'מפתח השיחה מוגבל לטלפון שאיתו נוצר' });
+    if (p.startsWith('972')) p = '+' + p; // ממצא 5: נרמול 972 בלי פלוס
+    if (!/^\+972\d{8,9}$/.test(p)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'פורמט טלפון לא תקין' }); } // ממצא 5: אימות פורמט
+    if (req.botPhone && p !== req.botPhone) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'מפתח השיחה מוגבל לטלפון שאיתו נוצר' }); }
     let { rows: u } = await client.query('SELECT * FROM users WHERE phone=$1', [p]);
     if (!u[0]) u = (await client.query('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [p, name || null])).rows;
     const user = u[0];
@@ -54,7 +58,9 @@ r.post('/orders', async (req, res) => {
     for (const it of items) {
       const db = dbItems.find(d => d.id === it.item_id);
       if (!db) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'unknown item ' + it.item_id }); }
-      const qty = Number(it.qty) || 1;
+      const qtyRaw = it.qty === undefined || it.qty === null ? 1 : Number(it.qty);
+      if (!Number.isInteger(qtyRaw) || qtyRaw < 1 || qtyRaw > 99) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'כמות לא תקינה (1-99) לפריט ' + it.item_id }); } // ממצא 4
+      const qty = qtyRaw;
       subtotal += Number(db.price) * qty;
       lines.push({ item_id: db.id, name: db.name, price: db.price, qty });
     }

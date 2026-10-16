@@ -1,6 +1,11 @@
-// שליחת הודעות וואטסאפ דרך Twilio (סנדבוקס/פרודקשן). נופל בשקט ל-log בלבד.
+// שליחת הודעות וואטסאפ דרך הבוט של CleanShop (או Twilio כשהבוט לא מוגדר). נופל בשקט ל-log בלבד.
+// כללי בטיחות (ממצאי בודק בוט, אוקט 26 + שומר G5 של אפיק A — רשימת היתר אחת משותפת):
+//  * כשהבוט מוגדר — הוא הערוץ היחיד. אין נפילה ל-Twilio ישיר אחרי דחייה/כשל של הבוט (רשימת ההיתר שלו לא נעקפת).
+//  * במצב demo — שליחה ישירה ב-Twilio רק ל-DEMO_NOTIFY_ALLOWLIST (config; ב-render.yaml: מספר חיים); השאר סימולציה בלוג.
+//  * ל-fetch יוצא יש timeout של 5 שניות.
 const { q } = require('./db');
 const { sendPushToUser } = require('./push');
+const { isDemo, DEMO_NOTIFY_ALLOWLIST } = require('./config');
 
 let twilioClient = null;
 function twilio() {
@@ -11,8 +16,12 @@ function twilio() {
   return false;
 }
 
+function botConfigured() {
+  return !!(process.env.BOT_OUTBOUND_URL && process.env.BOT_OUTBOUND_KEY);
+}
+
 // E10.T4: שליחה יזומה דרך הבוט של CleanShop — הוא בעל המספר והסשן, אז ההודעה יוצאת ממנו.
-// מופעל רק כש-BOT_OUTBOUND_URL + BOT_OUTBOUND_KEY מוגדרים; אחרת נופל ל-Twilio ישיר/לוג.
+// מופעל רק כש-BOT_OUTBOUND_URL + BOT_OUTBOUND_KEY מוגדרים.
 async function sendViaBot(toE164, body, tag) {
   const url = process.env.BOT_OUTBOUND_URL, key = process.env.BOT_OUTBOUND_KEY;
   if (!url || !key) return { sent: false, reason: 'bot-not-configured' };
@@ -21,6 +30,7 @@ async function sendViaBot(toE164, body, tag) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-outbound-key': key },
       body: JSON.stringify({ to: toE164, body, tag }),
+      signal: AbortSignal.timeout(5000), // ממצא 2: לא להיתקע בלי timeout
     });
     const d = await r.json().catch(() => ({}));
     if (r.ok && (d.status === 'sent' || d.status === 'simulated')) return { sent: d.status === 'sent', via: `bot-${d.status}` };
@@ -32,14 +42,13 @@ async function sendViaBot(toE164, body, tag) {
 }
 
 async function sendWhatsApp(toE164, body) {
-  // G5: במצב דמו לא יוצאת הודעה אמיתית למספר שלא ברשימת ההיתר — נרשם כסימולציה (בקשת המשתמש; תואם עם J)
-  const { isDemo, DEMO_NOTIFY_ALLOWLIST } = require('./config');
+  // ממצא 1: כשהבוט מוגדר הוא הערוץ היחיד — דחייה/כשל שלו סופיים, בלי עקיפה דרך Twilio ישיר.
+  if (botConfigured()) return sendViaBot(toE164, body, 'notify');
+  // G5 + ממצא 1: בדמו, שליחה ישירה ב-Twilio רק לרשימת ההיתר — אחרת סימולציה בלוג, לא פונים לאנשים אמיתיים.
   if (isDemo && !DEMO_NOTIFY_ALLOWLIST.includes(toE164)) {
-    console.log(`[notify] demo: שליחה אמיתית ל-${toE164} נחסמה (לא ב-DEMO_NOTIFY_ALLOWLIST) — סומלה כסימולציה`);
+    console.log(`[notify] demo: שליחה אמיתית ל-${toE164} נחסמה (לא ב-DEMO_NOTIFY_ALLOWLIST) — סומנה כסימולציה`);
     return { sent: false, simulated: true, reason: 'demo-not-allowlisted' };
   }
-  const viaBot = await sendViaBot(toE164, body, 'notify');
-  if (viaBot.sent || viaBot.via === 'bot-simulated') return viaBot;
   const client = twilio();
   const from = process.env.TWILIO_WHATSAPP_FROM; // e.g. whatsapp:+14155238886
   if (!client || !from) return { sent: false, reason: 'twilio-not-configured' };
@@ -61,11 +70,11 @@ async function notifyUser(userId, tenantId, body, phone) {
     await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [userId, tenantId, 'muted', body, false]).catch(() => {});
     return;
   }
-  // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג
+  // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג רק אם ה-push לא הצליח (ממצא 6: לא דורסים sent מוצלח)
   try { const p = await sendPushToUser(userId, { title: 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
-  if (phone) {
+  if (!sent && phone) {
     const r = await sendWhatsApp(phone, body);
-    sent = r.sent; channel = 'whatsapp';
+    if (r.sent || r.via === 'bot-simulated') { sent = true; channel = 'whatsapp'; }
   }
   await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)',
     [userId, tenantId, channel, body, sent]);

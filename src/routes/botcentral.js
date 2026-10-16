@@ -5,11 +5,19 @@ const crypto = require('crypto');
 const { q } = require('../db');
 
 const r = express.Router();
+r.use(require('../ratelimit').limiter('botcentral', 120, 60 * 1000, (req) => req.ip)); // ממצא 7: rate limit
 async function centralAuth(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!key) return res.status(401).json({ error: 'missing api key' });
-  const { rows } = await q('SELECT key FROM platform_keys WHERE name=$1', ['bot_central']);
-  const a = Buffer.from(String(key)), b = Buffer.from(String(rows[0] && rows[0].key || ''));
+  // ממצא 7: השוואת hash מול hash (המפתח הגלוי מוצג לאדמין פעם אחת ביצירה/רוטציה)
+  const keyHash = crypto.createHash('sha256').update(String(key)).digest('hex');
+  const { rows } = await q('SELECT key, key_hash FROM platform_keys WHERE name=$1', ['bot_central']);
+  // שורה שנוצרה בלי hash (מעבר) — מגבבים במקום פעם אחת
+  if (rows[0] && !rows[0].key_hash) {
+    rows[0].key_hash = crypto.createHash('sha256').update(String(rows[0].key)).digest('hex');
+    await q('UPDATE platform_keys SET key_hash=$1 WHERE name=$2', [rows[0].key_hash, 'bot_central']);
+  }
+  const a = Buffer.from(keyHash), b = Buffer.from(String(rows[0] && rows[0].key_hash || ''));
   if (!rows[0] || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'invalid api key' });
   next();
 }
@@ -42,10 +50,14 @@ r.post('/handoff', async (req, res) => {
   if (p.startsWith('0')) p = '+972' + p.slice(1);
   const { rows: t } = await q('SELECT id, slug, name FROM tenants WHERE slug=$1 AND approved', [slug]);
   if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  // ממצא 7: הטוקן נוצר כאן, נשמר רק כ-hash, ומוחזר לבוט פעם אחת בתגובה
+  const plainToken = crypto.randomBytes(24).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(plainToken).digest('hex');
   const { rows: s } = await q(
-    'INSERT INTO bot_sessions(phone, tenant_id) VALUES ($1,$2) RETURNING token, expires_at', [p, t[0].id]);
+    'INSERT INTO bot_sessions(phone, tenant_id, token, token_hash) VALUES ($1,$2,NULL,$3) RETURNING expires_at',
+    [p, t[0].id, tokenHash]);
   res.status(201).json({
-    session_key: s[0].token,
+    session_key: plainToken,
     expires_at: s[0].expires_at,
     tenant: { slug: t[0].slug, name: t[0].name },
     usage: 'השתמשו במפתח כ-X-Api-Key מול /api/bot/* — ההזמנות ישויכו לטלפון השיחה',
