@@ -718,3 +718,10 @@ CREATE TABLE IF NOT EXISTS user_addresses (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS user_addresses_user_idx ON user_addresses(user_id);
+
+-- E14.T1: עגלה בענן (רשומה אחת לכל משתמש)
+CREATE TABLE IF NOT EXISTS user_carts (
+  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  items jsonb NOT NULL DEFAULT '[]',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

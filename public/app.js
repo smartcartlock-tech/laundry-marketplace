@@ -30,7 +30,18 @@ async function applyBrandTheme(slug){
   const mf=document.querySelector('link[rel=manifest]');if(mf)mf.href='/api/laundries/'+slug+'/manifest.webmanifest';
  }catch(e){}
 }
-function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier)}
+function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier);syncCartCloud()}
+/* E14.T1: עגלה בענן — דחיפה מדולדלת אחרי כל שינוי סל (מחוברים בלבד) */
+let cartSyncTimer=null;
+function syncCartCloud(){
+ if(!state.token)return;
+ clearTimeout(cartSyncTimer);
+ cartSyncTimer=setTimeout(()=>{api('/cart',{method:'PUT',body:JSON.stringify({items:state.cart})}).catch(()=>{})},800);
+}
+async function adoptCloudCart(){
+ if(!state.token)return;
+ try{const d=await api('/cart');if(d.items&&d.items.length&&!state.cart.length){state.cart=d.items;store.set('cart',state.cart)}}catch(e){}
+}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 /* פתוח כעת: is_open ידני + שעות פעילות (אזור זמן ישראל). בלי שעות מוגדרות — לפי is_open בלבד */
 function openNow(l){
@@ -202,6 +213,14 @@ function homeFilterReset(){
  homeFilter();
 }
 async function vHome(q){
+ /* E14.T3: התראת שינוי סטטוס בדף הבית (למשל "המכבסה אישרה") — מול תמונת הסטטוסים מהביקור הקודם */
+ let orderNews=[];
+ if(state.token){try{
+  const om=await api('/orders/mine');
+  const seen=store.get('orderStatus',{});
+  orderNews=om.orders.filter(o=>seen[o.id]&&seen[o.id]!==o.status&&!['delivered','cancelled'].includes(seen[o.id])).slice(0,3);
+  const snap={};om.orders.forEach(o=>{snap[o.id]=o.status});store.set('orderStatus',snap);
+ }catch(e){}}
  /* E13.T8: היסטוריית חיפושים מקומית (עד 5) */
  if(q){let hs=store.get('searches',[]).filter(x=>x!==q);hs.unshift(q);store.set('searches',hs.slice(0,5))}
  let laundries=[],offlineData=false;
@@ -217,6 +236,7 @@ async function vHome(q){
  </div>
  <div class="body">
   ${offlineData?'<div class="card warn" style="text-align:center">אין חיבור לרשת — מוצגת רשימת המכבסות שנשמרה במכשיר, וחלק מהפרטים עשויים להשתנות</div>':''}
+  ${orderNews.map(n=>`<div class="card" style="background:#e8f7ee;border-color:#cbe9d6;cursor:pointer" onclick="go('#/orders/${n.id}')"><b style="color:#178a4c">✓ ${esc(n.tenant_name)} — ההזמנה ${HE[n.status]||n.status}</b><div class="mut">לחצו לצפייה במעקב ההזמנה</div></div>`).join('')}
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
@@ -315,6 +335,9 @@ async function vLaundry(slug){
  if(state.token){try{const sm=await api('/subscriptions/mine');mySub=sm.subscriptions.find(x=>x.slug===slug&&x.status!=='cancelled')}catch(e){}}
  const cartItems=state.cart.filter(c=>c.slug===slug);
  const cartTotal=cartItems.reduce((s,c)=>s+c.price*c.qty,0);
+ /* E14.T2: השוואת מחירים מול מכבסות אחרות (אותו פריט, אותה יחידה) */
+ let cmp={};
+ try{const cd=await api('/laundries/'+slug+'/price-compare');cmp=cd.compare||{}}catch(e){}
  /* E13.T4: מחירון מקובץ לקטגוריות עם קפיצה וחיפוש */
  const cats=[];const byCat={};
  d.items.forEach(it=>{const c=it.category||'כללי';if(!byCat[c]){byCat[c]=[];cats.push(c)}byCat[c].push(it)});
@@ -341,8 +364,8 @@ async function vLaundry(slug){
   ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" onclick="document.getElementById('pcat-${i}').scrollIntoView({behavior:'smooth'})">${esc(c)}</a>`).join('')}</div>`:''}
   ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
   <div class="card">
-   ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);return `<div class="row pl-row" data-name="${esc(it.name)}">
-     <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div></div>
+   ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);const cp=cmp[it.name+'|'+it.unit];return `<div class="row pl-row" data-name="${esc(it.name)}">
+     <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div>${cp?`<a href="#/laundry/${cp.slug}" style="text-decoration:none"><span class="tag tg" style="margin-top:3px">זול יותר ב־₪${cp.other_price} ב${esc(cp.laundry_name)}</span></a>`:''}</div>
      ${cr?`<span class="stepper"><button onclick="setQty('${slug}','${it.id}',-1)">−</button><b>${cr.qty}</b><button onclick="setQty('${slug}','${it.id}',1)">+</button></span>`
         :`<button class="btn2" onclick="setQty('${slug}','${it.id}',1)">הוספה</button>`}
     </div>`}).join('')}
@@ -375,6 +398,16 @@ function plFilter(txt){
  document.querySelectorAll('.pl-row').forEach(r=>{const ok=!t||r.dataset.name.includes(t);r.style.display=ok?'':'none';if(ok)shown++});
  const emp=document.getElementById('pl-empty');
  if(emp)emp.style.display=shown?'none':'block';
+}
+/* E14.T4: שיתוף פרטי הזמנה (סיכום טקסטואלי + קישור; הקישור דורש התחברות של בעל ההזמנה) */
+async function shareOrder(id){
+ try{
+  const d=await api('/orders/'+id);const o=d.order;
+  const txt=`הזמנה ב${o.tenant_name} (${fmtDT(o.created_at)}) · סטטוס: ${HE[o.status]||o.status} · סה״כ ₪${o.total}`;
+  const url=location.origin+'/#/orders/'+id;
+  if(navigator.share){await navigator.share({title:'ההזמנה שלי במכבסה בקליק',text:txt,url:url});return}
+  await navigator.clipboard.writeText(txt+'\n'+url);toast('פרטי ההזמנה הועתקו לשיתוף');
+ }catch(e){if(e&&e.name!=='AbortError')toast('לא ניתן לשתף כרגע')}
 }
 /* E13.T6: מועדפים — שמירה מקומית, סימון בדף מכבסה וסינון בבית */
 function isFav(slug){return store.get('favs',[]).some(f=>f.slug===slug)}
@@ -583,6 +616,7 @@ async function vOrder(id){
   </div>
   ${isMine?`<div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><b>עדכוני סטטוס בזמן אמת</b><div class="mut">התראה בכל שינוי סטטוס — גם כשהאפליקציה סגורה</div></div><button class="btn2 on" id="push-btn" onclick="pushSubscribe()">🔔 הפעלה</button></div>`:''}`}
   ${isMine&&(o.status==='delivered'||o.status==='cancelled')?`<button class="btn" style="margin-bottom:12px" onclick="reorder('${o.id}','${o.slug}')">↻ הזמנה חוזרת — אותם פריטים שוב</button>`:''}
+  ${isMine?`<div style="text-align:center;margin-bottom:12px"><button class="btn2" onclick="shareOrder('${o.id}')">⤴ שיתוף פרטי ההזמנה</button></div>`:''}
   <div class="card">
    ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${it.qty} × ₪${it.price}</div></div>`).join('')}
    <div class="row"><div class="mut">שליחות</div><div>₪${o.delivery_fee}</div></div>
@@ -1777,7 +1811,7 @@ window.addEventListener('storage',e=>{
 });
 (async()=>{
  try{state.cfg=await api('/config')}catch(e){state.cfg={}}
- if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){state.token=null;state.me=null;save()}}
+ if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save();await adoptCloudCart()}catch(e){state.token=null;state.me=null;save()}}
  route();
 })();
 

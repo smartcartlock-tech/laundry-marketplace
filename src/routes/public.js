@@ -49,6 +49,27 @@ r.get('/laundries/:slug', async (req, res) => {
   res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows });
 });
 
+// E14.T2: השוואת מחירים — לכל פריט במכבסה, המחיר הזול ביותר אצל מתחרים (אותו שם + אותה יחידה)
+r.get('/laundries/:slug/price-compare', async (req, res) => {
+  const { rows: t } = await q('SELECT id FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const { rows } = await q(
+    `SELECT i.name, i.unit, i.price AS my_price, o.price AS other_price, ot.slug, ot.name AS laundry_name
+     FROM price_items i
+     JOIN price_items o ON o.name=i.name AND o.unit=i.unit AND o.active AND o.tenant_id<>i.tenant_id
+     JOIN tenants ot ON ot.id=o.tenant_id AND ot.approved
+     WHERE i.tenant_id=$1 AND i.active`, [t[0].id]);
+  const best = {};
+  for (const row of rows) {
+    if (Number(row.other_price) >= Number(row.my_price)) continue;
+    const k = row.name + '|' + row.unit;
+    if (!best[k] || Number(row.other_price) < best[k].other_price) {
+      best[k] = { other_price: Number(row.other_price), my_price: Number(row.my_price), slug: row.slug, laundry_name: row.laundry_name };
+    }
+  }
+  res.json({ compare: best });
+});
+
 // E3: לוגו מכבסה (ציבורי)
 r.get('/laundries/:slug/logo', async (req, res) => {
   const { rows } = await q('SELECT logo, logo_mime FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
