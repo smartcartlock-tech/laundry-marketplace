@@ -42,3 +42,41 @@ r.get('/ops/daily-summary', async (req, res) => {
 });
 
 module.exports = r;
+
+/* C1: מצב "עסוק" — השהייה/חידוש קבלת הזמנות */
+r.get('/ops/state', async (req, res) => {
+  const { rows: t } = await q('SELECT paused_until FROM tenants WHERE id=$1', [req.tenant.id]);
+  const { rows: cl } = await q("SELECT to_char(day,'YYYY-MM-DD') AS day, note FROM tenant_closures WHERE tenant_id=$1 ORDER BY day", [req.tenant.id]);
+  res.json({ paused_until: t[0].paused_until, closures: cl });
+});
+r.post('/ops/pause', async (req, res) => {
+  const minutes = Math.min(Math.max(Number(req.body && req.body.minutes) || 120, 15), 60 * 24 * 7);
+  const { rows } = await q('UPDATE tenants SET paused_until=now()+($2||\' minutes\')::interval WHERE id=$1 RETURNING paused_until', [req.tenant.id, String(minutes)]);
+  res.json({ paused_until: rows[0].paused_until });
+});
+r.post('/ops/resume', async (req, res) => {
+  await q('UPDATE tenants SET paused_until=NULL WHERE id=$1', [req.tenant.id]);
+  res.json({ ok: true });
+});
+
+/* C3: ימי סגירה/חגים */
+r.post('/ops/closures', async (req, res) => {
+  const { day, note } = req.body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return res.status(400).json({ error: 'תאריך לא תקין (YYYY-MM-DD)' });
+  await q('INSERT INTO tenant_closures(tenant_id, day, note) VALUES ($1,$2,$3) ON CONFLICT (tenant_id, day) DO UPDATE SET note=EXCLUDED.note', [req.tenant.id, day, (note || '').slice(0, 120) || null]);
+  res.status(201).json({ ok: true });
+});
+r.delete('/ops/closures/:day', async (req, res) => {
+  await q('DELETE FROM tenant_closures WHERE tenant_id=$1 AND day=$2', [req.tenant.id, req.params.day]);
+  res.json({ ok: true });
+});
+
+/* C1+C3 צד ציבורי: מצב השהייה וימי סגירה (מידע גלוי גם כך — שעות/סגירה) */
+const publicRouter = express.Router();
+publicRouter.get('/laundry/:slug/ops-state', async (req, res) => {
+  const { rows: t } = await q('SELECT paused_until FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const { rows: cl } = await q("SELECT to_char(c.day,'YYYY-MM-DD') AS day, c.note FROM tenant_closures c JOIN tenants tn ON tn.id=c.tenant_id WHERE tn.slug=$1 AND c.day >= CURRENT_DATE ORDER BY c.day", [req.params.slug]);
+  res.json({ paused_until: t[0].paused_until, closures: cl });
+});
+module.exports.publicRouter = publicRouter;

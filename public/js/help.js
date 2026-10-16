@@ -32,3 +32,23 @@ function vHelp(){
    <a class="btn2" href="#/orders" style="text-decoration:none;display:inline-block">להזמנות שלי</a></div>
  </div>`;
 }
+
+/* הזרקת קישור "עזרה" לניווט התחתון — עצמאי, בלי עריכת קבצים משותפים */
+(function(){
+  if (typeof window.route !== 'function') return;
+  const orig = window.route;
+  window.route = async function(){
+    const out = await orig();
+    try{
+      const nav = document.querySelector('nav');
+      if (nav && !nav.querySelector('a[href$="#/help"]')){
+        const a = document.createElement('a');
+        a.href = '#/help';
+        a.style.cssText = 'color:#fff;text-decoration:none;text-align:center;font-size:11px';
+        a.innerHTML = '<div style="font-size:18px">?</div>עזרה';
+        nav.appendChild(a);
+      }
+    }catch(e){}
+    return out;
+  };
+})();

@@ -25,3 +25,61 @@
     }catch(e){ return html; }
   };
 })();
+
+/* C1+C3: ניהול מצב "עסוק" וימי סגירה — מוזרק לכרטיס הסיכום היומי + באנר ללקוח בדף המכבסה */
+async function opsPauseToggle(slug, pause){
+ try{
+  if(pause){const r=await api(`/t/${slug}/ops/pause`,{method:'POST',body:JSON.stringify({minutes:120})});toast('ההזמנות הושהו עד '+new Date(r.paused_until).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}))}
+  else{await api(`/t/${slug}/ops/resume`,{method:'POST',body:'{}'});toast('קבלת הזמנות חודשה')}
+  route();
+ }catch(e){toast(e.message)}
+}
+async function opsClosureAdd(slug){
+ const inp=document.getElementById('ops-closure-day');if(!inp||!inp.value)return;
+ try{await api(`/t/${slug}/ops/closures`,{method:'POST',body:JSON.stringify({day:inp.value})});toast('יום הסגירה נוסף');route()}catch(e){toast(e.message)}
+}
+async function opsClosureDel(slug,day){
+ try{await api(`/t/${slug}/ops/closures/${day}`,{method:'DELETE'});toast('יום הסגירה הוסר');route()}catch(e){toast(e.message)}
+}
+(function(){
+  if (typeof window.vManage !== 'function') return;
+  const orig = window.vManage;
+  window.vManage = async function(sub){
+    const html = await orig(sub);
+    try{
+      const mems = state.memberships || [];
+      const m = mems.find(x => x.slug === store.get('lastTenant','')) || mems[0];
+      if (!m) return html;
+      const d = await api(`/t/${m.slug}/ops/state`);
+      const paused = d.paused_until && new Date(d.paused_until) > new Date();
+      const card = `<div class="card"><div class="sec">זמינות לקבלת הזמנות</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+         <span class="st-pill ${paused?'st-cancelled':'st-delivered'}">${paused?'מושהה עד '+new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'פעיל'}</span>
+         <button class="btn2" onclick="opsPauseToggle('${m.slug}',${!paused})">${paused?'חידוש קבלת הזמנות':'השהיה לשעתיים'}</button></div>
+        <div class="sec" style="font-size:13px;margin-top:8px">ימי סגירה/חגים</div>
+        <div style="display:flex;gap:6px;align-items:center"><input type="date" class="inp" id="ops-closure-day" style="max-width:170px"><button class="btn2" onclick="opsClosureAdd('${m.slug}')">הוספה</button></div>
+        ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" onclick="opsClosureDel('${m.slug}','${c.day}')">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</div>`;
+      return html.replace('<div class="body">', '<div class="body">' + card);
+    }catch(e){ return html; }
+  };
+  /* באנר ללקוח בדף המכבסה כשהמכבסה מושהית או סגורה בחג */
+  if (typeof window.vLaundry === 'function'){
+    const origL = window.vLaundry;
+    window.vLaundry = async function(slug){
+      const html = await origL(slug);
+      try{
+        const r = await fetch('/api/public-ops/laundry/'+encodeURIComponent(slug)+'/ops-state');
+        if (!r.ok) return html;
+        const d = await r.json();
+        const paused = d.paused_until && new Date(d.paused_until) > new Date();
+        const soon = (d.closures||[]).slice(0,3);
+        if (!paused && !soon.length) return html;
+        const msg = paused
+          ? `<b>המכבסה בהפסקה זמנית</b> עד ${new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})} — אפשר לעיין במחירון, הזמנה תתאפשר כשההפסקה תסתיים`
+          : `<b>שימו לב:</b> המכבסה סגורה ב־${soon.map(c=>c.day.split('-').reverse().join('/')).join(', ')}`;
+        const banner = `<div class="card warn" style="text-align:center">${msg}</div>`;
+        return html.replace('<div class="body">', '<div class="body">'+banner);
+      }catch(e){ return html; }
+    };
+  }
+})();

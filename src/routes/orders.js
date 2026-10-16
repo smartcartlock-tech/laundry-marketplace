@@ -26,6 +26,8 @@ r.post('/', async (req, res) => {
     const tenant = t[0];
     if (!tenant) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
     if (!tenant.is_open) return res.status(409).json({ error: 'המכבסה סגורה כרגע' });
+    if (tenant.paused_until && new Date(tenant.paused_until) > new Date()) return res.status(409).json({ error: 'המכבסה בהפסקה זמנית עד ' + new Date(tenant.paused_until).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) }); // C1
+    if (pickup_at) { const { rows: cl } = await q("SELECT 1 FROM tenant_closures WHERE tenant_id=$1 AND day=($2::timestamptz AT TIME ZONE 'Asia/Jerusalem')::date", [tenant.id, pickup_at]); if (cl.length) return res.status(409).json({ error: 'המכבסה סגורה ביום האיסוף שנבחר — בחרו מועד אחר' }); } // C3
 
     await client.query('BEGIN');
     const ids = items.map(i => i.item_id);
