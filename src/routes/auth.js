@@ -17,7 +17,13 @@ function normalizeTarget(raw) {
   return { kind: 'phone', target: p };
 }
 
-r.post('/otp/request', limiter('otp-request', 5, 10 * 60 * 1000), async (req, res) => {
+// נרמול היעד לפני הקיצוב — המגבלה נמדדת על היעד הקנוני (E.164), לא על הקלט הגולמי
+const normalizeBody = (req, res, next) => {
+  if (req.body && req.body.target) req.body.target = normalizeTarget(req.body.target).target;
+  next();
+};
+const ipLimit = (scope, max) => limiter(scope, max, 10 * 60 * 1000, (req) => req.ip);
+r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000), ipLimit('otp-request-ip', 30), async (req, res) => {
   try {
     const { kind, target } = normalizeTarget(req.body.target);
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });
@@ -37,7 +43,7 @@ r.post('/otp/request', limiter('otp-request', 5, 10 * 60 * 1000), async (req, re
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-r.post('/otp/verify', limiter('otp-verify', 10, 10 * 60 * 1000), async (req, res) => {
+r.post('/otp/verify', normalizeBody, limiter('otp-verify', 10, 10 * 60 * 1000), ipLimit('otp-verify-ip', 60), async (req, res) => {
   try {
     const { target } = normalizeTarget(req.body.target);
     const code = String(req.body.code || '').trim();

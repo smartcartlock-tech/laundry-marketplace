@@ -51,7 +51,8 @@ r.post('/:id/report', requireAuth, async (req, res) => {
 r.get('/:id/reports', requireAuth, async (req, res) => {
   const { rows } = await q(
     `SELECT r.id, r.kind, r.text, r.status, r.mediation, r.resolution_note, r.created_at, r.updated_at,
-            (SELECT count(*) FROM issue_report_photos p WHERE p.report_id=r.id)::int AS photos
+            (SELECT count(*) FROM issue_report_photos p WHERE p.report_id=r.id)::int AS photos,
+            (SELECT array_agg(p.id ORDER BY p.created_at) FROM issue_report_photos p WHERE p.report_id=r.id) AS photo_ids
      FROM issue_reports r WHERE r.order_id=$1 AND r.customer_id=$2 ORDER BY r.created_at DESC`,
     [req.params.id, req.user.id]);
   res.json({ reports: rows });

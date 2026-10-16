@@ -117,9 +117,9 @@ test('E9.T4: ביקורת משופרת — תגיות, +20 נקודות פעם �
   assert.equal(rv.status, 200, JSON.stringify(rv.json));
   assert.equal(rv.json.points_bonus, 20);
 
-  // ביקורת חוזרת על אותה הזמנה — ללא בונוס כפול
+  // ביקורת חוזרת על אותה הזמנה — נחסמת 409 (QA), וללא בונוס כפול
   const rv2 = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 4, text: 'עוד ביקורת' } });
-  assert.equal(rv2.json.points_bonus, 0);
+  assert.equal(rv2.status, 409);
 
   // הנקודות נראות בסיכום המועדון
   const club = await api('/api/orders/club/summary', { token: customer });

@@ -110,3 +110,24 @@ test('orders: משתמש שאינו חבר מכבסה מקבל 403 על לוח �
   const noTenant = await api('/api/t/no-such/orders', { token: rando });
   assert.equal(noTenant.status, 404);
 });
+
+test('QA: ביקורת כפולה על אותה הזמנה נחסמת ב-409', async (t) => {
+  const { api } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const courierUser = await api.login('+972500000004');
+  const item = (await api('/api/laundries/achuza')).json.items[0];
+  const o = await api('/api/orders', { method: 'POST', token: customer, body: { slug: 'achuza', items: [{ item_id: item.id, qty: 2 }], address: 'בדיקת ביקורת כפולה', payment_method: 'cash' } });
+  const oid = o.json.order.id;
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: owner, body: { status: 'confirmed' } });
+  const couriers = await api('/api/t/achuza/couriers', { token: owner });
+  const priv = couriers.json.couriers.find(c => c.model === 'private');
+  await api(`/api/t/achuza/orders/${oid}/assign`, { method: 'POST', token: owner, body: { courier_id: priv.id } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courierUser, body: { action: 'picked_up' } });
+  for (const st of ['in_work', 'ready']) await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: owner, body: { status: st } });
+  for (const act of ['out_for_delivery', 'delivered']) await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courierUser, body: { action: act } });
+  const r1 = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 5, text: 'מעולה' } });
+  assert.equal(r1.status, 200, JSON.stringify(r1.json));
+  const r2 = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 1, text: 'ניסיון כפול' } });
+  assert.equal(r2.status, 409, JSON.stringify(r2.json));
+});

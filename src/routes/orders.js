@@ -248,6 +248,9 @@ r.post('/:id/review', async (req, res) => {
   if (order.status !== 'delivered') return res.status(409).json({ error: 'ניתן לדרג רק הזמנה שהושלמה' });
   // E9.T4: תגיות ביקורת על המכבסה (עד 5)
   const ltags = Array.isArray(laundry_tags) ? laundry_tags.map(String).slice(0, 5) : null;
+  const { rows: dup } = await q(
+    'SELECT 1 FROM reviews WHERE order_id=$1 AND user_id=$2 AND target_courier_id IS NULL LIMIT 1', [order.id, req.user.id]);
+  if (dup.length) return res.status(409).json({ error: 'כבר דירגת הזמנה זו' });
   await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text, tags) VALUES ($1,$2,$3,$4,$5,$6)',
     [order.tenant_id, order.id, req.user.id, rt, text || null, ltags]);
   // E9.T4: ‎+20 נקודות על ביקורת — פעם אחת להזמנה
@@ -264,7 +267,9 @@ r.post('/:id/review', async (req, res) => {
   const crt = Number(courier_rating);
   if (order.courier_id && crt >= 1 && crt <= 5) {
     const tags = Array.isArray(courier_tags) ? courier_tags.map(String).slice(0, 5) : null;
-    await q('INSERT INTO reviews(tenant_id, order_id, user_id, target_courier_id, rating, tags) VALUES ($1,$2,$3,$4,$5,$6)',
+    const { rows: cdup } = await q(
+      'SELECT 1 FROM reviews WHERE order_id=$1 AND user_id=$2 AND target_courier_id IS NOT NULL LIMIT 1', [order.id, req.user.id]);
+    if (!cdup.length) await q('INSERT INTO reviews(tenant_id, order_id, user_id, target_courier_id, rating, tags) VALUES ($1,$2,$3,$4,$5,$6)',
       [order.tenant_id, order.id, req.user.id, order.courier_id, crt, tags]);
     await applyCourierRating(order.courier_id, crt);
   }

@@ -3,6 +3,15 @@ const path = require('path');
 const { migrate, q } = require('./db');
 
 const app = express();
+app.disable('x-powered-by');
+// כותרות אבטחה מתונות (בלי תלות חדשה) — SPA עם inline handlers, לכן CSP מתיר inline
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'DENY');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'");
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', async (req, res) => {

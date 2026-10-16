@@ -1,6 +1,7 @@
 // E10.T1: API בוט מרכזי — ניתוב לקוח למכבסה מתאימה והקצאת מפתח שיחה זמני.
 // אימות: X-Api-Key של הפלטפורמה (platform_keys.bot_central; מוצג לאדמין ב-/api/admin/bot-central-key).
 const express = require('express');
+const crypto = require('crypto');
 const { q } = require('../db');
 
 const r = express.Router();
@@ -8,7 +9,8 @@ async function centralAuth(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!key) return res.status(401).json({ error: 'missing api key' });
   const { rows } = await q('SELECT key FROM platform_keys WHERE name=$1', ['bot_central']);
-  if (!rows[0] || rows[0].key !== key) return res.status(401).json({ error: 'invalid api key' });
+  const a = Buffer.from(String(key)), b = Buffer.from(String(rows[0] && rows[0].key || ''));
+  if (!rows[0] || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'invalid api key' });
   next();
 }
 r.use(centralAuth);

@@ -701,3 +701,10 @@ ON CONFLICT (tenant_id, kind, year) DO UPDATE SET next_number = GREATEST(doc_cou
 
 -- החלטת משתמש 16.10: חשבונית מרכזת — ברירת מחדל ללקוחות עסקיים, ניתנת לכיבוי
 ALTER TABLE business_accounts ADD COLUMN IF NOT EXISTS consolidated_billing boolean NOT NULL DEFAULT true;
+
+-- QA: ביקורת אחת לכל (הזמנה, משתמש) — כביסה ושליח בנפרד; ניקוי כפילויות קיימות לפני האינדקסים
+DELETE FROM reviews a USING reviews b
+  WHERE a.ctid < b.ctid AND a.order_id=b.order_id AND a.user_id=b.user_id
+    AND a.target_courier_id IS NOT DISTINCT FROM b.target_courier_id;
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_order_user_uniq ON reviews(order_id, user_id) WHERE target_courier_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_order_user_courier_uniq ON reviews(order_id, user_id, target_courier_id) WHERE target_courier_id IS NOT NULL;

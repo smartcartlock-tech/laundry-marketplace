@@ -11,9 +11,9 @@ setInterval(() => {
 }, 5 * 60 * 1000).unref();
 
 /** limiter(scope, max, windowMs) — middleware: 429 כשחורגים מ-max קריאות בחלון. */
-function limiter(scope, max, windowMs) {
+function limiter(scope, max, windowMs, keyFn) {
   return (req, res, next) => {
-    const id = String((req.body && req.body.target) || req.ip || '?').slice(0, 64);
+    const id = String((keyFn ? keyFn(req) : (req.body && req.body.target) || req.ip) || '?').slice(0, 64);
     const key = `${scope}:${id}`;
     const now = Date.now();
     const arr = (buckets.get(key) || []).filter((t) => now - t < windowMs);

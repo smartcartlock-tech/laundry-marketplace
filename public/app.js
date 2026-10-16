@@ -397,11 +397,11 @@ async function vOrder(id){
  if(isMine){try{const rr=await api('/orders/'+id+'/reports');myReports=rr.reports||[]}catch(e){}}
  return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
-  <div class="card">
+  ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDT(o.updated_at)}</div></div>`:`<div class="card">
    <div class="tl">
     ${FLOW.map((s,i)=>`<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}</div>`).join('')}
    </div>
-  </div>
+  </div>`}
   <div class="card">
    ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${it.qty} × ₪${it.price}</div></div>`).join('')}
    <div class="row"><div class="mut">שליחות</div><div>₪${o.delivery_fee}</div></div>
@@ -422,7 +422,8 @@ async function vOrder(id){
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" onclick="cancelOrder('${o.id}')">ביטול הזמנה</button>`:''}
   ${isMine?`<div class="card"><b>דיווח תקלה</b>
    ${myReports.map(rp=>`<div class="row"><div><span class="tag tb">${({damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'})[rp.kind]||rp.kind}</span> ${esc(rp.text)}
-    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'פתוח',in_progress:'בטיפול',resolved:'טופל'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+rp.photos+' תמונות':''}</div></div></div>`).join('')}
+    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'פתוח',in_progress:'בטיפול',resolved:'טופל'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+(rp.photos===1?'תמונה אחת':rp.photos+' תמונות'):''}</div>
+    ${(rp.photo_ids||[]).length?`<div style="display:flex;gap:6px;margin-top:6px">${rp.photo_ids.map(pid=>`<button class="btn2" style="padding:4px 10px;font-size:12px" onclick="openIssuePhoto('${pid}')">צפייה בתמונה</button>`).join('')}</div>`:''}</div></div>`).join('')}
    ${myReports.length?'':'<div class="mut" style="margin:6px 0">משהו לא בסדר עם ההזמנה? דווחו ונפתח פנייה מול המכבסה</div>'}
    <button class="btn2" onclick="openReportModal('${o.id}')">📷 דיווח על תקלה</button>
   </div>`:''}
@@ -1180,7 +1181,7 @@ async function vAdmin(sub){
   const open=d.alerts.filter(a=>a.status==='open'), done=d.alerts.filter(a=>a.status==='handled');
   body=(open.length?`<div class="sec">פתוחות (${open.length})</div>`+open.map(a=>`<div class="card"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
     <div class="mut">${esc(a.details||'')}</div>
-    ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${esc(a.order_status||'')} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
+    ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${({new:'חדשה',confirmed:'אושרה',picked_up:'נאספה',out_for_delivery:'בדרך ללקוח',delivered:'נמסרה',cancelled:'בוטלה'})[a.order_status]||esc(a.order_status||'')} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
     <div class="mut">נוצרה ${fmtDT(a.created_at)}</div>
     <div style="margin-top:6px"><button class="btn2 green" onclick="adminSlaHandle('${a.id}')">סימון כטופלה</button></div></div>`).join(''):'<div class="card mut">אין התראות פתוחות ✓</div>')
    +(done.length?`<div class="sec">טופלו (${done.length})</div>`+done.map(a=>`<div class="card" style="opacity:.7"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
@@ -1629,11 +1630,27 @@ async function openIssuePhoto(pid){
  }catch(e){toast(e.message)}
 }
 async function tenantIssueHandle(slug,id){
- const v=await xmodal({title:'עדכון טיפול בתקלה',okText:'שמירה',fields:[{id:'status',label:'סטטוס: open | in_progress | resolved',value:'in_progress'},{id:'note',label:'תיעוד הטיפול'}]});
+ const v=await new Promise(resolve=>{
+  const ov=document.createElement('div');ov.className='modal-ov';
+  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>עדכון טיפול בתקלה</b>
+   <div class="mut" style="margin:8px 0">בחרו סטטוס:</div>
+   <div style="display:flex;gap:6px" id="ih-status">
+    <button class="btn2 ih-st" data-v="open" style="flex:1">פתוח</button>
+    <button class="btn2 ih-st on" data-v="in_progress" style="flex:1">בטיפול</button>
+    <button class="btn2 ih-st" data-v="resolved" style="flex:1">טופל</button>
+   </div>
+   <label class="lb" style="margin-top:10px">תיעוד הטיפול</label><input class="inp" id="ih-note">
+   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="ih-ok" style="flex:1">שמירה</button><button class="btn2" id="ih-cancel" style="flex:1">ביטול</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('.ih-st').forEach(b=>b.onclick=()=>{ov.querySelectorAll('.ih-st').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+  const done=v=>{ov.remove();resolve(v)};
+  ov.querySelector('#ih-ok').onclick=()=>done({status:ov.querySelector('.ih-st.on').dataset.v,note:ov.querySelector('#ih-note').value});
+  ov.querySelector('#ih-cancel').onclick=()=>done(null);
+  ov.onclick=e=>{if(e.target===ov)done(null)};
+ });
  if(!v)return;
- if(!['open','in_progress','resolved'].includes((v.status||'').trim())){toast('סטטוס חייב להיות open / in_progress / resolved');return}
  const med=await xconfirm('להסלים את התקלה לגישור אדמין הפלטפורמה?',{title:'הסלמה לגישור',okText:'כן, להסלים'});
- try{await api(`/t/${slug}/issues/${id}/handle`,{method:'POST',body:JSON.stringify({status:v.status.trim(),note:v.note||undefined,mediation:!!med})});toast('הטיפול עודכן');route()}catch(e){toast(e.message)}
+ try{await api(`/t/${slug}/issues/${id}/handle`,{method:'POST',body:JSON.stringify({status:v.status,note:v.note||undefined,mediation:!!med})});toast('הטיפול עודכן');route()}catch(e){toast(e.message)}
 }
 async function adminIssueHandle(id){
  const v=await xmodal({title:'סיום גישור אדמין',okText:'סגירת תקלה',fields:[{id:'note',label:'תיעוד הגישור'}]});
