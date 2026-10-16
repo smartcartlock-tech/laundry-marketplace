@@ -106,3 +106,75 @@ test('מסך שליח: משימות מקובצות, מסלול יום, אישו�
   const badState = await api(`/api/courier/orders/${o3}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
   assert.equal(badState.status, 409);
 });
+
+// PNG מינימלי עם magic bytes תקינים (sniff בודק 4 הבתים הראשונים)
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+test('מסך שליח: אישור מסירה בצילום, הרשאות צפייה, תצוגת מכבסה, סינון תאריך', async (t) => {
+  const { base, api } = await startApp(t);
+  const admin = await api.login('+972500000001');
+  const customer = await api.login('+972500000002');
+  const courier = await api.login('+972500000005');
+  const owner = await api.login('+972500000003');
+
+  const oid = await makeOrder(api, customer, 'achuza');
+  await confirmAndAssign(api, admin, 'achuza', oid);
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courier, body: { action: 'picked_up' } });
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courier, body: { action: 'out_for_delivery' } });
+
+  // קובץ מזויף (טקסט בכסות image/png) נדחה ב-magic bytes
+  const fakeFd = new FormData();
+  fakeFd.append('method', 'photo');
+  fakeFd.append('photo', new Blob([Buffer.from('not a real image')], { type: 'image/png' }), 'fake.png');
+  const fake = await fetch(`${base}/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', headers: { authorization: 'Bearer ' + courier }, body: fakeFd });
+  assert.equal(fake.status, 400);
+
+  // צילום אמיתי (magic bytes תקינים) מאושר
+  const fd = new FormData();
+  fd.append('method', 'photo');
+  fd.append('photo', new Blob([PNG_BYTES], { type: 'image/png' }), 'proof.png');
+  const ok = await fetch(`${base}/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', headers: { authorization: 'Bearer ' + courier }, body: fd });
+  assert.equal(ok.status, 200, JSON.stringify(await ok.clone().text()));
+
+  // האישור נחשף במשימות ובתצוגת המכבסה
+  const tasks = await api('/api/courier/tasks', { token: courier });
+  const done = tasks.json.tasks.done_today.find(x => x.id === oid);
+  assert.ok(done && done.confirmation, 'confirmation in tasks');
+  assert.equal(done.confirmation.method, 'photo');
+  assert.equal(done.confirmation.has_photo, true);
+  const tOrders = await api('/api/t/achuza/orders', { token: owner });
+  const tOrder = tOrders.json.orders.find(x => x.id === oid);
+  assert.ok(tOrder && tOrder.delivery_confirmation, 'confirmation in tenant orders');
+  assert.equal(tOrder.delivery_confirmation.has_photo, true);
+
+  // הרשאות צפייה בצילום
+  const photoUrl = `${base}/api/delivery-confirmations/${done.confirmation.id}/photo`;
+  const asCourier = await fetch(photoUrl, { headers: { authorization: 'Bearer ' + courier } });
+  assert.equal(asCourier.status, 200);
+  assert.equal(asCourier.headers.get('content-type'), 'image/png');
+  const asOwner = await fetch(photoUrl, { headers: { authorization: 'Bearer ' + owner } });
+  assert.equal(asOwner.status, 200);
+  const asAdmin = await fetch(photoUrl, { headers: { authorization: 'Bearer ' + admin } });
+  assert.equal(asAdmin.status, 200);
+  const otherCourier = await api.login('+972500000004');
+  const asOther = await fetch(photoUrl, { headers: { authorization: 'Bearer ' + otherCourier } });
+  assert.equal(asOther.status, 403);
+  const asCustomer = await fetch(photoUrl, { headers: { authorization: 'Bearer ' + customer } });
+  assert.equal(asCustomer.status, 403);
+  const asAnon = await fetch(photoUrl);
+  assert.equal(asAnon.status, 401);
+
+  // סינון תאריך: היום מכיל את ההזמנה שהושלמה; תאריך עבר — ריק; עתיד — בלי נקודות פעילות
+  const today = await api('/api/courier/day-route', { token: courier });
+  assert.ok(today.json.date);
+  assert.ok(today.json.stops.find(s => s.order.id === oid && s.done), 'done stop today');
+  const past = await api('/api/courier/day-route?date=2020-01-01', { token: courier });
+  assert.equal(past.status, 200);
+  assert.equal(past.json.date, '2020-01-01');
+  assert.equal(past.json.stops.length, 0);
+  assert.equal(past.json.summary.total, 0);
+  const bad = await api('/api/courier/day-route?date=not-a-date', { token: courier });
+  assert.equal(bad.status, 200); // תאריך לא תקין → ברירת מחדל היום
+});

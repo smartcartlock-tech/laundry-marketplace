@@ -148,6 +148,7 @@ async function vManage(sub){
       ${o.items&&o.items.length?`<div class="mut">${o.items.slice(0,3).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')}${o.items.length>3?' +'+(o.items.length-3):''}</div>`:''}
       ${o.pickup_at?`<div class="mut">איסוף: ${fmtDT(o.pickup_at)}</div>`:''}${o.delivery_at?`<div class="mut">החזרה: ${fmtDT(o.delivery_at)}</div>`:''}
       ${o.payment_method==='cash'&&o.payment_status==='pending'?'<div class="mut">💵 גבייה במזומן</div>':''}
+      ${o.delivery_confirmation?`<div class="mut">✅ אושרה מסירה (${o.delivery_confirmation.method==='code'?'קוד לקוח':'צילום'}) · ${fmtDT(o.delivery_confirmation.at)}${o.delivery_confirmation.has_photo?` · <a href="/api/delivery-confirmations/${o.delivery_confirmation.id}/photo" target="_blank" style="color:#0e7a8a">צילום אישור</a>`:''}</div>`:''}
      </div>
      <div style="display:flex;gap:6px">
       ${NEXT[o.status]?`<button class="btn2 on" onclick="setStatus('${slug}','${o.id}','${NEXT[o.status]}')">העבר ל״${HE[NEXT[o.status]]}״</button>`:''}

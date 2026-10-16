@@ -26,7 +26,8 @@ r.get('/orders', async (req, res) => {
   const { rows } = await q(
     `SELECT o.*, u.name AS customer_name, u.phone AS customer_phone,
        EXISTS(SELECT 1 FROM courier_offers co WHERE co.order_id=o.id AND co.status='offered') AS has_open_offer,
-       (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty,'price',oi.price)) FROM order_items oi WHERE oi.order_id=o.id) AS items
+       (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty,'price',oi.price)) FROM order_items oi WHERE oi.order_id=o.id) AS items,
+       (SELECT json_build_object('method',dc.method,'at',dc.created_at,'id',dc.id,'has_photo',(dc.photo_data IS NOT NULL)) FROM delivery_confirmations dc WHERE dc.order_id=o.id) AS delivery_confirmation
      FROM orders o JOIN users u ON u.id=o.customer_id ${where} ORDER BY o.created_at DESC LIMIT 200`, params);
   res.json({ orders: rows });
 });

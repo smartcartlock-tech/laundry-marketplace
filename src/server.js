@@ -46,6 +46,7 @@ app.use('/api/t/:slug', require('./routes/tenant-agreement')); // B4: הסכם �
 app.use('/api/t/:slug', require('./routes/settlement')); // התחשבנות (דמו): דוח תשלומים, עמלה, ייצוא רו"ח, בדיקת רצף
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/courier', require('./routes/courier-day')); // מסך שליח: משימות/מסלול יום/אישור מסירה
+app.use('/api/delivery-confirmations', require('./routes/delivery-confirmations')); // צילומי אישור מסירה
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/apply')); // B2: טופס הצטרפות ציבורי
 app.use('/api', require('./routes/search')); // הצעות חיפוש חכמות

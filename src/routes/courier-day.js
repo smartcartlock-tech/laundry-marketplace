@@ -1,8 +1,16 @@
 // מסך שליח — רשימת משימות מקובצת (איסוף/מסירה), מסלול יום, ואישור מסירה עם קוד לקוח או צילום.
 const express = require('express');
+const multer = require('multer');
 const { q } = require('../db');
 const { requireAuth, requireCourier } = require('../auth');
 const { completeDelivery } = require('../courier-actions');
+const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: fileFilter(IMAGES),
+});
 
 const r = express.Router();
 r.use(requireAuth, requireCourier);
@@ -14,7 +22,7 @@ const SELECT_FIELDS = `
          t.lat AS tenant_lat, t.lng AS tenant_lng,
          u.name AS customer_name, u.phone AS customer_phone,
          (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty)) FROM order_items oi WHERE oi.order_id=o.id) AS items,
-         (SELECT json_build_object('method',dc.method,'at',dc.created_at) FROM delivery_confirmations dc WHERE dc.order_id=o.id) AS confirmation`;
+         (SELECT json_build_object('method',dc.method,'at',dc.created_at,'id',dc.id,'has_photo',(dc.photo_data IS NOT NULL)) FROM delivery_confirmations dc WHERE dc.order_id=o.id) AS confirmation`;
 const FROM_JOIN = `
   FROM orders o JOIN tenants t ON t.id=o.tenant_id JOIN users u ON u.id=o.customer_id`;
 
@@ -47,19 +55,22 @@ r.get('/tasks', async (req, res) => {
 });
 
 // מסלול יום: רצף נקודות ליום העבודה הנוכחי — איסוף מהלקוח, איסוף מהמכבסה, מסירה ללקוח
+// ?date=YYYY-MM-DD מציג מסלול של יום אחר (בימים עברו: נקודות שהושלמו באותו יום בלבד)
 r.get('/day-route', async (req, res) => {
+  const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
   const { rows } = await q(
     `${SELECT_FIELDS}, rs.seq AS route_seq
      ${FROM_JOIN}
      LEFT JOIN courier_route_stops rs ON rs.order_id=o.id
      LEFT JOIN courier_routes cr ON cr.id=rs.route_id AND cr.route_date=CURRENT_DATE
      WHERE o.courier_id=$1 AND o.status IN ('confirmed','ready','out_for_delivery')
-     ORDER BY COALESCE(rs.seq, 9999), COALESCE(o.pickup_at, o.delivery_at, o.created_at)`, [req.courier.id]);
+       AND ($2::date IS NULL OR (now() AT TIME ZONE 'Asia/Jerusalem')::date = $2::date)
+     ORDER BY COALESCE(rs.seq, 9999), COALESCE(o.pickup_at, o.delivery_at, o.created_at)`, [req.courier.id, dateParam]);
   const { rows: doneRows } = await q(
     `${SELECT_FIELDS} ${FROM_JOIN}
      WHERE o.courier_id=$1 AND o.status='delivered'
-       AND (o.updated_at AT TIME ZONE 'Asia/Jerusalem')::date = (now() AT TIME ZONE 'Asia/Jerusalem')::date
-     ORDER BY o.updated_at`, [req.courier.id]);
+       AND (o.updated_at AT TIME ZONE 'Asia/Jerusalem')::date = COALESCE($2::date, (now() AT TIME ZONE 'Asia/Jerusalem')::date)
+     ORDER BY o.updated_at`, [req.courier.id, dateParam]);
   const stops = rows.map((o, i) => {
     const kind = o.status === 'confirmed' ? 'pickup' : o.status === 'ready' ? 'collect' : 'deliver';
     const atTenant = kind === 'collect';
@@ -77,6 +88,7 @@ r.get('/day-route', async (req, res) => {
     order: pubOrder(o), stop_address: o.address, stop_lat: o.lat, stop_lng: o.lng, when: o.updated_at,
   }));
   res.json({
+    date: dateParam || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }),
     stops: [...stops, ...doneStops],
     summary: {
       total: stops.length + doneStops.length,
@@ -89,7 +101,7 @@ r.get('/day-route', async (req, res) => {
 });
 
 // אישור מסירה: קוד = 4 ספרות אחרונות של טלפון הלקוח, או צילום אישור. משלים את ההזמנה להוחזרה.
-r.post('/orders/:id/confirm-delivery', async (req, res) => {
+r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) => {
   const { method, code, photo_url, note } = req.body || {};
   if (!['code', 'photo'].includes(method)) return res.status(400).json({ error: 'method: code | photo' });
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND courier_id=$2', [req.params.id, req.courier.id]);
@@ -99,7 +111,10 @@ r.post('/orders/:id/confirm-delivery', async (req, res) => {
   if (!['out_for_delivery', 'ready'].includes(order.status)) {
     return res.status(409).json({ error: `לא ניתן לאשר מסירה מתוך סטטוס ${order.status}` });
   }
-  if (method === 'photo' && !photo_url) return res.status(400).json({ error: 'נדרש צילום אישור מסירה' });
+  if (method === 'photo' && !req.file && !photo_url) return res.status(400).json({ error: 'נדרש צילום אישור מסירה' });
+  if (method === 'photo' && req.file && !verifyFile(req.file, IMAGES)) {
+    return res.status(400).json({ error: 'תוכן הקובץ אינו תואם לסוג המדווח (JPG/PNG/WEBP בלבד)' });
+  }
   if (method === 'code') {
     const { rows: cu } = await q('SELECT phone FROM users WHERE id=$1', [order.customer_id]);
     const last4 = String((cu[0] || {}).phone || '').replace(/\D/g, '').slice(-4);
@@ -108,8 +123,8 @@ r.post('/orders/:id/confirm-delivery', async (req, res) => {
     }
   }
   try {
-    await q('INSERT INTO delivery_confirmations(order_id, courier_id, method, detail) VALUES ($1,$2,$3,$4)',
-      [order.id, req.courier.id, method, note || null]);
+    await q('INSERT INTO delivery_confirmations(order_id, courier_id, method, detail, photo_data, photo_mime) VALUES ($1,$2,$3,$4,$5,$6)',
+      [order.id, req.courier.id, method, note || null, req.file ? req.file.buffer : null, req.file ? req.file.mimetype : null]);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'כבר קיים אישור מסירה להזמנה זו' });
     throw e;
