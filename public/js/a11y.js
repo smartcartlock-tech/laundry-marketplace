@@ -44,6 +44,13 @@
   });
   /* כפתורי אייקון עם title בלבד */
   document.querySelectorAll('button[title]:not([aria-label])').forEach(b=>b.setAttribute('aria-label',b.getAttribute('title')));
+  /* שגיאת כתובת בצ'ק-אאוט (נוצרת ומוסרת ע"י checkout.js) — סנכרון ARIA */
+  const ca=document.getElementById('co-address');
+  if(ca){
+   const ce=document.getElementById('co-address-err');
+   if(ce){ce.setAttribute('role','alert');ca.setAttribute('aria-invalid','true');ca.setAttribute('aria-describedby','co-address-err')}
+   else{ca.removeAttribute('aria-invalid');ca.removeAttribute('aria-describedby')}
+  }
   const sb=document.querySelector('.searchbar');if(sb&&!sb.getAttribute('role'))sb.setAttribute('role','search');
   const tabs=document.getElementById('tabs');
   if(tabs){
