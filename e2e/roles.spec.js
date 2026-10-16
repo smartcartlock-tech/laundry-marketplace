@@ -34,7 +34,7 @@ test('אדמין: תמונת מצב + רשימת מכבסות', async ({ page, r
 });
 
 test('לקוח מבטל הזמנה — הרשימה מציגה בוטלה מיד אחר כך', async ({ page, request }) => {
-  const auth = await apiLogin(request, '+972500000002');
+  const auth = await apiLogin(request, '+972500000101', 'בדיקת ביטול');
   const laundry = await (await request.get('/api/laundries/achuza')).json();
   const bag = laundry.items.find(i => i.name.includes('שק'));
   const created = await request.post('/api/orders', {

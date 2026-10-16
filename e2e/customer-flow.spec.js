@@ -42,11 +42,12 @@ test('הזמנה מלאה: הוספה לסל, התחברות OTP דמו, איש�
 
 test('התנתקות מחזירה למסך בית', async ({ page }) => {
   await page.goto('/#/login');
-  await page.fill('#login-target', '+972500000002');
+  await page.fill('#login-target', '+972500000100');
   await page.locator('button', { hasText: 'שלחו לי קוד כניסה' }).click();
   const codeEl = page.locator('.warn b');
   await expect(codeEl).toBeVisible();
   await page.fill('#login-code', (await codeEl.textContent()).trim());
+  await page.fill('#login-name', 'בדיקת התנתקות');
   await page.getByRole('button', { name: 'כניסה', exact: true }).click();
   await expect(page.getByText('מחובר כ')).toBeVisible();
   await page.getByText('התנתקות').click();
