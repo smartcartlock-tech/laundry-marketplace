@@ -18,8 +18,8 @@ function vBotSim() {
      ${botSimLog.length ? botSimLog.map(b => botSimBubble(b.who, b.text)).join('') : '<div class="mut" style="text-align:center">כתבו "שלום" כדי להתחיל — נסו גם "מכבסות", "מחירון", "שעות", "סטטוס"</div>'}
     </div>
     <div style="display:flex;gap:6px">
-     <input id="bs-in" class="inp" style="flex:1" placeholder="הקלידו הודעה לבוט…" data-actk="botSimEnter">
-     <button class="btn" data-act="botSimSend">שלח</button>
+     <input id="bs-in" class="inp" style="flex:1;min-width:0;margin-bottom:0" placeholder="הקלידו הודעה לבוט…" data-actk="botSimEnter">
+     <button class="btn" style="flex:none;width:auto" data-act="botSimSend">שלח</button>
     </div>
    </div>
    <div id="bs-out" style="display:none">
