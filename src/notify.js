@@ -63,7 +63,7 @@ async function sendWhatsApp(toE164, body) {
 
 const { statusMuted } = require('./notification-prefs'); // CX5
 
-async function notifyUser(userId, tenantId, body, phone) {
+async function notifyUser(userId, tenantId, body, phone, title) {
   let sent = false, channel = 'log';
   // CX5: הלקוח השתיק עדכוני סטטוס — נרשם כ-muted, לא נשלח דבר
   if (await statusMuted(userId)) {
@@ -78,6 +78,7 @@ async function notifyUser(userId, tenantId, body, phone) {
   }
   await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)',
     [userId, tenantId, channel, body, sent]);
+  require('./usermessages').postUserMessage(userId, { tenantId, kind: 'order', title: title || 'עדכון מהמכבסה', body }).catch(() => {}); // N6: מראה במרכז ההודעות
 }
 
 module.exports = { sendWhatsApp, sendViaBot, notifyUser };

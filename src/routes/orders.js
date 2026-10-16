@@ -159,6 +159,7 @@ r.post('/', async (req, res) => {
 
     notifyUser(req.user.id, tenant.id,
       `הזמנתך ב${tenant.name} התקבלה (#${order.id.slice(0, 8)}) — סה״כ ₪${total}. נעדכן כשהיא תאושר.`, req.user.phone).catch(() => {});
+    require('../ordernotices').notifyLaundryNewOrder(tenant, order, req.user).catch(() => {}); // N6: תבנית laundry_new_order לבעלי המכבסה
     res.status(201).json({ order });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});

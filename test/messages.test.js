@@ -36,10 +36,27 @@ test('N1: מרכז הודעות — דורש התחברות, רישום, קרי�
   const after = await api('/api/messages/unread-count', { token });
   assert.equal(after.json.unread, 0);
 
+  // N6: סימון כלא-נקרא מחזיר למונה; מחיקה מסירה לצמיתות
+  const un = await api(`/api/messages/${id}/unread`, { method: 'POST', token });
+  assert.equal(un.json.updated, 1);
+  const afterUn = await api('/api/messages/unread-count', { token });
+  assert.equal(afterUn.json.unread, 1);
+
+  const del = await api(`/api/messages/${id}`, { method: 'DELETE', token });
+  assert.equal(del.json.deleted, 1);
+  const afterDel = await api('/api/messages', { token });
+  assert.equal(afterDel.json.messages.length, 1);
+  assert.equal(afterDel.json.unread, 0);
+
   // משתמש אחר לא רואה/לא מסמן הודעות שלי
   const other = await api.login('+972500000003');
   const oList = await api('/api/messages', { token: other });
   assert.equal(oList.json.messages.length, 0);
+
+  // מחיקה של הודעה שאינה שלי — לא נוגע
+  const { rows: mine } = await require('../src/db').q("SELECT id FROM user_messages WHERE user_id=(SELECT id FROM users WHERE phone='+972500000002')");
+  const oDel = await api(`/api/messages/${mine[0].id}`, { method: 'DELETE', token: other });
+  assert.equal(oDel.json.deleted, 0);
 });
 
 test('N2: תבניות הודעה — CRUD לאדמין בלבד, רינדור משתנים, ברירות דמו', async (t) => {

@@ -17,7 +17,10 @@ async function vMessages() {
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
       <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${new Date(m.created_at).toLocaleString('he-IL')}</div>
      </div>
-     ${m.read_at ? '' : `<button class="btn2" style="font-size:11px" data-act="msgMarkRead" data-a="${m.id}">נקרא</button>`}
+     <div style="display:flex;flex-direction:column;gap:4px">
+      <button class="btn2" style="font-size:11px" data-act="${m.read_at ? 'msgMarkUnread' : 'msgMarkRead'}" data-a="${m.id}">${m.read_at ? 'סמן כלא נקרא' : 'נקרא'}</button>
+      <button class="btn2" style="font-size:11px;color:#b71c1c" data-act="msgDelete" data-a="${m.id}">מחק</button>
+     </div>
     </div>
    </div>`).join('')
    : '<div class="card mut" style="text-align:center;padding:30px 0">אין הודעות עדיין</div>';
@@ -28,10 +31,26 @@ async function vMessages() {
 }
 
 async function msgMarkRead(id) {
+  try { await api('/messages/' + id + '/read', { method: 'POST' }); } catch (e) { toast(e.message); }
+  msgRefreshBadge();
+  route(); // רענון הרשימה — ההודעה מעומעמת והכפתור מתחלף ל"סמן כלא נקרא"
+}
+
+async function msgMarkUnread(id) {
   try {
-    await api('/messages/' + id + '/read', { method: 'POST' });
+    await api('/messages/' + id + '/unread', { method: 'POST' });
     const el = document.getElementById('msg-' + id);
-    if (el) { el.style.opacity = '.65'; el.style.borderRight = 'none'; const b = el.querySelector('button'); if (b) b.remove(); }
+    if (el) { el.style.opacity = '1'; el.style.borderRight = '3px solid var(--acc,#0e7a8a)'; }
+  } catch (e) { toast(e.message); }
+  msgRefreshBadge();
+  route(); // רענון הרשימה כדי שהכפתור יתחלף ל"נקרא"
+}
+
+async function msgDelete(id) {
+  try {
+    await api('/messages/' + id, { method: 'DELETE' });
+    const el = document.getElementById('msg-' + id);
+    if (el) el.remove();
   } catch (e) { toast(e.message); }
   msgRefreshBadge();
 }
@@ -81,5 +100,5 @@ async function msgRefreshBadge() {
 })();
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
- msgMarkRead:t=>msgMarkRead(t.dataset.a), msgReadAll:()=>msgReadAll()
+ msgMarkRead:t=>msgMarkRead(t.dataset.a), msgMarkUnread:t=>msgMarkUnread(t.dataset.a), msgDelete:t=>msgDelete(t.dataset.a), msgReadAll:()=>msgReadAll()
 });

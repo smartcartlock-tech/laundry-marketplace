@@ -32,6 +32,20 @@ r.post('/:id/read', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
+r.post('/:id/unread', async (req, res) => {
+  try {
+    const { rowCount } = await q('UPDATE user_messages SET read_at=NULL WHERE id=$1 AND user_id=$2 AND read_at IS NOT NULL', [req.params.id, req.user.id]);
+    res.json({ ok: true, updated: rowCount });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+r.delete('/:id', async (req, res) => {
+  try {
+    const { rowCount } = await q('DELETE FROM user_messages WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    res.json({ ok: true, deleted: rowCount });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
 r.post('/read-all', async (req, res) => {
   try {
     const { rowCount } = await q('UPDATE user_messages SET read_at=now() WHERE user_id=$1 AND read_at IS NULL', [req.user.id]);

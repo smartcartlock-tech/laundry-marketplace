@@ -453,12 +453,12 @@ r.post('/orders/:id/assign', uuidParams('id'), async (req, res) => {
     await q('UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2', [courier_id, o[0].id]);
     await q('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
       [o[0].id, o[0].status, req.user.id, 'שובץ שליח מכבסה']);
-    notifyUser(c[0].uid, req.tenant.id, `שובצת לאיסוף/החזרה של הזמנה #${o[0].id.slice(0,8)} ב${req.tenant.name}. כתובת: ${o[0].address}`, c[0].phone).catch(() => {});
+    require('../ordernotices').notifyCourierNewTask({ id: c[0].uid, phone: c[0].phone }, req.tenant, o[0], 'assign').catch(() => {}); // N6: תבנית courier_new_task
     return res.json({ ok: true, mode: 'assigned' });
   }
   const { rows: off } = await q(
     `INSERT INTO courier_offers(courier_id, order_id, kind) VALUES ($1,$2,'pickup') RETURNING *`, [courier_id, o[0].id]);
-  notifyUser(c[0].uid, req.tenant.id, `הצעת שיבוץ חדשה מהפלטפורמה: הזמנה #${o[0].id.slice(0,8)} ב${req.tenant.name}. אשר/י באפליקציית השליח.`, c[0].phone).catch(() => {});
+  require('../ordernotices').notifyCourierNewTask({ id: c[0].uid, phone: c[0].phone }, req.tenant, o[0], 'offer').catch(() => {}); // N6: תבנית courier_new_task
   res.json({ ok: true, mode: 'offered', offer: off[0] });
 });
 
