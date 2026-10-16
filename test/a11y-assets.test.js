@@ -35,6 +35,10 @@ test('a11y.js: ולידציית aria-invalid על טופסי ההצטרפות ו
   assert.match(js, /verifyOtp/, 'wraps OTP verify');
 });
 
+test('styles.css: מצב כהה — כוכבים מקבלים היפוך חוזר לניגודיות', () => {
+  assert.match(pub('styles.css'), /html\.dark \.stars\{filter:invert/, 'stars re-inverted in dark mode');
+});
+
 test('styles.css: מטרות מגע 44px במובייל, קישור דילוג, פוקוס נראה, ניגודיות', () => {
   const css = pub('styles.css');
   assert.match(css, /\.skip-link/, 'skip link style');
