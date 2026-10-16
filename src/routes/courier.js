@@ -3,6 +3,7 @@ const multer = require('multer');
 const { q, pool } = require('../db');
 const { requireAuth, requireCourier } = require('../auth');
 const { notifyUser } = require('../notify');
+const { accrueStop, getSetting, weekStart } = require('../routes-engine');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -123,11 +124,77 @@ r.get('/route', async (req, res) => {
     `SELECT o.id, o.status, o.address, o.lat, o.lng, o.pickup_at, o.delivery_at, o.total, o.payment_method,
             t.name AS tenant_name, t.address AS tenant_address, t.lat AS tenant_lat, t.lng AS tenant_lng,
             u.name AS customer_name, u.phone AS customer_phone,
+            rs.seq AS route_seq, cr.combined AS route_combined, cr.id AS route_id,
             (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty)) FROM order_items oi WHERE oi.order_id=o.id) AS items
      FROM orders o JOIN tenants t ON t.id=o.tenant_id JOIN users u ON u.id=o.customer_id
+     LEFT JOIN courier_route_stops rs ON rs.order_id=o.id
+     LEFT JOIN courier_routes cr ON cr.id=rs.route_id AND cr.route_date=CURRENT_DATE
      WHERE o.courier_id=$1 AND o.status IN ('confirmed','picked_up','ready','out_for_delivery')
-     ORDER BY COALESCE(o.pickup_at, o.created_at)`, [req.courier.id]);
-  res.json({ route: rows });
+     ORDER BY COALESCE(rs.seq, 9999), COALESCE(o.pickup_at, o.created_at)`, [req.courier.id]);
+  res.json({ route: rows, combined: rows.some(x => x.route_combined) });
+});
+
+// E5.T3: המסלול שלי היום — רצף אחד מאוחד גם מכמה מכבסות
+r.get('/routes/today', async (req, res) => {
+  const { rows: routes } = await q(
+    `SELECT cr.id, cr.route_date, cr.combined, cr.status, count(rs.id)::int AS stops,
+            count(DISTINCT rs.tenant_id)::int AS tenants
+     FROM courier_routes cr LEFT JOIN courier_route_stops rs ON rs.route_id=cr.id
+     WHERE cr.courier_id=$1 AND cr.route_date=CURRENT_DATE
+     GROUP BY cr.id ORDER BY cr.created_at DESC`, [req.courier.id]);
+  if (!routes[0]) return res.json({ route: null });
+  const { rows: stops } = await q(
+    `SELECT rs.seq, rs.order_id, o.status, o.address, o.pickup_at, o.delivery_at, t.name AS tenant_name
+     FROM courier_route_stops rs JOIN orders o ON o.id=rs.order_id JOIN tenants t ON t.id=rs.tenant_id
+     WHERE rs.route_id=$1 ORDER BY rs.seq`, [routes[0].id]);
+  res.json({ route: { ...routes[0], stops } });
+});
+
+// E5.T4: דוח רווחים שבועי — פירוט לפי מכבסה, ברוטו/עמלה/נטו
+r.get('/earnings', async (req, res) => {
+  const ws = /^\d{4}-\d{2}-\d{2}$/.test(req.query.week || '') ? req.query.week : null;
+  const params = [req.courier.id];
+  let where = 'e.courier_id=$1';
+  if (ws) { params.push(ws); where += ' AND e.week_start=$2'; }
+  const { rows: byTenant } = await q(
+    `SELECT e.tenant_id, COALESCE(t.name,'—') AS tenant_name,
+            sum(e.stops)::int AS stops, sum(e.gross)::numeric(9,2) AS gross,
+            sum(e.commission)::numeric(9,2) AS commission, sum(e.net)::numeric(9,2) AS net
+     FROM courier_earnings e LEFT JOIN tenants t ON t.id=e.tenant_id
+     WHERE ${where} AND e.status<>'disputed'
+     GROUP BY e.tenant_id, t.name ORDER BY gross DESC`, params);
+  const { rows: totals } = await q(
+    `SELECT COALESCE(sum(e.stops),0)::int AS stops, COALESCE(sum(e.gross),0)::numeric(9,2) AS gross,
+            COALESCE(sum(e.commission),0)::numeric(9,2) AS commission, COALESCE(sum(e.net),0)::numeric(9,2) AS net,
+            COALESCE(sum(e.net) FILTER (WHERE e.status='accrued'),0)::numeric(9,2) AS accrued_net,
+            COALESCE(sum(e.net) FILTER (WHERE e.status='paid_demo'),0)::numeric(9,2) AS paid_net
+     FROM courier_earnings e WHERE ${where}`, params);
+  const { rows: rows2 } = await q(
+    `SELECT e.id, e.kind, e.stops, e.gross, e.commission, e.net, e.status, e.week_start, e.created_at,
+            t.name AS tenant_name, e.order_id
+     FROM courier_earnings e LEFT JOIN tenants t ON t.id=e.tenant_id
+     WHERE ${where} ORDER BY e.created_at DESC LIMIT 100`, params);
+  const rate = await getSetting('courier_rate_per_stop', '12');
+  const pct = await getSetting('courier_commission_pct', '20');
+  res.json({ by_tenant: byTenant, totals: totals[0], rows: rows2, rate_per_stop: Number(rate), commission_pct: Number(pct) });
+});
+
+// E5.T4: תשלום דמו שבועי — סימון כל הזיכויים הפתוחים של השבוע כשולמו
+r.post('/earnings/payout', async (req, res) => {
+  const ws = /^\d{4}-\d{2}-\d{2}$/.test((req.body || {}).week_start || '') ? req.body.week_start : weekStart(new Date());
+  const { rows } = await q(
+    `UPDATE courier_earnings SET status='paid_demo' WHERE courier_id=$1 AND week_start=$2 AND status='accrued' RETURNING id`,
+    [req.courier.id, ws]);
+  res.json({ ok: true, paid: rows.length, week_start: ws, demo: true });
+});
+
+// E5.T4/T8: מחלוקת על רשומת תשלום
+r.post('/earnings/:id/dispute', async (req, res) => {
+  const { rows } = await q(
+    `UPDATE courier_earnings SET status='disputed' WHERE id=$1 AND courier_id=$2 AND status='accrued' RETURNING id`,
+    [req.params.id, req.courier.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'רשומה לא נמצאה או כבר טופלה' });
+  res.json({ ok: true });
 });
 
 // סימון איסוף/מסירה על ידי שליח (עם תמונה אופציונלית)
@@ -144,6 +211,9 @@ r.post('/orders/:id/mark', async (req, res) => {
   await q('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
   await q('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
     [order.id, newStatus, req.user.id, note || null, photo_url || null]);
+  // E5.T4: צבירת נקודה לזכות השליח על איסוף/מסירה
+  if (newStatus === 'picked_up') await accrueStop(req.courier.id, order, 'pickup').catch(e => console.error('[earnings]', e.message));
+  if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
   if (newStatus === 'delivered' && order.points_earned > 0) {
     await q('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
       [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);

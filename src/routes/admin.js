@@ -1,6 +1,7 @@
 const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { buildRoutesForDate } = require('../routes-engine');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
@@ -93,6 +94,31 @@ r.post('/couriers/:id/reject', async (req, res) => {
   const { rows } = await q('UPDATE couriers SET approved=false, rejected_reason=$2 WHERE id=$1 RETURNING id', [req.params.id, reason]);
   if (!rows[0]) return res.status(404).json({ error: 'שליח לא נמצא' });
   res.json({ ok: true });
+});
+
+// E5.T3: בניית מסלולים אוטומטית (איחוד לפי אזור + nearest neighbor)
+r.post('/routes/auto-build', async (req, res) => {
+  try {
+    const result = await buildRoutesForDate((req.body || {}).date);
+    res.json(result);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'בניית מסלולים נכשלה' }); }
+});
+
+// E5.T3/T8: צפייה במסלולים לתאריך
+r.get('/routes', async (req, res) => {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toISOString().slice(0, 10);
+  const { rows } = await q(
+    `SELECT cr.id, cr.route_date, cr.combined, cr.status, u.name AS courier_name,
+            count(rs.id)::int AS stops, count(DISTINCT rs.tenant_id)::int AS tenants,
+            json_agg(json_build_object('seq',rs.seq,'tenant',t.name,'address',o.address,'status',o.status) ORDER BY rs.seq) AS stop_list
+     FROM courier_routes cr
+     JOIN couriers c ON c.id=cr.courier_id JOIN users u ON u.id=c.user_id
+     LEFT JOIN courier_route_stops rs ON rs.route_id=cr.id
+     LEFT JOIN tenants t ON t.id=rs.tenant_id
+     LEFT JOIN orders o ON o.id=rs.order_id
+     WHERE cr.route_date=$1
+     GROUP BY cr.id, u.name ORDER BY cr.created_at`, [day]);
+  res.json({ date: day, routes: rows });
 });
 
 r.get('/couriers', async (req, res) => {

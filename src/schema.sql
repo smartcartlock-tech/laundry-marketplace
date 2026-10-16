@@ -270,3 +270,50 @@ CREATE TABLE IF NOT EXISTS courier_documents (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS courier_docs_idx ON courier_documents(courier_id);
+
+-- E5.T3: מסלולים משולבים רב-מכבסתיים
+CREATE TABLE IF NOT EXISTS courier_routes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id uuid NOT NULL REFERENCES couriers(id) ON DELETE CASCADE,
+  route_date date NOT NULL,
+  combined boolean DEFAULT false,        -- נוצר מ-2+ מכבסות
+  status text NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','done')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS routes_courier_idx ON courier_routes(courier_id, route_date);
+
+CREATE TABLE IF NOT EXISTS courier_route_stops (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  route_id uuid NOT NULL REFERENCES courier_routes(id) ON DELETE CASCADE,
+  order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  seq int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(route_id, order_id)
+);
+CREATE INDEX IF NOT EXISTS route_stops_idx ON courier_route_stops(route_id, seq);
+
+-- E5.T4: פיצול תשלום ורווחי שליח
+CREATE TABLE IF NOT EXISTS platform_settings (
+  key text PRIMARY KEY,
+  value text NOT NULL
+);
+INSERT INTO platform_settings(key, value) VALUES ('courier_rate_per_stop','12'), ('courier_commission_pct','20')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS courier_earnings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id uuid NOT NULL REFERENCES couriers(id) ON DELETE CASCADE,
+  order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
+  tenant_id uuid REFERENCES tenants(id) ON DELETE SET NULL,
+  kind text NOT NULL CHECK (kind IN ('pickup','delivery','adjustment')),
+  stops int NOT NULL DEFAULT 1,
+  gross numeric(9,2) NOT NULL,
+  commission numeric(9,2) NOT NULL,
+  net numeric(9,2) NOT NULL,
+  status text NOT NULL DEFAULT 'accrued' CHECK (status IN ('accrued','paid_demo','disputed')),
+  week_start date NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(courier_id, order_id, kind)
+);
+CREATE INDEX IF NOT EXISTS earnings_courier_idx ON courier_earnings(courier_id, week_start);
