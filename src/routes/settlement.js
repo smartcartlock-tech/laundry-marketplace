@@ -47,7 +47,7 @@ r.get('/settlement/payments', async (req, res) => {
        FROM orders o WHERE o.tenant_id=$1 AND o.status<>'cancelled'
          AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
        GROUP BY 1,2 ORDER BY 1,2`, [tid, p.from, p.to]),
-    q(`SELECT (o.created_at AT TIME ZONE '${TZ}')::date AS day, count(*)::int AS orders,
+    q(`SELECT to_char(o.created_at AT TIME ZONE '${TZ}','YYYY-MM-DD') AS day, count(*)::int AS orders,
          COALESCE(sum(o.total),0)::numeric(10,2) AS total,
          COALESCE(sum(o.total) FILTER (WHERE o.payment_status IN ${PAID}),0)::numeric(10,2) AS collected
        FROM orders o WHERE o.tenant_id=$1 AND o.status<>'cancelled'
@@ -71,7 +71,7 @@ r.get('/settlement/payments.csv', async (req, res) => {
   const p = period(req);
   if (p.error) return res.status(400).json({ error: p.error });
   const { rows } = await q(
-    `SELECT o.id, (o.created_at AT TIME ZONE '${TZ}')::date AS day, u.name AS customer, o.status,
+    `SELECT o.id, to_char(o.created_at AT TIME ZONE '${TZ}','YYYY-MM-DD') AS day, u.name AS customer, o.status,
             o.payment_method, o.payment_status, o.subtotal, o.delivery_fee, o.discount, o.total
      FROM orders o LEFT JOIN users u ON u.id=o.customer_id
      WHERE o.tenant_id=$1 AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
@@ -170,7 +170,7 @@ r.get('/settlement/accountant-export.csv', async (req, res) => {
   const p = period(req);
   if (p.error) return res.status(400).json({ error: p.error });
   const { rows } = await q(
-    `SELECT d.kind, d.doc_number, d.doc_year, (d.issued_at AT TIME ZONE '${TZ}')::date AS day,
+    `SELECT d.kind, d.doc_number, d.doc_year, to_char(d.issued_at AT TIME ZONE '${TZ}','YYYY-MM-DD') AS day,
             u.name AS customer, d.amount, d.vat, d.total, d.status, d.credited_amount, d.allocation_number
      FROM documents d LEFT JOIN users u ON u.id=d.customer_id
      WHERE d.tenant_id=$1 AND (d.issued_at AT TIME ZONE '${TZ}')::date BETWEEN $2 AND $3
