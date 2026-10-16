@@ -2,6 +2,7 @@
 const express = require('express');
 const { q } = require('../db');
 const { requireAuth } = require('../auth');
+const { verifyB64Image } = require('../uploads');
 
 const r = express.Router();
 const KINDS = ['damage','missing','late','other'];
@@ -20,8 +21,8 @@ r.post('/:id/report', requireAuth, async (req, res) => {
   for (const p of pics) {
     if (!p || typeof p.data_b64 !== 'string' || !p.data_b64.length || p.data_b64.length > MAX_B64)
       return res.status(400).json({ error: 'תמונה לא תקינה או גדולה מדי (עד 1MB)' });
-    if (!/^image\/(jpeg|png|webp)$/.test(p.content_type || ''))
-      return res.status(400).json({ error: 'סוג קובץ לא נתמך (jpeg/png/webp)' });
+    if (!verifyB64Image(p.content_type, p.data_b64, 1024 * 1024))
+      return res.status(400).json({ error: 'תוכן הקובץ אינו תמונה תקינה (jpeg/png/webp, עד 1MB)' });
   }
 
   let rows;

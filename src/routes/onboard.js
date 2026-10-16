@@ -6,7 +6,8 @@ const { extractFromImages } = require('../gemini');
 
 const r = express.Router();
 r.use(requireAuth);
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 5 } });
+const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 5 }, fileFilter: fileFilter(IMAGES) });
 
 // שלב 1: העלאת תמונות מחירון/שעות/תקנון → Gemini מחלץ טיוטת פרופיל
 r.post('/extract', upload.array('files', 5), async (req, res) => {
@@ -14,6 +15,7 @@ r.post('/extract', upload.array('files', 5), async (req, res) => {
     const key = process.env.GEMINI_API_KEY;
     if (!key) return res.status(503).json({ error: 'שירות החילוץ אינו זמין כרגע' });
     if (!req.files || !req.files.length) return res.status(400).json({ error: 'יש לצרף לפחות תמונה אחת' });
+    if (req.files.some(f => !verifyFile(f, IMAGES))) return res.status(400).json({ error: 'תוכן הקובץ אינו תמונה תקינה (JPG/PNG/WEBP בלבד)' });
     const images = req.files.map(f => ({ mimeType: f.mimetype, base64: f.buffer.toString('base64') }));
     const draft = await extractFromImages(key, images);
     res.json({ draft });

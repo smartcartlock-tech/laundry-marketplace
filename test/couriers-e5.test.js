@@ -1,4 +1,8 @@
 const { test } = require('node:test');
+// B4: העלאות עוברות אימות magic-bytes — הפיקסצ'רות חייבות להיות תמונות אמיתיות
+const PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const JPEG_BYTES = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//', 'base64');
+
 const assert = require('node:assert');
 const { startApp } = require('./helpers');
 
@@ -9,8 +13,8 @@ async function registerCourier(base, token, { withLicense = true, vehicle = 'א�
   fd.append('model', 'platform');
   fd.append('areas', JSON.stringify(areas));
   fd.append('availability', JSON.stringify({ 0: [['08:00', '20:00']], 2: [['08:00', '14:00']] }));
-  if (withLicense) fd.append('license', new Blob([Buffer.from('fake-license-bytes')], { type: 'image/png' }), 'license.png');
-  fd.append('photo', new Blob([Buffer.from('fake-photo')], { type: 'image/jpeg' }), 'me.jpg');
+  if (withLicense) fd.append('license', new Blob([PNG_BYTES], { type: 'image/png' }), 'license.png');
+  fd.append('photo', new Blob([JPEG_BYTES], { type: 'image/jpeg' }), 'me.jpg');
   const r = await fetch(base + '/api/courier/register', { method: 'POST', headers: { authorization: 'Bearer ' + token }, body: fd });
   let json = null; try { json = await r.json(); } catch (e) {}
   return { status: r.status, json };
@@ -63,7 +67,7 @@ test('E5.T1: הרשמת שליח עצמאי עם מסמכים', async (t) => {
   assert.equal(docRes.status, 200);
   assert.equal(docRes.headers.get('content-type'), 'image/png');
   const buf = Buffer.from(await docRes.arrayBuffer());
-  assert.equal(buf.toString(), 'fake-license-bytes');
+  assert.deepEqual(buf, PNG_BYTES);
 
   const other = await api.login('+972500000021');
   const stolen = await fetch(base + '/api/courier/documents/' + docId, { headers: { authorization: 'Bearer ' + other } });

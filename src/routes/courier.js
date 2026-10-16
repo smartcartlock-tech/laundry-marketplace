@@ -8,13 +8,12 @@ const { accrueStop, getSetting, weekStart } = require('../routes-engine');
 const r = express.Router();
 r.use(requireAuth);
 
+const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+const DOC_TYPES = [...IMAGES, 'application/pdf'];
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 3 },
-  fileFilter(req, file, cb) {
-    const ok = /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.mimetype);
-    cb(ok ? null : new Error('קובץ חייב להיות תמונה (JPG/PNG/WEBP) או PDF'), ok);
-  },
+  fileFilter: fileFilter(DOC_TYPES),
 });
 
 const DOC_KINDS = ['license', 'insurance', 'photo'];
@@ -22,6 +21,8 @@ const DOC_LABELS = { license: 'רישיון נהיגה', insurance: 'ביטוח'
 
 // E5.T1: הרשמה עצמית של שליח עצמאי (ממתין לאישור אדמין). שליח שדחו יכול להגיש מחדש.
 r.post('/register', upload.fields(DOC_KINDS.map(k => ({ name: k, maxCount: 1 }))), async (req, res) => {
+  const badDoc = DOC_KINDS.some(k => (req.files?.[k] || []).some(f => !verifyFile(f, DOC_TYPES)));
+  if (badDoc) return res.status(400).json({ error: 'תוכן הקובץ אינו תואם לסוג המדווח (JPG/PNG/WEBP/PDF בלבד)' });
   try {
     const { vehicle, areas, availability, model, name } = req.body || {};
     if (!vehicle || !String(vehicle).trim()) return res.status(400).json({ error: 'סוג רכב חובה' });

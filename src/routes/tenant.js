@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
-const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 }, fileFilter: fileFilter(IMAGES) });
 const { q, pool } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
@@ -211,7 +212,7 @@ r.get('/subscriptions', async (req, res) => {
 // E3.T1: העלאת לוגו מכבסה
 r.post('/logo', logoUpload.single('logo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'חסר קובץ לוגו' });
-  if (!/^image\/(png|jpeg|webp)$/.test(req.file.mimetype)) return res.status(400).json({ error: 'קובץ תמונה בלבד (PNG/JPG/WebP)' });
+  if (!verifyFile(req.file, IMAGES)) return res.status(400).json({ error: 'תוכן הקובץ אינו תמונה תקינה (PNG/JPG/WebP)' });
   await q('UPDATE tenants SET logo=$1, logo_mime=$2 WHERE id=$3', [req.file.buffer, req.file.mimetype, req.tenant.id]);
   res.json({ ok: true });
 });
