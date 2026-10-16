@@ -22,6 +22,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/me', require('./routes/me')); // C2: זכויות נושא מידע
 app.use('/api', require('./routes/public'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: דיווחי תקלות לקוח
