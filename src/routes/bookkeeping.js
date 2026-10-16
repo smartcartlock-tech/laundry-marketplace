@@ -922,7 +922,10 @@ async function assembleUniformData(tid, from, to) {
     lines: byDoc[d.id] || [],
   }));
 
-  return { accounts, lines, documents };
+  return {
+    accounts: accounts.map((a) => ({ code: a.code, name: a.name_he, opening: Number(a.opening), debit: Number(a.debit), credit: Number(a.credit) })),
+    lines, documents,
+  };
 }
 
 r.post('/bookkeeping/uniform-export', async (req, res) => {

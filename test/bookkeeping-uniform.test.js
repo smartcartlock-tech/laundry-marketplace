@@ -152,6 +152,9 @@ test('095: מבנה אחיד — הפקה, מבנה קבצים, הרשאות', a
     assert.equal(d120.slice(49, 50), '1', 'מזומן');
     assert.equal(d120.slice(103, 118), '+00000000005900');
     // B100 מאוזן: סכום חובות = סכום זכות
+    const b110s = recs.map((r) => iconv.decode(r, 'cp862')).filter((s) => s.slice(0, 4) === 'B110');
+    assert.ok(b110s.some((s) => s.slice(37, 87).trim() === 'קופה - מזומן'), 'שם חשבון עברי ברשומת B110');
+    assert.equal(b110s.find((s) => s.slice(37, 87).trim() === 'קופה - מזומן').slice(22, 37).trim(), '1000', 'מפתח חשבון');
     const b100s = recs.map((r) => iconv.decode(r, 'cp862')).filter((s) => s.slice(0, 4) === 'B100');
     let dSum = 0, cSum = 0;
     for (const s of b100s) {
