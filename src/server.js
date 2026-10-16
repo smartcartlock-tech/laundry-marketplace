@@ -40,6 +40,7 @@ app.use('/api/t/:slug', require('./routes/tenant-ops')); // C5: סיכום יו�
 app.use('/api/public-ops', require('./routes/tenant-ops').publicRouter); // C1/C3 ציבורי
 app.use('/api/t/:slug', require('./routes/tenant-checklist')); // B1: צ'ק-ליסט מוכנות
 app.use('/api/t/:slug', require('./routes/tenant-agreement')); // B4: הסכם שירות דיגיטלי
+app.use('/api/t/:slug', require('./routes/settlement')); // התחשבנות (דמו): דוח תשלומים, עמלה, ייצוא רו"ח, בדיקת רצף
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/apply')); // B2: טופס הצטרפות ציבורי
