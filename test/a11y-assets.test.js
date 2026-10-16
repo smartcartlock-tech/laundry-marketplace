@@ -22,7 +22,7 @@ test('a11y.js: toast עטוף עם role=status ו-aria-live', () => {
 test('a11y.js: שיוך תוויות לשדות + aria-labels לשדות הטפסים מהביקורת', () => {
   const js = pub('js/a11y.js');
   assert.match(js, /label\.lb:not\(\[for\]\)/, 'label association pass');
-  for (const id of ['ap-name', 'ap-city', 'ap-phone', 'ap-est', 'login-target']) {
+  for (const id of ['ap-name', 'ap-city', 'ap-phone', 'ap-est', 'login-target', 'of-status', 'of-from', 'of-to', 'of-text']) {
     assert.ok(js.includes(`'${id}'`), `aria-label for #${id}`);
   }
 });
