@@ -102,9 +102,11 @@ r.get('/offers', async (req, res) => {
 r.post('/offers/:id/accept', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE courier_offers SET status='accepted', responded_at=now()
-     WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING *`, [req.params.id, req.courier.id]);
-  if (!rows[0]) return res.status(404).json({ error: 'הצעה לא נמצאה או כבר טופלה' });
-  await q('UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2', [req.courier.id, rows[0].order_id]);
+     WHERE id=$1 AND courier_id=$2 AND status='offered'
+       AND EXISTS(SELECT 1 FROM orders o WHERE o.id=courier_offers.order_id AND o.courier_id IS NULL AND o.status NOT IN ('delivered','cancelled'))
+     RETURNING *`, [req.params.id, req.courier.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'הצעה לא נמצאה, כבר טופלה, או שההזמנה אינה פעילה' }); // QA-flow: בדיקת סטטוס הזמנה
+  await q(`UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2 AND courier_id IS NULL AND status NOT IN ('delivered','cancelled')`, [req.courier.id, rows[0].order_id]);
   await q(`UPDATE courier_offers SET status='expired' WHERE order_id=$1 AND id<>$2 AND status='offered'`,
     [rows[0].order_id, rows[0].id]);
   await q('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,(SELECT status FROM orders WHERE id=$1),$2,$3)',
@@ -205,14 +207,18 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
   const map = { picked_up: 'picked_up', out_for_delivery: 'out_for_delivery', delivered: 'delivered' };
   const newStatus = map[action];
   if (!newStatus) return res.status(400).json({ error: 'action: picked_up | delivered' });
-  const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND courier_id=$2', [req.params.id, req.courier.id]);
-  const order = o[0];
-  if (!order) return res.status(404).json({ error: 'הזמנה לא משובצת אליך' });
-  const allowed = { picked_up: ['confirmed'], out_for_delivery: ['ready'], delivered: ['out_for_delivery', 'ready'] };
-  if (!allowed[newStatus].includes(order.status)) return res.status(409).json({ error: `לא ניתן לסמן מתוך סטטוס ${order.status}` });
+  // QA-flow: טרנזקציה + FOR UPDATE — סימון כפול במקביל מצליח פעם אחת; delivered רק אחרי out_for_delivery
+  const client = await pool.connect();
+  let order, windowViolation = false;
+  try {
+    await client.query('BEGIN');
+    const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND courier_id=$2 FOR UPDATE', [req.params.id, req.courier.id]);
+    order = o[0];
+    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא משובצת אליך' }); }
+    const allowed = { picked_up: ['confirmed'], out_for_delivery: ['ready'], delivered: ['out_for_delivery'] };
+    if (!allowed[newStatus].includes(order.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: `לא ניתן לסמן מתוך סטטוס ${order.status}` }); }
 
   // QA2.T4: חלון איסוף — לא חוסמים עבודת שטח, אבל סימון מחוץ לחלון מתועד כחריגה באירועי ההזמנה
-  let windowViolation = false;
   if (newStatus === 'picked_up' && order.pickup_at) {
     const { rows: w } = await q(
       `SELECT start_time, end_time FROM pickup_windows
@@ -231,30 +237,29 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
     }
   }
 
-  await q('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
-  const evNote = [note || null, windowViolation ? 'חריגה: האיסוף סומן מחוץ לחלון שנקבע' : null].filter(Boolean).join(' · ') || null;
-  await q('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
-    [order.id, newStatus, req.user.id, evNote, photo_url || null]);
-  // E5.T4: צבירת נקודה לזכות השליח על איסוף/מסירה
-  if (newStatus === 'picked_up') await accrueStop(req.courier.id, order, 'pickup').catch(e => console.error('[earnings]', e.message));
-  if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
-  if (newStatus === 'delivered' && order.points_earned > 0) {
-    await q('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
-      [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
-    if (order.payment_method === 'cash') await q(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
-  }
-  if (newStatus === 'delivered') {
-    const { issueDocumentsForOrder } = require('../documents');
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
+    const evNote = [note || null, windowViolation ? 'חריגה: האיסוף סומן מחוץ לחלון שנקבע' : null].filter(Boolean).join(' · ') || null;
+    await client.query('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
+      [order.id, newStatus, req.user.id, evNote, photo_url || null]);
+    if (newStatus === 'delivered' && order.points_earned > 0) {
+      await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+        [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
+      if (order.payment_method === 'cash') await client.query(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
+    }
+    if (newStatus === 'delivered') {
+      const { issueDocumentsForOrder } = require('../documents');
       const { rows: tt } = await client.query('SELECT * FROM tenants WHERE id=$1', [order.tenant_id]);
       const { rows: ord } = await client.query('SELECT * FROM orders WHERE id=$1', [order.id]);
       await issueDocumentsForOrder(client, { tenant: tt[0], order: ord[0], actorId: req.user.id });
-      await client.query('COMMIT');
-    } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error('[documents] issue failed', e.message); }
-    finally { client.release(); }
-  }
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); return res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+  // אחרי commit בלבד: צבירת שליח + התראות (לא קריטיים אם נכשלים)
+  if (newStatus === 'picked_up') await accrueStop(req.courier.id, order, 'pickup').catch(e => console.error('[earnings]', e.message));
+  if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
   const HE = { picked_up: 'נאספה על ידי השליח', out_for_delivery: 'בדרך אליך', delivered: 'סומנה כהוחזרה. תודה!' };
   if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.`, cust[0].phone).catch(() => {});

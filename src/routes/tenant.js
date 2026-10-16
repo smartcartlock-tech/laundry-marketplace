@@ -37,19 +37,31 @@ r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
   try {
     const { status, note } = req.body || {};
     if (!FLOW.includes(status) && status !== 'cancelled') return res.status(400).json({ error: 'סטטוס לא חוקי' });
+    // QA-flow: BEGIN לפני הנעילה — בעבר ה-FOR UPDATE רץ ב-autocommit והשתחרר מיד
+    await client.query('BEGIN');
     const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [req.params.id, req.tenant.id]);
     const order = o[0];
-    if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
+    // QA-flow: בוטלה היא סופית; ביטול אסור אחרי מסירה
+    if (order.status === 'cancelled') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'ההזמנה כבר בוטלה' }); }
+    if (status === 'cancelled' && order.status === 'delivered') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'לא ניתן לבטל הזמנה שסומנה כנמסרה' }); }
     const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
-    if (status !== 'cancelled' && nxt !== cur + 1) return res.status(409).json({ error: 'מעבר סטטוס חייב להיות לשלב הבא ברצף' });
+    if (status !== 'cancelled' && nxt !== cur + 1) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'מעבר סטטוס חייב להיות לשלב הבא ברצף' }); }
     if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
-      return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
+      await client.query('ROLLBACK'); return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
     }
-    await client.query('BEGIN');
     await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
       [order.id, status, req.user.id, note || null]);
-    if (status === 'cancelled') await restoreBags(client, order.id);
+    if (status === 'cancelled') {
+      await restoreBags(client, order.id);
+      // QA-flow: החזר נקודות שמומשו ושחרור שימוש בקופון (כמו בביטול לקוח)
+      if (Number(order.points_redeemed) > 0)
+        await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+          [order.tenant_id, order.customer_id, Number(order.points_redeemed), 'החזר נקודות בעקבות ביטול הזמנה', order.id]);
+      if (order.coupon_id)
+        await client.query('UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id=$1', [order.coupon_id]);
+    }
     if (status === 'delivered' && order.points_earned > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
         [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
@@ -430,6 +442,7 @@ r.post('/orders/:id/assign', uuidParams('id'), async (req, res) => {
   if (!c[0]) return res.status(404).json({ error: 'שליח לא נמצא או לא מאושר' });
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (['delivered','cancelled'].includes(o[0].status)) return res.status(409).json({ error: 'לא ניתן לשבץ שליח להזמנה מבוטלת או שנמסרה' }); // QA-flow
   if (o[0].courier_id) return res.status(409).json({ error: 'להזמנה כבר שובץ שליח' });
   const { rows: openOff } = await q(`SELECT id FROM courier_offers WHERE order_id=$1 AND status='offered'`, [o[0].id]);
   if (openOff.length) return res.status(409).json({ error: 'כבר קיימת הצעת שיבוץ פתוחה להזמנה זו' });

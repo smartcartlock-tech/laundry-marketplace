@@ -4,7 +4,7 @@ const { requireAuth } = require('../auth');
 const { notifyUser } = require('../notify');
 const { applyCourierRating } = require('../routes-engine');
 const { buildReceiptPDF } = require('../receipt');
-const { validateCoupon } = require('../coupons');
+const { validateCoupon, findCoupon } = require('../coupons');
 const { ensureCurrentPeriod, applySubscriptionToOrder, restoreBags } = require('../subscriptions');
 const { uuidParams } = require('../validate');
 
@@ -48,8 +48,10 @@ r.post('/', async (req, res) => {
     for (const it of items) {
       const db = dbItems.find(d => d.id === it.item_id);
       if (!db) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'פריט לא קיים במחירון' }); }
-      const qty = Number(it.qty) || 1;
-      if (qty <= 0 || qty > 100) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'כמות לא תקינה' }); }
+      let qty = Number(it.qty) || 1;
+      // QA-flow: פריט ביחידות — כמות שלמה בלבד; במשקל — דיוק סיבית אחת, מינימום 0.5 ק"ג (עוקף מחיר זעיר)
+      if (db.unit === 'kg') qty = Math.round(qty * 10) / 10;
+      if (qty <= 0 || qty > 100 || (db.unit !== 'kg' && !Number.isInteger(qty)) || (db.unit === 'kg' && qty < 0.5)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'כמות לא תקינה' }); }
       subtotal += Number(db.price) * qty;
       lines.push({ item_id: db.id, name: db.name, price: db.price, qty, unit: db.unit, subscription_eligible: !!db.subscription_eligible });
     }
@@ -98,6 +100,9 @@ r.post('/', async (req, res) => {
     let coupon = null, couponDiscount = 0;
     if (coupon_code) {
       try {
+        // QA-flow: נעילת שורת הקופון בתוך הטרנזקציה — הזמנות במקביל לא חורגות מ-usage_limit
+        const found = await findCoupon(client, tenant.id, coupon_code);
+        if (found) await client.query('SELECT 1 FROM coupons WHERE id=$1 FOR UPDATE', [found.id]);
         const v = await validateCoupon(client, tenant, coupon_code, req.user.id, subtotal);
         coupon = v.coupon; couponDiscount = v.discount;
       } catch (err) {
@@ -243,14 +248,27 @@ r.get('/:id/receipt.pdf', uuidParams('id'), async (req, res) => {
 
 // ביטול על ידי לקוח (לפני איסוף)
 r.post('/:id/cancel', uuidParams('id'), async (req, res) => {
-  const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
-  const order = rows[0];
-  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
-  if (!['new', 'confirmed'].includes(order.status)) return res.status(409).json({ error: 'לא ניתן לבטל לאחר איסוף' });
-  await q(`UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1`, [order.id]);
-  await event(order.id, 'cancelled', req.user.id, 'בוטלה על ידי הלקוח');
-  await restoreBags({ query: (a, b) => q(a, b) }, order.id);
-  res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // QA-flow: FOR UPDATE — תחרות מול סימון שליח; רק הצד הראשון מצליח
+    const { rows } = await client.query('SELECT * FROM orders WHERE id=$1 AND customer_id=$2 FOR UPDATE', [req.params.id, req.user.id]);
+    const order = rows[0];
+    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
+    if (!['new', 'confirmed'].includes(order.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'לא ניתן לבטל לאחר איסוף' }); }
+    await client.query(`UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1`, [order.id]);
+    await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'cancelled',$2,'בוטלה על ידי הלקוח')`, [order.id, req.user.id]);
+    // QA-flow: החזר נקודות שמומשו ושחרור שימוש בקופון
+    if (Number(order.points_redeemed) > 0)
+      await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+        [order.tenant_id, order.customer_id, Number(order.points_redeemed), 'החזר נקודות בעקבות ביטול הזמנה', order.id]);
+    if (order.coupon_id)
+      await client.query('UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id=$1', [order.coupon_id]);
+    await restoreBags(client, order.id);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+  finally { client.release(); }
 });
 
 // דירוג אחרי הזמנה
@@ -267,8 +285,13 @@ r.post('/:id/review', uuidParams('id'), async (req, res) => {
   const { rows: dup } = await q(
     'SELECT 1 FROM reviews WHERE order_id=$1 AND user_id=$2 AND target_courier_id IS NULL LIMIT 1', [order.id, req.user.id]);
   if (dup.length) return res.status(409).json({ error: 'כבר דירגת הזמנה זו' });
-  await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text, tags) VALUES ($1,$2,$3,$4,$5,$6)',
-    [order.tenant_id, order.id, req.user.id, rt, text || null, ltags]);
+  try {
+    await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text, tags) VALUES ($1,$2,$3,$4,$5,$6)',
+      [order.tenant_id, order.id, req.user.id, rt, text || null, ltags]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'כבר דירגת הזמנה זו' }); // QA-flow: תחרות — האילוץ מכריע
+    throw e;
+  }
   // E9.T4: ‎+20 נקודות על ביקורת — פעם אחת להזמנה
   const { rows: awarded } = await q(
     `SELECT 1 FROM points_ledger WHERE tenant_id=$1 AND user_id=$2 AND order_id=$3 AND reason='review_bonus'`,
