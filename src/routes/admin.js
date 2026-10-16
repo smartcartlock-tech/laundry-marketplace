@@ -96,6 +96,92 @@ r.post('/couriers/:id/reject', async (req, res) => {
   res.json({ ok: true });
 });
 
+// E5.T6: ניהול קלאסטרים ומסלולים קבועים
+r.get('/clusters', async (req, res) => {
+  const { rows } = await q(
+    `SELECT cl.*, (SELECT count(*)::int FROM courier_cluster_members cm WHERE cm.cluster_id=cl.id) AS members,
+            (SELECT json_agg(json_build_object('name',t.name)) FROM courier_cluster_members cm JOIN tenants t ON t.id=cm.tenant_id WHERE cm.cluster_id=cl.id) AS member_names,
+            (SELECT json_agg(json_build_object('id',fr.id,'weekday',fr.weekday,'courier',u.name,'active',fr.active))
+             FROM cluster_fixed_routes fr JOIN couriers c ON c.id=fr.courier_id JOIN users u ON u.id=c.user_id
+             WHERE fr.cluster_id=cl.id) AS fixed_routes
+     FROM courier_clusters cl ORDER BY cl.created_at DESC`, []);
+  res.json({ clusters: rows });
+});
+
+r.post('/clusters', async (req, res) => {
+  const { name, area, mgmt_fee_monthly } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'שם קלאסטר חובה' });
+  if (!area || !String(area).trim()) return res.status(400).json({ error: 'אזור חובה' });
+  const fee = Number(mgmt_fee_monthly);
+  const { rows } = await q('INSERT INTO courier_clusters(name, area, mgmt_fee_monthly) VALUES ($1,$2,$3) RETURNING *',
+    [String(name).trim(), String(area).trim(), Number.isFinite(fee) && fee >= 0 ? fee : 150]);
+  res.status(201).json({ cluster: rows[0] });
+});
+
+r.post('/clusters/:id/fixed-routes', async (req, res) => {
+  const { courier_id, weekday } = req.body || {};
+  const wd = Number(weekday);
+  if (!(wd >= 0 && wd <= 6)) return res.status(400).json({ error: 'יום לא תקין' });
+  const { rows: c } = await q('SELECT id FROM couriers WHERE id=$1 AND approved', [courier_id]);
+  if (!c[0]) return res.status(404).json({ error: 'שליח לא נמצא או לא מאושר' });
+  const { rows } = await q(
+    `INSERT INTO cluster_fixed_routes(cluster_id, courier_id, weekday) VALUES ($1,$2,$3)
+     ON CONFLICT (cluster_id, courier_id, weekday) DO UPDATE SET active=true RETURNING *`,
+    [req.params.id, courier_id, wd]);
+  res.status(201).json({ fixed_route: rows[0] });
+});
+
+r.post('/clusters/:id/toggle', async (req, res) => {
+  await q('UPDATE courier_clusters SET active=NOT active WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// E5.T8: דשבורד רשת שליחים — כיסוי, SLA, התראות איחור, מחלוקות, מסלולים משולבים
+r.get('/couriers/network', async (req, res) => {
+  const [counts, coverage, sla, late, disputes, combined] = await Promise.all([
+    q(`SELECT count(*) FILTER (WHERE approved)::int AS active,
+              count(*) FILTER (WHERE NOT approved AND rejected_reason IS NULL)::int AS pending,
+              count(*) FILTER (WHERE rejected_reason IS NOT NULL)::int AS rejected FROM couriers`, []),
+    q(`SELECT area, count(*)::int AS couriers FROM couriers, unnest(areas) AS area WHERE approved GROUP BY area ORDER BY couriers DESC`, []),
+    q(`SELECT count(*)::int AS pickups,
+              count(*) FILTER (WHERE e.created_at <= o.pickup_at + interval '30 minutes')::int AS on_time
+       FROM order_events e JOIN orders o ON o.id=e.order_id
+       WHERE e.status='picked_up' AND o.pickup_at IS NOT NULL AND e.created_at > now() - interval '30 days'`, []),
+    q(`SELECT o.id, o.pickup_at, o.address, t.name AS tenant_name
+       FROM orders o JOIN tenants t ON t.id=o.tenant_id
+       WHERE o.status='confirmed' AND o.pickup_at < now() - interval '2 hours'
+       ORDER BY o.pickup_at LIMIT 20`, []),
+    q(`SELECT e.id, e.gross, e.net, e.week_start, e.created_at, t.name AS tenant_name, u.name AS courier_name
+       FROM courier_earnings e JOIN couriers c ON c.id=e.courier_id JOIN users u ON u.id=c.user_id
+       LEFT JOIN tenants t ON t.id=e.tenant_id
+       WHERE e.status='disputed' ORDER BY e.created_at DESC`, []),
+    q(`SELECT count(*)::int AS total, count(*) FILTER (WHERE combined)::int AS combined
+       FROM courier_routes WHERE created_at > now() - interval '30 days'`, []),
+  ]);
+  const s = sla.rows[0];
+  const cb = combined.rows[0];
+  res.json({
+    counts: counts.rows[0], coverage: coverage.rows,
+    sla: { pickups: s.pickups, on_time_pct: s.pickups ? Math.round(100 * s.on_time / s.pickups) : null },
+    late_alerts: late.rows, disputes: disputes.rows,
+    routes_30d: { total: cb.total, combined: cb.combined, combined_pct: cb.total ? Math.round(100 * cb.combined / cb.total) : 0 },
+  });
+});
+
+// E5.T8: טיפול במחלוקת תשלום — החזרה לנצבר (אושר) או מחיקה (נדחה)
+r.post('/earnings/:id/resolve', async (req, res) => {
+  const action = (req.body || {}).action;
+  if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action: approve | reject' });
+  if (action === 'approve') {
+    const { rows } = await q(`UPDATE courier_earnings SET status='accrued' WHERE id=$1 AND status='disputed' RETURNING id`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'מחלוקת לא נמצאה' });
+  } else {
+    const { rows } = await q(`DELETE FROM courier_earnings WHERE id=$1 AND status='disputed' RETURNING id`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'מחלוקת לא נמצאה' });
+  }
+  res.json({ ok: true });
+});
+
 // E5.T3: בניית מסלולים אוטומטית (איחוד לפי אזור + nearest neighbor)
 r.post('/routes/auto-build', async (req, res) => {
   try {

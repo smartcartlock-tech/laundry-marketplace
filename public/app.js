@@ -350,11 +350,14 @@ async function vOrder(id){
   ${isMine&&o.status==='delivered'?`<div class="card"><label class="lb">דרגו את ההזמנה</label>
     <select class="inp" id="rv-rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
     <input class="inp" id="rv-text" placeholder="איך היה?">
+    ${o.courier_id?`<label class="lb" style="margin-top:8px">דרגו את השליח</label>
+    <div style="display:flex;gap:6px;align-items:center"><select class="inp" id="rv-courier" style="width:90px"><option value="">—</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${['בזמן','אדיב','זהיר עם הכביסה','איחור','לא עדכן'].map(t=>`<label class="chip" style="cursor:pointer"><input type="checkbox" class="rv-ctag" value="${t}" style="margin-left:3px">${t}</label>`).join('')}</div></div>`:''}
     <button class="btn2 on" onclick="sendReview('${o.id}')">שליחת דירוג</button></div>`:''}
  </div>`;
 }
 async function cancelOrder(id){if(!await xconfirm('לא ניתן לשחזר הזמנה לאחר הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל את ההזמנה'}))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
-async function sendReview(id){try{await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value})});toast('תודה על הדירוג!');route()}catch(e){toast(e.message)}}
+async function sendReview(id){try{const ctags=[...document.querySelectorAll('.rv-ctag:checked')].map(x=>x.value);const cr=$('#rv-courier')?$('#rv-courier').value:'';await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value,courier_rating:cr||undefined,courier_tags:ctags.length?ctags:undefined})});toast('תודה על הדירוג!');route()}catch(e){toast(e.message)}}
 
 /* ---- club ---- */
 async function vClub(){
@@ -454,9 +457,14 @@ async function vCourierEarnings(me){
   <div class="sec">רשומות אחרונות</div>
   ${d.rows.slice(0,20).map(x=>`<div class="row"><div>${x.kind==='pickup'?'איסוף':x.kind==='delivery'?'מסירה':'התאמה'} · ${esc(x.tenant_name||'—')}
     <div class="mut">${fmtDate(x.created_at)} · ₪${x.net} נטו</div></div>
-    <div>${x.status==='paid_demo'?'<span class="tag tg">שולם</span>':x.status==='disputed'?'<span class="tag ta">במחלוקת</span>':`<button class="btn2" onclick="courierDispute('${x.id}')">מחלוקת</button>`}</div></div>`).join('')||'<div class="mut">אין רשומות</div>'}
+    <div style="display:flex;gap:4px">${x.kind==='delivery'&&x.order_id?`<button class="btn2" onclick="courierRateTenant('${x.order_id}','${esc(x.tenant_name||'')}')">דירוג</button>`:''}${x.status==='paid_demo'?'<span class="tag tg">שולם</span>':x.status==='disputed'?'<span class="tag ta">במחלוקת</span>':`<button class="btn2" onclick="courierDispute('${x.id}')">מחלוקת</button>`}</div></div>`).join('')||'<div class="mut">אין רשומות</div>'}
  </div>
  </div>`;
+}
+async function courierRateTenant(orderId,tenantName){
+ const v=await xmodal({title:'דירוג '+tenantName,body:'הדירוג פנימי לפלטפורמה ועוזר לשיבוץ טוב יותר.',okText:'שליחת דירוג',fields:[{id:'rating',label:'דירוג 1-5',value:'5',type:'number'},{id:'text',label:'הערה (הכנת שקים, דיוק נקודות...)'}]});
+ if(!v)return;
+ try{await api('/courier/rate-tenant',{method:'POST',body:JSON.stringify({order_id:orderId,rating:Number(v.rating),text:v.text||undefined})});toast('תודה על הדירוג!')}catch(e){toast(e.message)}
 }
 async function courierPayout(){try{const r=await api('/courier/earnings/payout',{method:'POST',body:'{}'});toast('שולמו '+r.paid+' רשומות (דמו)');route()}catch(e){toast(e.message)}}
 async function courierDispute(id){if(!await xconfirm('הרשומה תסומן כמחלוקת ותטופל מול מנהל הפלטפורמה.',{title:'פתיחת מחלוקת',okText:'פתיחת מחלוקת'}))return;try{await api('/courier/earnings/'+id+'/dispute',{method:'POST',body:'{}'});toast('המחלוקת נפתחה');route()}catch(e){toast(e.message)}}
@@ -464,6 +472,12 @@ async function offerAction(id,a){try{await api(`/courier/offers/${id}/${a}`,{met
 async function markOrder(id,a){try{const r=await api(`/courier/orders/${id}/mark`,{method:'POST',body:JSON.stringify({action:a})});toast(a==='picked_up'?'סומן כנאסף':'סומן כהוחזר');if(r.window_violation)setTimeout(()=>toast('שים לב: הסימון בוצע מחוץ לחלון האיסוף ונרשם כחריגה'),600);route()}catch(e){toast(e.message)}}
 
 /* ---- manage (owner) ---- */
+async function tenantCluster(slug,clid,action){try{await api(`/t/${slug}/clusters/${clid}/${action}`,{method:'POST',body:'{}'});toast(action==='join'?'הצטרפת לקלאסטר':'עזבת את הקלאסטר');route()}catch(e){toast(e.message)}}
+async function tenantRateCourier(slug,cid,name){
+ const v=await xmodal({title:'דירוג '+name,body:'איך השליח עבד איתכם לאחרונה?',okText:'שליחת דירוג',fields:[{id:'rating',label:'דירוג 1-5',value:'5',type:'number'}]});
+ if(!v)return;
+ try{await api(`/t/${slug}/couriers/${cid}/rate`,{method:'POST',body:JSON.stringify({rating:Number(v.rating)})});toast('הדירוג נשמר');route()}catch(e){toast(e.message)}
+}
 /* E5.T1: טופס הרשמה לשליח עצמאי (מוקאפ 19) */
 function vCourierRegister(user,courier){
  const days=WD.map((d,i)=>`<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="cr-day" value="${i}">${d}</label>`).join('');
@@ -619,7 +633,11 @@ async function vManage(sub){
   <div class="sec">שליחים (${d.couriers.length})</div>
   ${d.couriers.map(c=>{const onPct=c.pickups_30d?Math.round(100*c.ontime_30d/c.pickups_30d):null;return `<div class="card"><div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
     <div class="mut">${esc(c.phone||'')} · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
-    <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
+    <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div>
+    <button class="btn2" onclick="tenantRateCourier('${slug}','${c.id}','${esc(c.name)}')">דירוג</button></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
+  ${d.clusters&&d.clusters.length?`<div class="card"><div class="sec">קלאסטרים אזוריים (מסלולים משותפים קבועים)</div>
+   ${d.clusters.map(cl=>`<div class="row"><div><b>${esc(cl.name)}</b> · ${esc(cl.area)}<div class="mut">${cl.members} מכבסות · דמי ניהול חודשיים (דמו): ₪${cl.mgmt_fee_monthly}${cl.fixed_routes&&cl.fixed_routes.length?' · מסלול קבוע: '+cl.fixed_routes.map(f=>WD[f.weekday]+' — '+esc(f.courier)).join(', '):''}</div></div>
+    <button class="btn2 ${cl.joined?'':'green'}" onclick="tenantCluster('${slug}','${cl.id}','${cl.joined?'leave':'join'}')">${cl.joined?'עזיבה':'הצטרפות'}</button></div>`).join('')}</div>`:''}
   ${d.payments.length?`<div class="card"><div class="sec">היסטוריית תשלומים לשליחים (דרך הפלטפורמה)</div><table class="tbl"><tr><th>שבוע</th><th>נקודות</th><th>ברוטו</th><th>עמלת פלטפורמה</th><th>סטטוס</th></tr>
    ${d.payments.map(x=>`<tr><td>${fmtDate(x.week_start)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>${x.statuses.includes('paid_demo')?'שולם (דמו)':x.statuses.includes('disputed')?'במחלוקת':'נצבר'}</td></tr>`).join('')}</table></div>`:''}`;
  } else if(sub==='customers'){
@@ -807,7 +825,18 @@ async function vAdmin(sub){
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
   const pd=await api('/admin/couriers/pending');
-  body=`${pd.pending.length?`<div class="sec">ממתינים לאישור (${pd.pending.length})</div>`+pd.pending.map(c=>`<div class="card">
+  const net=await api('/admin/couriers/network');
+  body=`<div class="kpis">
+   <div class="kpi"><b>${net.counts.active}</b>שליחים פעילים</div>
+   <div class="kpi"><b>${net.sla.on_time_pct===null?'—':net.sla.on_time_pct+'%'}</b>איסוף בזמן (30 יום)</div>
+   <div class="kpi"><b>${net.routes_30d.combined_pct}%</b>מסלולים משולבים</div>
+   <div class="kpi"><b>${net.disputes.length}</b>מחלוקות פתוחות</div>
+  </div>
+  ${net.coverage.length?`<div class="card"><div class="sec">כיסוי אזורי</div><div style="display:flex;gap:6px;flex-wrap:wrap">${net.coverage.map(x=>`<span class="tag tb">${esc(x.area)}: ${x.couriers}</span>`).join('')}</div></div>`:''}
+  ${net.late_alerts.length?`<div class="warn">⚠ ${net.late_alerts.length} הזמנות באיחור חריג (מעל שעתיים מחלון האיסוף):</div>`+net.late_alerts.map(x=>`<div class="card"><b dir="ltr">#${x.id.slice(0,8)}</b> ${esc(x.tenant_name)}<div class="mut">${esc(x.address)} · איסוף תוכנן ${fmtDT(x.pickup_at)}</div></div>`).join(''):''}
+  ${net.disputes.length?`<div class="sec">מחלוקות תשלום</div>`+net.disputes.map(x=>`<div class="card"><b>${esc(x.courier_name)}</b> מול ${esc(x.tenant_name||'—')}<div class="mut">שבוע ${fmtDate(x.week_start)} · ברוטו ₪${x.gross} · נטו ₪${x.net}</div>
+   <div style="display:flex;gap:6px;margin-top:6px"><button class="btn2 green" onclick="adminResolveDispute('${x.id}','approve')">אישור התשלום</button><button class="btn2" onclick="adminResolveDispute('${x.id}','reject')">דחיית החיוב</button></div></div>`).join(''):''}
+  ${pd.pending.length?`<div class="sec">ממתינים לאישור (${pd.pending.length})</div>`+pd.pending.map(c=>`<div class="card">
     <b>${esc(c.name||'')}</b> · <span dir="ltr">${esc(c.phone||'')}</span>
     <div class="mut">${c.model==='shared'?'שליח משותף':'שליח פלטפורמה'} · ${esc(c.vehicle||'')} · אזורים: ${(c.areas||[]).map(esc).join(', ')}</div>
     <div class="mut">זמינות: ${Object.keys(c.availability||{}).length?Object.keys(c.availability||{}).map(d=>WD[+d]).join(', '):'לא צוינה'} · נרשם ${fmtDate(c.created_at)}</div>
@@ -819,7 +848,19 @@ async function vAdmin(sub){
     <td>${c.approved?`<button class="btn2" onclick="adminCourier('${c.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminCourier('${c.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='routes'){
   const d=await api('/admin/routes');
-  body=`<button class="btn" onclick="adminAutoBuild()">בניית מסלולים אוטומטית להיום</button>
+  const cl=await api('/admin/clusters');
+  const cr=await api('/admin/couriers');
+  body=`<div class="sec">קלאסטרים ומסלולים קבועים</div>
+  <div class="card"><div style="display:flex;gap:6px"><input class="inp" id="cl-name" placeholder="שם קלאסטר" style="flex:2"><input class="inp" id="cl-area" placeholder="אזור" style="flex:1"><input class="inp" id="cl-fee" type="number" placeholder="דמי ניהול ₪/חודש" style="flex:1"></div>
+   <button class="btn2 on" onclick="adminAddCluster()">יצירת קלאסטר</button></div>
+  ${cl.clusters.map(c=>`<div class="card"><div class="row"><div><b>${esc(c.name)}</b> · ${esc(c.area)} ${c.active?'':'<span class="tag ta">מושבת</span>'}
+    <div class="mut">${c.members}/5 מכבסות${c.member_names?': '+c.member_names.map(m=>esc(m.name)).join(', '):''} · דמי ניהול (דמו): ₪${c.mgmt_fee_monthly}/חודש</div>
+    ${(c.fixed_routes||[]).map(f=>`<div class="mut">מסלול קבוע: ${WD[f.weekday]} — ${esc(f.courier)}</div>`).join('')}</div>
+    <button class="btn2" onclick="adminToggleCluster('${c.id}')">${c.active?'השבתה':'הפעלה'}</button></div>
+   <div style="display:flex;gap:6px;margin-top:6px"><select class="inp" id="fr-c-${c.id}" style="flex:2">${cr.couriers.filter(x=>x.approved).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+    <select class="inp" id="fr-w-${c.id}" style="flex:1">${WD.map((w,i)=>`<option value="${i}">${w}</option>`).join('')}</select>
+    <button class="btn2" onclick="adminAddFixedRoute('${c.id}')">+ מסלול קבוע</button></div></div>`).join('')||'<div class="card mut">אין קלאסטרים</div>'}`;
+  body+=`<button class="btn" onclick="adminAutoBuild()">בניית מסלולים אוטומטית להיום</button>
   <div class="note">המנוע מאחד הזמנות לא משובצות לפי אזור, משבץ שליח פלטפורמה/משותף ומסדר נקודות (nearest neighbor).</div>
   ${d.routes.length?d.routes.map(r=>`<div class="card"><b>${esc(r.courier_name)}</b> ${r.combined?'<span class="tag tb">מסלול משולב</span>':'<span class="tag">רגיל</span>'}
    <div class="mut">${r.stops} נקודות · ${r.tenants} מכבסות</div>
@@ -878,6 +919,10 @@ async function vAdminTenant(id){
   <div style="display:flex;gap:8px;margin:6px 0 20px">${actions}</div>
  </div>`;
 }
+async function adminAddCluster(){try{await api('/admin/clusters',{method:'POST',body:JSON.stringify({name:$('#cl-name').value,area:$('#cl-area').value,mgmt_fee_monthly:$('#cl-fee').value||undefined})});toast('הקלאסטר נוצר');route()}catch(e){toast(e.message)}}
+async function adminToggleCluster(id){try{await api(`/admin/clusters/${id}/toggle`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
+async function adminAddFixedRoute(clid){try{await api(`/admin/clusters/${clid}/fixed-routes`,{method:'POST',body:JSON.stringify({courier_id:$('#fr-c-'+clid).value,weekday:$('#fr-w-'+clid).value})});toast('המסלול הקבוע נוסף');route()}catch(e){toast(e.message)}}
+async function adminResolveDispute(id,action){try{await api(`/admin/earnings/${id}/resolve`,{method:'POST',body:JSON.stringify({action})});toast(action==='approve'?'התשלום אושר':'החיוב נדחה ונמחק');route()}catch(e){toast(e.message)}}
 async function adminAutoBuild(){try{const r=await api('/admin/routes/auto-build',{method:'POST',body:'{}'});toast(r.routes.length?`נבנו ${r.routes.length} מסלולים`:'אין הזמנות לשיבוץ');route()}catch(e){toast(e.message)}}
 async function adminCourier(id,a){try{await api(`/admin/couriers/${id}/${a}`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
 async function adminRejectCourier(id){

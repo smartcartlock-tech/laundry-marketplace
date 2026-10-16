@@ -384,3 +384,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS document_orders_order_uq ON document_orders(or
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_mode text NOT NULL DEFAULT 'per_order';
 ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_invoice_mode_check;
 ALTER TABLE tenants ADD CONSTRAINT tenants_invoice_mode_check CHECK (invoice_mode IN ('per_order','consolidated'));
+
+-- E5.T6: קלאסטרים אזוריים ומסלולים קבועים
+CREATE TABLE IF NOT EXISTS courier_clusters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  area text NOT NULL,
+  active boolean DEFAULT true,
+  mgmt_fee_monthly numeric(8,2) DEFAULT 150,   -- דמי ניהול חודשיים (דמו)
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS courier_cluster_members (
+  cluster_id uuid NOT NULL REFERENCES courier_clusters(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (cluster_id, tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS cluster_fixed_routes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  cluster_id uuid NOT NULL REFERENCES courier_clusters(id) ON DELETE CASCADE,
+  courier_id uuid NOT NULL REFERENCES couriers(id) ON DELETE CASCADE,
+  weekday int NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+  active boolean DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(cluster_id, courier_id, weekday)
+);
+
+-- E5.T7: דירוג דו-כיווני
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tags text[];
+
+CREATE TABLE IF NOT EXISTS courier_tenant_ratings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  courier_id uuid NOT NULL REFERENCES couriers(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
+  rating int NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  text text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(courier_id, order_id)
+);

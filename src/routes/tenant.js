@@ -2,6 +2,7 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
+const { applyCourierRating } = require('../routes-engine');
 const { issueDocumentsForOrder, creditDocument } = require('../documents');
 const { restoreBags } = require('../subscriptions');
 const { buildDocumentPDF, docVerificationImages } = require('../receipt');
@@ -279,11 +280,65 @@ r.get('/couriers/overview', async (req, res) => {
   ]);
   const rate = Number(rateR.rows[0] ? rateR.rows[0].value : 12);
   const pct = Number(pctR.rows[0] ? pctR.rows[0].value : 20);
+  const { rows: clusters } = await q(
+    `SELECT cl.id, cl.name, cl.area, cl.mgmt_fee_monthly,
+            (SELECT count(*)::int FROM courier_cluster_members cm WHERE cm.cluster_id=cl.id) AS members,
+            EXISTS(SELECT 1 FROM courier_cluster_members cm WHERE cm.cluster_id=cl.id AND cm.tenant_id=$1) AS joined,
+            (SELECT json_agg(json_build_object('weekday',fr.weekday,'courier',u.name))
+             FROM cluster_fixed_routes fr JOIN couriers c ON c.id=fr.courier_id JOIN users u ON u.id=c.user_id
+             WHERE fr.cluster_id=cl.id AND fr.active) AS fixed_routes
+     FROM courier_clusters cl WHERE cl.active ORDER BY cl.created_at`, [tid]);
   res.json({
-    couriers: couriers.rows, today: today.rows, payments: payments.rows,
+    couriers: couriers.rows, today: today.rows, payments: payments.rows, clusters,
     estimate: { rate_per_stop: rate, stops_per_order: 2, per_order: rate * 2, platform_commission_pct: pct },
   });
 });
+// E5.T7: מכבסה מדרגת שליח (איסוף בזמן, מסירה)
+r.post('/couriers/:cid/rate', async (req, res) => {
+  const rt = Number((req.body || {}).rating);
+  if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
+  const tags = Array.isArray((req.body || {}).tags) ? req.body.tags.map(String).slice(0, 5) : null;
+  const orderId = (req.body || {}).order_id || null;
+  if (orderId) {
+    const { rows: o } = await q('SELECT id, courier_id FROM orders WHERE id=$1 AND tenant_id=$2', [orderId, req.tenant.id]);
+    if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+    if (o[0].courier_id !== req.params.cid) return res.status(400).json({ error: 'ההזמנה לא שובצה לשליח זה' });
+  }
+  const { rows: dup } = orderId ? await q('SELECT 1 FROM reviews WHERE order_id=$1 AND target_courier_id=$2 AND user_id=$3', [orderId, req.params.cid, req.user.id]) : { rows: [] };
+  if (dup[0]) return res.status(409).json({ error: 'כבר דירגת את השליח על הזמנה זו' });
+  await q('INSERT INTO reviews(tenant_id, order_id, user_id, target_courier_id, rating, tags) VALUES ($1,$2,$3,$4,$5,$6)',
+    [req.tenant.id, orderId, req.user.id, req.params.cid, rt, tags]);
+  await applyCourierRating(req.params.cid, rt);
+  res.json({ ok: true });
+});
+
+// E5.T6: קלאסטרים זמינים + חברות המכבסה
+r.get('/clusters', async (req, res) => {
+  const { rows } = await q(
+    `SELECT cl.id, cl.name, cl.area, cl.mgmt_fee_monthly,
+            (SELECT count(*)::int FROM courier_cluster_members cm WHERE cm.cluster_id=cl.id) AS members,
+            EXISTS(SELECT 1 FROM courier_cluster_members cm WHERE cm.cluster_id=cl.id AND cm.tenant_id=$1) AS joined,
+            (SELECT json_agg(json_build_object('weekday',fr.weekday,'courier',u.name))
+             FROM cluster_fixed_routes fr JOIN couriers c ON c.id=fr.courier_id JOIN users u ON u.id=c.user_id
+             WHERE fr.cluster_id=cl.id AND fr.active) AS fixed_routes
+     FROM courier_clusters cl WHERE cl.active ORDER BY cl.created_at`, [req.tenant.id]);
+  res.json({ clusters: rows });
+});
+
+r.post('/clusters/:id/join', async (req, res) => {
+  const { rows: cl } = await q('SELECT id, name FROM courier_clusters WHERE id=$1 AND active', [req.params.id]);
+  if (!cl[0]) return res.status(404).json({ error: 'קלאסטר לא נמצא' });
+  const { rows: n } = await q('SELECT count(*)::int AS n FROM courier_cluster_members WHERE cluster_id=$1', [cl[0].id]);
+  if (n[0].n >= 5) return res.status(409).json({ error: 'הקלאסטר מלא (עד 5 מכבסות)' });
+  await q('INSERT INTO courier_cluster_members(cluster_id, tenant_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [cl[0].id, req.tenant.id]);
+  res.json({ ok: true });
+});
+
+r.post('/clusters/:id/leave', async (req, res) => {
+  await q('DELETE FROM courier_cluster_members WHERE cluster_id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
+  res.json({ ok: true });
+});
+
 r.post('/orders/:id/assign', async (req, res) => {
   const { courier_id } = req.body || {};
   const { rows: c } = await q(

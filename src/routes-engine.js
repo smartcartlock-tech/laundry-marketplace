@@ -62,9 +62,47 @@ async function buildRoutesForDate(dateStr) {
 
   const client = await pool.connect();
   const built = [];
+  const assigned = new Set();
   try {
     await client.query('BEGIN');
-    for (const [city, cityOrders] of Object.entries(byCity)) {
+    // E5.T6: מסלולים קבועים של קלאסטרים משבצים אוטומטית בימיהם
+    const weekday = new Date(day + 'T12:00:00').getDay();
+    const { rows: fixed } = await client.query(
+      `SELECT fr.courier_id, cl.id AS cluster_id, cl.name AS cluster_name,
+              array_agg(DISTINCT cm.tenant_id) AS tenant_ids
+       FROM cluster_fixed_routes fr
+       JOIN courier_clusters cl ON cl.id=fr.cluster_id AND cl.active
+       JOIN courier_cluster_members cm ON cm.cluster_id=cl.id
+       WHERE fr.active AND fr.weekday=$1
+       GROUP BY fr.courier_id, cl.id, cl.name`, [weekday]);
+    for (const fx of fixed) {
+      const courier = couriers.find(c => c.id === fx.courier_id);
+      if (!courier) continue;
+      const memberOrders = [];
+      for (const [city, cityOrders] of Object.entries(byCity)) {
+        const mine = cityOrders.filter(o => fx.tenant_ids.includes(o.tenant_id) && !assigned.has(o.id));
+        if (mine.length) memberOrders.push(...mine);
+      }
+      if (!memberOrders.length) continue;
+      const stops = nearestNeighbor(memberOrders.map(o => ({
+        ...o, lat: o.lat != null ? o.lat : o.tenant_lat, lng: o.lng != null ? o.lng : o.tenant_lng,
+      })));
+      const tenantIds = [...new Set(stops.map(x => x.tenant_id))];
+      const { rows: rr } = await client.query(
+        `INSERT INTO courier_routes(courier_id, route_date, combined) VALUES ($1,$2,$3) RETURNING id`,
+        [courier.id, day, tenantIds.length >= 2]);
+      let seq = 1;
+      for (const st of stops) {
+        await client.query(`INSERT INTO courier_route_stops(route_id, order_id, tenant_id, seq) VALUES ($1,$2,$3,$4)`, [rr[0].id, st.id, st.tenant_id, seq++]);
+        await client.query('UPDATE orders SET courier_id=$1, updated_at=now() WHERE id=$2', [courier.id, st.id]);
+        await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,(SELECT status FROM orders WHERE id=$1),NULL,$2)`, [st.id, `שובץ למסלול קבוע של קלאסטר ${fx.cluster_name}`]);
+        assigned.add(st.id);
+      }
+      built.push({ route_id: rr[0].id, city: fx.cluster_name, courier_id: courier.id, courier_name: courier.name, stops: stops.length, tenants: tenantIds.length, combined: tenantIds.length >= 2, fixed: true });
+    }
+    for (const [city, cityOrders0] of Object.entries(byCity)) {
+      const cityOrders = cityOrders0.filter(o => !assigned.has(o.id));
+      if (!cityOrders.length) continue;
       const courier = couriers.find(c => (c.areas || []).some(a => city.includes(a) || a.includes(city))) || couriers[0];
       const stops = nearestNeighbor(cityOrders.map(o => ({
         ...o, lat: o.lat != null ? o.lat : o.tenant_lat, lng: o.lng != null ? o.lng : o.tenant_lng,
@@ -83,6 +121,7 @@ async function buildRoutesForDate(dateStr) {
         await client.query(
           `INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,(SELECT status FROM orders WHERE id=$1),NULL,$2)`,
           [s.id, `שובץ למסלול ${tenantIds.length >= 2 ? 'משולב' : ''} אוטומטי (${city})`]);
+        assigned.add(s.id);
       }
       built.push({ route_id: routeId, city, courier_id: courier.id, courier_name: courier.name, stops: stops.length, tenants: tenantIds.length, combined: tenantIds.length >= 2 });
     }
@@ -108,3 +147,19 @@ async function accrueStop(courierId, order, stopKind) {
 }
 
 module.exports = { buildRoutesForDate, accrueStop, nearestNeighbor, haversineKm, weekStart, getSetting };
+
+// E5.T7: עדכון דירוג מצטבר וקדימות שיבוץ — דירוג נמוך חוזר מוריד קדימות
+async function applyCourierRating(courierId, rating) {
+  await q(
+    `UPDATE couriers SET
+       rating = (SELECT COALESCE(avg(rating),0)::numeric(2,1) FROM reviews WHERE target_courier_id=$1),
+       rating_count = (SELECT count(*)::int FROM reviews WHERE target_courier_id=$1)
+     WHERE id=$1`, [courierId]);
+  if (rating <= 2) {
+    await q('UPDATE couriers SET priority = GREATEST(0.2, COALESCE(priority,1.0) - 0.15) WHERE id=$1', [courierId]);
+  } else if (rating >= 4) {
+    await q('UPDATE couriers SET priority = LEAST(1.5, COALESCE(priority,1.0) + 0.05) WHERE id=$1', [courierId]);
+  }
+}
+
+module.exports.applyCourierRating = applyCourierRating;

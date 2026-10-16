@@ -259,6 +259,23 @@ r.post('/orders/:id/mark', async (req, res) => {
   res.json({ ok: true, ...(windowViolation ? { window_violation: true } : {}) });
 });
 
+// E5.T7: שליח מדרג מכבסה (הכנת שקים, דיוק נקודות)
+r.post('/rate-tenant', async (req, res) => {
+  const { order_id, rating, text } = req.body || {};
+  const rt = Number(rating);
+  if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
+  const { rows: o } = await q('SELECT id, tenant_id, status FROM orders WHERE id=$1 AND courier_id=$2', [order_id, req.courier.id]);
+  if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה או לא שובצה אליך' });
+  try {
+    await q('INSERT INTO courier_tenant_ratings(courier_id, tenant_id, order_id, rating, text) VALUES ($1,$2,$3,$4,$5)',
+      [req.courier.id, o[0].tenant_id, order_id, rt, text || null]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'כבר דירגת את המכבסה על הזמנה זו' });
+    throw e;
+  }
+  res.json({ ok: true });
+});
+
 // פרופיל שליח + סטטיסטיקה
 r.get('/profile', async (req, res) => {
   const { rows: stats } = await q(

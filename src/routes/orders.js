@@ -2,6 +2,7 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { notifyUser } = require('../notify');
+const { applyCourierRating } = require('../routes-engine');
 const { buildReceiptPDF } = require('../receipt');
 const { validateCoupon } = require('../coupons');
 const { ensureCurrentPeriod, applySubscriptionToOrder, restoreBags } = require('../subscriptions');
@@ -220,7 +221,7 @@ r.post('/:id/cancel', async (req, res) => {
 
 // דירוג אחרי הזמנה
 r.post('/:id/review', async (req, res) => {
-  const { rating, text } = req.body || {};
+  const { rating, text, courier_rating, courier_tags } = req.body || {};
   const rt = Number(rating);
   if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
   const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
@@ -229,6 +230,14 @@ r.post('/:id/review', async (req, res) => {
   if (order.status !== 'delivered') return res.status(409).json({ error: 'ניתן לדרג רק הזמנה שהושלמה' });
   await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text) VALUES ($1,$2,$3,$4,$5)',
     [order.tenant_id, order.id, req.user.id, rt, text || null]);
+  // E5.T7: דירוג השליח (אופציונלי, רק אם שובץ שליח)
+  const crt = Number(courier_rating);
+  if (order.courier_id && crt >= 1 && crt <= 5) {
+    const tags = Array.isArray(courier_tags) ? courier_tags.map(String).slice(0, 5) : null;
+    await q('INSERT INTO reviews(tenant_id, order_id, user_id, target_courier_id, rating, tags) VALUES ($1,$2,$3,$4,$5,$6)',
+      [order.tenant_id, order.id, req.user.id, order.courier_id, crt, tags]);
+    await applyCourierRating(order.courier_id, crt);
+  }
   const { rows: agg } = await q('SELECT avg(rating)::numeric(2,1) AS a, count(*)::int AS c FROM reviews WHERE tenant_id=$1 AND target_courier_id IS NULL', [order.tenant_id]);
   await q('UPDATE tenants SET rating=$1, rating_count=$2 WHERE id=$3', [agg[0].a, agg[0].c, order.tenant_id]);
   res.json({ ok: true });
