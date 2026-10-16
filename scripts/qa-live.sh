@@ -21,7 +21,7 @@ TOKEN=$(curl -s -m 30 -X POST "$BASE/api/auth/otp/verify" -H 'content-type: appl
 if [ -z "$TOKEN" ]; then echo "FAIL: otp verify"; exit 1; fi
 echo "PASS: demo OTP login"
 ITEM=$(curl -s -m 30 "$BASE/api/laundries/achuza" | python3 -c "import json,sys;d=json.load(sys.stdin);print([i['id'] for i in d['items'] if 'שק' in i['name']][0])")
-ORDER=$(curl -s -m 30 -X POST "$BASE/api/orders" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "{\"slug\":\"achuza\",\"items\":[{\"item_id\":\"$ITEM\",\"qty\":1}],\"address\":\"בדיקת QA — מבוטלת\"}")
+ORDER=$(curl -s -m 30 -X POST "$BASE/api/orders" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "{\"slug\":\"achuza\",\"items\":[{\"item_id\":\"$ITEM\",\"qty\":3}],\"address\":\"בדיקת QA — מבוטלת\"}")
 OID=$(echo "$ORDER" | python3 -c "import json,sys;print(json.load(sys.stdin).get('order',{}).get('id',''))")
 if [ -z "$OID" ]; then echo "FAIL: create order -> $(echo "$ORDER" | head -c 200)"; exit 1; fi
 echo "PASS: create demo order $OID"
