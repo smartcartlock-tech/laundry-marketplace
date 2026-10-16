@@ -18,11 +18,20 @@ async function waitHealth(base, child, timeoutMs = 30000) {
 }
 
 async function bootCustom(t, extra) {
-  const port = 5900 + (process.pid % 200) + Math.floor(Math.random() * 100);
   const schema = 'test_' + Math.random().toString(36).slice(2, 8);
-  const env = { ...process.env, DATABASE_URL: TEST_DB, PGSCHEMA: schema, PORT: String(port), JWT_SECRET: 't', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '', ...extra };
+  const env = { ...process.env, DATABASE_URL: TEST_DB, PGSCHEMA: schema, PORT: '0', JWT_SECRET: 't', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '', ...extra };
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], { env });
   t.after(() => { try { child.kill('SIGKILL'); } catch (e) {} });
+  const port = await new Promise((resolve, reject) => {
+    let buf = '';
+    const to = setTimeout(() => reject(new Error('no listening line:\n' + buf)), 30000);
+    child.stdout.on('data', d => {
+      buf += d;
+      const m = buf.match(/\[server\] listening on :(\d+)/);
+      if (m) { clearTimeout(to); resolve(Number(m[1])); }
+    });
+    child.on('exit', () => { clearTimeout(to); reject(new Error('server exited before listen:\n' + buf)); });
+  });
   await waitHealth(`http://127.0.0.1:${port}`, child);
   return { schema, port };
 }

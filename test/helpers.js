@@ -21,7 +21,7 @@ async function waitHealth(base, child, timeoutMs = 30000) {
 }
 
 async function startApp(t) {
-  const port = 4600 + (process.pid % 300) + Math.floor(Math.random() * 100);
+  // פורט אפמרלי (0): מערכת ההפעלה מקצה — אפס התנגשויות בין תהליכי בדיקה מקבילים (flakiness)
   const schema = 'test_' + Math.random().toString(36).slice(2, 8);
   const env = {
     ...process.env,
@@ -29,11 +29,22 @@ async function startApp(t) {
     PGSCHEMA: schema,
     SEED_DEMO: 'true',
     DEMO_OTP: 'true',
-    PORT: String(port),
+    PORT: '0',
     JWT_SECRET: 'test-secret',
     TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '',
   };
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], { env });
+  // הכתובת האמיתית נלמדת משורת הלוג "[server] listening on :NNNN"
+  const port = await new Promise((resolve, reject) => {
+    let buf = '';
+    const to = setTimeout(() => reject(new Error('no listening line; log:\n' + buf)), 30000);
+    child.stdout.on('data', d => {
+      buf += d;
+      const m = buf.match(/\[server\] listening on :(\d+)/);
+      if (m) { clearTimeout(to); resolve(Number(m[1])); }
+    });
+    child.on('exit', () => { clearTimeout(to); reject(new Error('server exited before listen:\n' + buf)); });
+  });
   const base = `http://127.0.0.1:${port}`;
   t.after(() => { try { child.kill('SIGKILL'); } catch (e) {} });
   await waitHealth(base, child);

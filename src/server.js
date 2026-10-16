@@ -128,5 +128,5 @@ const PORT = process.env.PORT || 3000;
       console.log('[db] admin bootstrap done');
     }
   }
-  app.listen(PORT, () => console.log(`[server] listening on :${PORT}`));
+  const srv = app.listen(PORT, () => console.log(`[server] listening on :${srv.address().port}`));
 })().catch(e => { console.error('boot failed', e); process.exit(1); });
