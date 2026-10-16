@@ -3,19 +3,19 @@
 // גבולות: בלי הגשה לרשות המסים, בלי מספרי הקצאה, בלי תשלומים, בלי שליחה החוצה.
 const express = require('express');
 const { q } = require('../db');
-const { requireAuth, requireTenantMember } = require('../auth');
+const { requireAuth } = require('../auth');
+const { requireTenantOwner } = require('../authz'); // תשתית משותפת (מפתח C): בעלים/אדמין בלבד
 const { audit } = require('../audit');
+const { encryptField, maskField } = require('../fieldcrypto'); // הצפנת שדות רגישים (מספרי עוסק)
 
 const r = express.Router({ mergeParams: true });
-r.use(requireAuth, requireTenantMember, requireTenantOwner);
+r.use(requireAuth, requireTenantOwner, loadTenant);
 
-// בעלים בלבד — אפילו staff לא נוגע בנתוני הנה"ח אמיתיים
-async function requireTenantOwner(req, res, next) {
-  if (req.user.role === 'admin') return next();
-  const { rows } = await q(
-    `SELECT 1 FROM tenant_members WHERE tenant_id=$1 AND user_id=$2 AND role='owner'`,
-    [req.tenant.id, req.user.id]);
-  if (!rows[0]) return res.status(403).json({ error: 'נדרשת הרשאת בעלים להנהלת החשבונות' });
+// טעינת הטננט ל-req.tenant אחרי בדיקת ההרשאה המשותפת
+async function loadTenant(req, res, next) {
+  const { rows } = await q('SELECT * FROM tenants WHERE slug=$1', [req.params.slug]);
+  if (!rows[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  req.tenant = rows[0];
   next();
 }
 
@@ -77,7 +77,8 @@ r.get('/bookkeeping/parties', async (req, res) => {
     `SELECT id, kind, name, tax_id, email, phone, address, active FROM bk_parties
      WHERE tenant_id=$1 ${kind ? 'AND kind=$2' : ''} ORDER BY name`,
     kind ? [req.tenant.id, kind] : [req.tenant.id]);
-  res.json({ parties: rows });
+  // מספר עוסק מוצפן במסד — מוצג מוסתר בלבד
+  res.json({ parties: rows.map(x => ({ ...x, tax_id: maskField(x.tax_id) })) });
 });
 
 r.post('/bookkeeping/parties', async (req, res) => {
@@ -88,9 +89,9 @@ r.post('/bookkeeping/parties', async (req, res) => {
   const { rows } = await q(
     `INSERT INTO bk_parties (tenant_id, kind, name, tax_id, email, phone, address, notes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, kind, name, tax_id`,
-    [req.tenant.id, kind, String(name).trim(), tax_id || null, email || null, phone || null, address || null, notes || null]);
+    [req.tenant.id, kind, String(name).trim(), tax_id ? encryptField(String(tax_id)) : null, email || null, phone || null, address || null, notes || null]);
   await audit(req, 'bk_party_create', 'bk_party', rows[0].id, { kind, name: rows[0].name });
-  res.status(201).json({ party: rows[0] });
+  res.status(201).json({ party: { ...rows[0], tax_id: maskField(rows[0].tax_id) } });
 });
 
 // --- עזר: תקופה סגורה? ---

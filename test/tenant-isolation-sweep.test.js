@@ -12,12 +12,17 @@ const TENANT_GETS = [
   '/settlement/sequence-check', '/settlement/monthly-summary.pdf', '/settlement/accountant-export.csv',
   '/export/orders.csv', '/export/customers.csv', '/export/courier-payments.csv',
   '/business-accounts', '/financials', '/analytics', '/reports',
+  '/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries',
+  '/bookkeeping/trial-balance', '/bookkeeping/periods',
 ];
 const TENANT_WRITES = [
   ['POST', '/items', {}], ['POST', '/windows', {}], ['POST', '/coupons', {}], ['PATCH', '/settings', {}],
   ['POST', '/orders/x/status', {}], ['POST', '/issues/x/handle', {}], ['PUT', '/financials', {}],
   ['POST', '/business-accounts', {}], ['POST', '/ops/closures', {}], ['POST', '/documents/x/credit', {}],
   ['POST', '/clusters', {}], ['POST', '/export/consolidated', {}],
+  ['POST', '/bookkeeping/init', {}], ['POST', '/bookkeeping/accounts', {}],
+  ['POST', '/bookkeeping/parties', {}], ['POST', '/bookkeeping/entries', {}],
+  ['POST', '/bookkeeping/entries/x/reverse', {}], ['POST', '/bookkeeping/periods/close', {}],
 ];
 
 test('סריקת בידוד: זר לא מקבל דבר מאף נתיב טננטי', async (t) => {

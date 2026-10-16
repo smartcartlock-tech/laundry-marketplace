@@ -1,4 +1,5 @@
 // מודול הנה"ח אמיתי: הרשאות בעלים בלבד, איזון ספר כפול, מספור רציף, סטורנו, סגירת תקופה.
+process.env.NODE_ENV = 'test';
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { startApp, TEST_DB } = require('./helpers');
