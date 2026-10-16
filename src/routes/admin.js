@@ -40,6 +40,13 @@ r.post('/tenants/:id/suspend', async (req, res) => {
 });
 
 // פרטי מכבסה מלאים לסקירת אדמין לפני אישור/דחייה
+// E10.T3: מפתח הבוט של מכבסה — נדרש כדי לחבר את בוט הווטסאפ שלה למרקטפלייס (/api/bot)
+r.get('/tenants/:id/apikey', async (req, res) => {
+  const { rows } = await q('SELECT slug, api_key FROM tenants WHERE id=$1', [req.params.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'not found' });
+  res.json({ slug: rows[0].slug, api_key: rows[0].api_key });
+});
+
 r.get('/tenants/:id', async (req, res) => {
   const { rows: t } = await q('SELECT id, slug, name, letter, phone, address, city, services, hours, terms, delivery_fee, min_order, approved, is_open, created_at FROM tenants WHERE id=$1', [req.params.id]);
   if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
