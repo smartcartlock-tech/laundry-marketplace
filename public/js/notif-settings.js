@@ -24,7 +24,7 @@ async function notifToggle(key) {
   try {
     const cur = await api('/me/notification-settings');
     const next = {}; next[key] = !cur.prefs[key];
-    await api('/me/notification-settings', { method: 'PUT', body: next });
+    await api('/me/notification-settings', { method: 'PUT', body: JSON.stringify(next) });
     route();
   } catch (e) { toast(e.message); }
 }
