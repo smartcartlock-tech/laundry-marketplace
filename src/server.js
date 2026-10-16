@@ -46,6 +46,10 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 // E4.T2: job הזמנות חוזרות — רץ בהפעלה ואחת לשעה (שרת יחיד ב-Render)
 const { generateDueOrders } = require('./recurring');
 const runRecurring = () => generateDueOrders(require('./db').q).catch(e => console.error('[recurring]', e.message));
+const { issueMonthlyInvoices } = require('./billing');
+const runMonthlyBilling = () => issueMonthlyInvoices(require('./db').q).catch(e => console.error('[billing]', e.message));
+setTimeout(runMonthlyBilling, 20000);
+setInterval(runMonthlyBilling, 60 * 60 * 1000);
 setTimeout(runRecurring, 15000);
 setInterval(runRecurring, 60 * 60 * 1000);
 

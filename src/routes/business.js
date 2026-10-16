@@ -142,4 +142,43 @@ r.delete('/:bid/recurring/:rid', async (req, res) => {
   res.json({ ok: true });
 });
 
+// E4.T3: חשבוניות מרוכזות חודשיות
+const { issueInvoice, monthOrders, consolidatedCsv } = require('../billing');
+const { toCsv } = require('../csv');
+
+r.get('/:bid/invoices', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { rows } = await q(
+    'SELECT id, year, month, orders_count, total, issued_at FROM business_invoices WHERE account_id=$1 ORDER BY year DESC, month DESC', [acc.id]);
+  res.json({ invoices: rows });
+});
+
+r.post('/:bid/invoices/generate', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const year = Number(req.body?.year), month = Number(req.body?.month);
+  if (!year || !month || month < 1 || month > 12) return res.status(400).json({ error: 'חודש/שנה לא תקינים' });
+  const inv = await issueInvoice(q, acc, req.tenant, year, month);
+  if (!inv) return res.status(404).json({ error: 'לא נמצאו הזמנות בחודש זה' });
+  res.json({ invoice: inv });
+});
+
+r.get('/:bid/invoices/:iid/pdf', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { rows } = await q('SELECT * FROM business_invoices WHERE id=$1 AND account_id=$2', [req.params.iid, acc.id]);
+  if (!rows[0] || !rows[0].pdf) return res.status(404).json({ error: 'חשבונית לא נמצאה' });
+  res.setHeader('content-type', 'application/pdf');
+  res.setHeader('content-disposition', `inline; filename="invoice-${rows[0].year}-${rows[0].month}.pdf"`);
+  res.send(rows[0].pdf);
+});
+
+r.get('/:bid/invoices/:iid/csv', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { rows } = await q('SELECT * FROM business_invoices WHERE id=$1 AND account_id=$2', [req.params.iid, acc.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'חשבונית לא נמצאה' });
+  const orders = await monthOrders(q, acc.id, rows[0].year, rows[0].month);
+  res.setHeader('content-type', 'text/csv; charset=utf-8');
+  res.setHeader('content-disposition', `attachment; filename="invoice-${rows[0].year}-${rows[0].month}.csv"`);
+  res.send(toCsv(consolidatedCsv(orders)));
+});
+
 module.exports = r;

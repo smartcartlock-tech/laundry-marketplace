@@ -640,3 +640,16 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
 );
 ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check;
 ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('app','bot','admin','branded','recurring'));
+
+-- E4.T3: חשבוניות מרוכזות חודשיות לחשבונות עסקיים (מסמך דמו — לא חשבונית מס)
+CREATE TABLE IF NOT EXISTS business_invoices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES business_accounts(id) ON DELETE CASCADE,
+  year int NOT NULL,
+  month int NOT NULL,
+  orders_count int NOT NULL DEFAULT 0,
+  total numeric(10,2) NOT NULL DEFAULT 0,
+  pdf bytea,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id, year, month)
+);
