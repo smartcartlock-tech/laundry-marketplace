@@ -5,6 +5,19 @@ const { sign, requireAuth } = require('../auth');
 const { sendCode } = require('../otp-provider');
 
 const r = express.Router();
+
+// B2: קודי OTP נשמרים כ-HMAC בלבד (לא גלויים). המפתח: OTP_SECRET או JWT_SECRET כגיבוי.
+const OTP_HMAC_KEY = () => process.env.OTP_SECRET || process.env.JWT_SECRET || 'dev-insecure-secret';
+function hashOtp(code) {
+  return crypto.createHmac('sha256', OTP_HMAC_KEY()).update(String(code)).digest('hex');
+}
+function otpMatches(row, code) {
+  if (row.code_hash) {
+    const a = Buffer.from(row.code_hash, 'hex'), b = Buffer.from(hashOtp(code), 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+  return row.code === code; // שורות מדור קדם (פגות תוך 10 דקות בכל מקרה)
+}
 const { limiter } = require('../ratelimit');
 const { isDemo } = require('../config');
 // A2: קוד דמו מוצג רק במצב demo — ב-pilot לעולם לא (גם אם DEMO_OTP=true ב-env)
@@ -35,8 +48,9 @@ r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000),
     const delivery = await sendCode(target, code, { kind, demoOtp: DEMO_OTP() });
     if (!delivery.sent) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
     const channel = delivery.channel, demoCode = delivery.demoCode; // מצב דמו: הקוד מוצג על המסך גם אם נשלח בוואטסאפ
-    await q('INSERT INTO otp_codes(channel, target, code, expires_at) VALUES ($1,$2,$3, now() + interval \'10 minutes\')',
-      [channel, target, code]);
+    // B2: נשמר רק HMAC של הקוד, לעולם לא הקוד הגלוי
+    await q('INSERT INTO otp_codes(channel, target, code, code_hash, expires_at) VALUES ($1,$2,$3,$4, now() + interval \'10 minutes\')',
+      [channel, target, null, hashOtp(code)]);
     res.json({ ok: true, channel, ...(demoCode ? { demoCode } : {}) });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
@@ -45,11 +59,18 @@ r.post('/otp/verify', normalizeBody, limiter('otp-verify', 10, 10 * 60 * 1000), 
   try {
     const { target } = normalizeTarget(req.body.target);
     const code = String(req.body.code || '').trim();
+    // B2: הקוד העדכני בלבד; עד 10 ניסיונות שגויים לקוד (מעבר ל-rate limit הכללי)
     const { rows } = await q(
-      `SELECT * FROM otp_codes WHERE target=$1 AND code=$2 AND NOT consumed AND expires_at > now()
-       ORDER BY created_at DESC LIMIT 1`, [target, code]);
-    if (!rows[0]) return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
-    await q('UPDATE otp_codes SET consumed=true WHERE id=$1', [rows[0].id]);
+      `SELECT * FROM otp_codes WHERE target=$1 AND NOT consumed AND expires_at > now()
+       ORDER BY created_at DESC LIMIT 1`, [target]);
+    const row = rows[0];
+    if (!row) return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
+    if (row.attempts >= 10) return res.status(429).json({ error: 'יותר מדי ניסיונות — בקשו קוד חדש' });
+    if (!otpMatches(row, code)) {
+      await q('UPDATE otp_codes SET attempts=attempts+1 WHERE id=$1', [row.id]);
+      return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
+    }
+    await q('UPDATE otp_codes SET consumed=true WHERE id=$1', [row.id]);
     const isEmail = target.includes('@');
     let { rows: u } = isEmail
       ? await q('SELECT * FROM users WHERE email=$1', [target])

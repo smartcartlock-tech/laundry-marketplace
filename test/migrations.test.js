@@ -14,17 +14,22 @@ async function freshSchema(name) {
 
 const { runMigrations } = require('../src/migrate');
 
+// הרשימה הצפויה נגזרת מהקבצים על הדיסק — מפתחים מוסיפים מיגרציות ממוספרות בקבצים חדשים בלבד
+const fs = require('fs'), path = require('path');
+const EXPECTED = fs.readdirSync(path.join(__dirname, '..', 'src', 'migrations'))
+  .filter(f => /^\d+_.+\.sql$/.test(f)).sort().map(f => f.replace(/\.sql$/, ''));
+
 test('A2: DB חדש — כל המיגרציות מיושמות ונרשמות; הרצה חוזרת no-op', async () => {
   const pool = await freshSchema('test_mig_fresh');
   await runMigrations(pool, 'test_mig_fresh');
   const { rows: applied } = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-  assert.deepEqual(applied.map(r => r.version), ['001_baseline', '002_convergence_fixes']);
+  assert.deepEqual(applied.map(r => r.version), EXPECTED);
   const { rows: t } = await pool.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema='test_mig_fresh'`);
   assert.ok(t[0].n > 40, 'כל הטבלאות נוצרו: ' + t[0].n);
   // הרצה שנייה — בלי שגיאה ובלי שינוי
   await runMigrations(pool, 'test_mig_fresh');
   const { rows: again } = await pool.query('SELECT count(*)::int AS n FROM schema_migrations');
-  assert.equal(again[0].n, 2);
+  assert.equal(again[0].n, EXPECTED.length);
   await pool.end();
 });
 
@@ -37,7 +42,7 @@ test('A2: DB מדור-קדם (schema.sql ישירות, בלי טבלת מיגר�
   await pool.query(`INSERT INTO tenants(slug, name, approved, is_open) VALUES ('mig-legacy', 'מכבסת מיגרציה', true, true)`);
   await runMigrations(pool, 'test_mig_legacy');
   const { rows: applied } = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
-  assert.deepEqual(applied.map(r => r.version), ['001_baseline', '002_convergence_fixes']);
+  assert.deepEqual(applied.map(r => r.version), EXPECTED);
   // הנתון הקיים נשמר
   const { rows: ten } = await pool.query(`SELECT slug FROM tenants WHERE slug='mig-legacy'`);
   assert.equal(ten.length, 1);
