@@ -27,10 +27,8 @@ r.post('/otp/request', async (req, res) => {
       if (sent.sent) channel = 'whatsapp';
     }
     // email: נדרש ספק דואר (Brevo/SMTP) — לא מוגדר; נופל לדמו
-    if (channel === 'demo') {
-      if (!DEMO_OTP()) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
-      demoCode = code; // מוצג למשתמש — מצב דמו בלבד
-    }
+    if (channel === 'demo' && !DEMO_OTP()) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
+    if (DEMO_OTP()) demoCode = code; // מצב דמו: הקוד מוצג על המסך גם אם נשלח בוואטסאפ
     await q('INSERT INTO otp_codes(channel, target, code, expires_at) VALUES ($1,$2,$3, now() + interval \'10 minutes\')',
       [channel, target, code]);
     res.json({ ok: true, channel, ...(demoCode ? { demoCode } : {}) });
