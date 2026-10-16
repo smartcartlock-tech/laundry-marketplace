@@ -49,7 +49,8 @@ app.use('/api/t/:slug', require('./routes/tenant-ops')); // C5: סיכום יו�
 app.use('/api/public-ops', require('./routes/tenant-ops').publicRouter); // C1/C3 ציבורי
 app.use('/api/t/:slug', require('./routes/tenant-checklist')); // B1: צ'ק-ליסט מוכנות
 app.use('/api/t/:slug', require('./routes/tenant-agreement')); // B4: הסכם שירות דיגיטלי
-app.use('/api/t/:slug', require('./routes/settlement')); // התחשבנות (דמו): דוח תשלומים, עמלה, ייצוא רו"ח, בדיקת רצף
+app.use('/api/t/:slug', require('./routes/settlement'));
+app.use('/api/t/:slug', require('./routes/financials')); // נתונים פיננסיים מוצפנים — בעלים בלבד // התחשבנות (דמו): דוח תשלומים, עמלה, ייצוא רו"ח, בדיקת רצף
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/courier', require('./routes/courier-day')); // מסך שליח: משימות/מסלול יום/אישור מסירה
 app.use('/api/delivery-confirmations', require('./routes/delivery-confirmations')); // צילומי אישור מסירה
@@ -97,6 +98,7 @@ const { generateDueOrders } = require('./recurring');
 const runRecurring = () => generateDueOrders(require('./db').q).catch(e => console.error('[recurring]', e.message));
 const { issueMonthlyInvoices } = require('./billing');
 require('./retention').startRetention(); // C3: מחיקת נתונים שפגו/ישנים
+require('./backup-crypto').startDailyBackup(); // גיבוי יומי מוצפן
 const runMonthlyBilling = () => issueMonthlyInvoices(require('./db').q).catch(e => console.error('[billing]', e.message));
 setTimeout(runMonthlyBilling, 20000);
 setInterval(runMonthlyBilling, 60 * 60 * 1000);
