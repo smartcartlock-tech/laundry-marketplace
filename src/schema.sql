@@ -192,3 +192,62 @@ CREATE TABLE IF NOT EXISTS notifications (
   sent boolean DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- E12: חשבוניות עצמאיות (מסמכים חשבונאיים)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dealer_type text CHECK (dealer_type IN ('morasha','patur'));
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dealer_id text;
+
+CREATE TABLE IF NOT EXISTS doc_counters (
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit')),
+  year int NOT NULL,
+  next_number int NOT NULL DEFAULT 1,
+  PRIMARY KEY (tenant_id, kind, year)
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  order_id uuid REFERENCES orders(id),
+  customer_id uuid REFERENCES users(id),
+  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit')),
+  doc_year int NOT NULL,
+  doc_number int NOT NULL,
+  allocation_number varchar(9),
+  amount numeric(10,2) NOT NULL,
+  vat numeric(10,2) NOT NULL DEFAULT 0,
+  total numeric(10,2) NOT NULL,
+  status text NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','partially_credited','credited')),
+  credited_amount numeric(10,2) NOT NULL DEFAULT 0,
+  original_id uuid REFERENCES documents(id),
+  pdf bytea,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, kind, doc_year, doc_number)
+);
+
+-- אי-שינוי: רק allocation_number / credited_amount / status ניתנים לעדכון; אין DELETE
+CREATE OR REPLACE FUNCTION documents_immutable() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'documents are immutable'; END IF;
+  IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.order_id IS DISTINCT FROM OLD.order_id
+     OR NEW.customer_id IS DISTINCT FROM OLD.customer_id OR NEW.kind IS DISTINCT FROM OLD.kind
+     OR NEW.doc_year IS DISTINCT FROM OLD.doc_year OR NEW.doc_number IS DISTINCT FROM OLD.doc_number
+     OR NEW.amount IS DISTINCT FROM OLD.amount OR NEW.vat IS DISTINCT FROM OLD.vat
+     OR NEW.total IS DISTINCT FROM OLD.total OR NEW.original_id IS DISTINCT FROM OLD.original_id
+     OR NEW.issued_at IS DISTINCT FROM OLD.issued_at OR NEW.pdf IS DISTINCT FROM OLD.pdf THEN
+    RAISE EXCEPTION 'document fields are immutable (use a credit note)';
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS documents_immutable_trg ON documents;
+CREATE TRIGGER documents_immutable_trg BEFORE UPDATE OR DELETE ON documents FOR EACH ROW EXECUTE FUNCTION documents_immutable();
+
+CREATE TABLE IF NOT EXISTS document_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  action text NOT NULL,
+  actor_id uuid,
+  details jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
