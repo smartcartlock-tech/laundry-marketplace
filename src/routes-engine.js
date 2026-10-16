@@ -126,6 +126,7 @@ async function buildRoutesForDate(dateStr) {
       built.push({ route_id: routeId, city, courier_id: courier.id, courier_name: courier.name, stops: stops.length, tenants: tenantIds.length, combined: tenantIds.length >= 2 });
     }
     await client.query('COMMIT');
+    require('./courier-notify').notifyRouteBuilt(built).catch(e => console.error('[notify]', e.message)); // שליחים: התראת משימה חדשה
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
   finally { client.release(); }
   return { date: day, routes: built };

@@ -149,3 +149,100 @@ test('סידור מסלול לפי קרבה גיאוגרפית: ?order=proximity
   assert.equal(chain.json.ordered_by, 'proximity');
   assert.equal(chain.json.stops.filter(s => !s.done).length, 2);
 });
+
+test('התראת דמו לשליח על שיבוץ אוטומטי (נרשמת ב-notifications, בלי שליחה אמיתית)', async (t) => {
+  const { api, schema } = await startApp(t);
+  const admin = await api.login('+972500000001');
+  const customer = await api.login('+972500000002');
+  const courier = await api.login('+972500000005');
+
+  const o1 = await makeOrder(api, customer, 'achuza');
+  await api(`/api/t/achuza/orders/${o1}/status`, { method: 'POST', token: admin, body: { status: 'confirmed' } });
+  assert.equal((await api('/api/admin/routes/auto-build', { method: 'POST', token: admin, body: {} })).status, 200);
+
+  // ההתראה fire-and-forget — ממתינים שהשורה תירשם
+  const pg = new Client({ connectionString: TEST_DB });
+  await pg.connect();
+  await pg.query(`SET search_path TO "${schema}"`);
+  let found = null;
+  for (let i = 0; i < 25 && !found; i++) {
+    const { rows } = await pg.query(
+      `SELECT n.channel, n.sent, n.body FROM notifications n
+       JOIN users u ON u.id=n.user_id WHERE u.phone='+972500000005' AND n.body LIKE '%שובצו לך%' ORDER BY n.id DESC LIMIT 1`);
+    found = rows[0];
+    if (!found) await new Promise(r => setTimeout(r, 200));
+  }
+  await pg.end();
+  assert.ok(found, 'notification row recorded for courier');
+  assert.ok(found.body.includes('נקודות'), 'body describes new tasks');
+  assert.equal(found.sent, false, 'demo non-allowlisted: no real send');
+  assert.equal(found.channel, 'log');
+});
+
+test('קבלת/דחיית הצעה עם סיבה + פירוט זמן תגובה', async (t) => {
+  const { api } = await startApp(t);
+  const admin = await api.login('+972500000001');
+  const customer = await api.login('+972500000002');
+  const courier = await api.login('+972500000005');
+
+  const prof = await api('/api/courier/profile', { token: courier });
+  const cid = prof.json.courier.id;
+
+  // דחייה עם סיבה
+  const o1 = await makeOrder(api, customer, 'achuza');
+  await api(`/api/t/achuza/orders/${o1}/status`, { method: 'POST', token: admin, body: { status: 'confirmed' } });
+  const a1 = await api(`/api/t/achuza/orders/${o1}/assign`, { method: 'POST', token: admin, body: { courier_id: cid } });
+  assert.equal(a1.status, 200, JSON.stringify(a1.json));
+  assert.equal(a1.json.mode, 'offered');
+  const dec = await api(`/api/courier/offers/${a1.json.offer.id}/decline`, { method: 'POST', token: courier, body: { reason: 'מחוץ לאזור הפעילות' } });
+  assert.equal(dec.status, 200, JSON.stringify(dec.json));
+
+  // קבלה
+  const o2 = await makeOrder(api, customer, 'achuza');
+  await api(`/api/t/achuza/orders/${o2}/status`, { method: 'POST', token: admin, body: { status: 'confirmed' } });
+  const a2 = await api(`/api/t/achuza/orders/${o2}/assign`, { method: 'POST', token: admin, body: { courier_id: cid } });
+  assert.equal(a2.json.mode, 'offered');
+  const acc = await api(`/api/courier/offers/${a2.json.offer.id}/accept`, { method: 'POST', token: courier, body: {} });
+  assert.equal(acc.status, 200, JSON.stringify(acc.json));
+  // ההזמנה שובצה לשליח
+  const tasks = await api('/api/courier/tasks', { token: courier });
+  assert.ok(tasks.json.tasks.pickups.find(x => x.id === o2), 'accepted order assigned');
+
+  // סטטיסטיקת זמן תגובה
+  const st = await api('/api/courier/offers/stats', { token: courier });
+  assert.equal(st.status, 200);
+  assert.equal(st.json.stats.accepted, 1);
+  assert.equal(st.json.stats.declined, 1);
+  assert.ok(st.json.stats.avg_response_seconds >= 0);
+  const drow = st.json.recent.find(x => x.status === 'declined');
+  assert.equal(drow.decline_reason, 'מחוץ לאזור הפעילות');
+  assert.ok(typeof drow.response_seconds === 'number' && drow.response_seconds >= 0);
+
+  // הרשאות
+  assert.equal((await api('/api/courier/offers/stats', { token: customer })).status, 403);
+});
+
+test('פרופיל שליח: צפייה ועדכון רכב/אזורים/שעות', async (t) => {
+  const { api } = await startApp(t);
+  const customer = await api.login('+972500000002');
+  const courier = await api.login('+972500000005');
+
+  assert.equal((await api('/api/courier/profile', { method: 'PUT', token: customer, body: {} })).status, 403);
+
+  const bad = await api('/api/courier/profile', { method: 'PUT', token: courier, body: { vehicle: '', areas: ['חיפה'] } });
+  assert.equal(bad.status, 400);
+  const bad2 = await api('/api/courier/profile', { method: 'PUT', token: courier, body: { vehicle: 'אופנוע', areas: [] } });
+  assert.equal(bad2.status, 400);
+
+  const availability = { '0': { from: '07:30', to: '15:00', off: false }, '6': { from: null, to: null, off: true }, '9': { from: '99:99', to: 'x' } };
+  const up = await api('/api/courier/profile', { method: 'PUT', token: courier, body: { vehicle: 'אופנוע הונדה', areas: ['חיפה', 'קריות'], availability } });
+  assert.equal(up.status, 200, JSON.stringify(up.json));
+  assert.equal(up.json.courier.vehicle, 'אופנוע הונדה');
+  assert.deepEqual(up.json.courier.areas, ['חיפה', 'קריות']);
+  assert.equal(up.json.courier.availability['0'].from, '07:30');
+  assert.equal(up.json.courier.availability['6'].off, true);
+  assert.equal(up.json.courier.availability['9'], undefined, 'invalid day key dropped');
+
+  const prof = await api('/api/courier/profile', { token: courier });
+  assert.equal(prof.json.courier.vehicle, 'אופנוע הונדה');
+});

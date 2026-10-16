@@ -117,8 +117,8 @@ r.post('/offers/:id/accept', uuidParams('id'), async (req, res) => {
 
 r.post('/offers/:id/decline', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
-    `UPDATE courier_offers SET status='declined', responded_at=now()
-     WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING id`, [req.params.id, req.courier.id]);
+    `UPDATE courier_offers SET status='declined', responded_at=now(), decline_reason=$3
+     WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING id`, [req.params.id, req.courier.id, String((req.body||{}).reason||'').slice(0,200)||null]);
   if (!rows[0]) return res.status(404).json({ error: 'הצעה לא נמצאה או כבר טופלה' });
   res.json({ ok: true }); // דחייה אינה פוגעת בדירוג (לפי האיפיון)
 });

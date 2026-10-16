@@ -204,4 +204,46 @@ r.get('/history', async (req, res) => {
   res.json({ rating: agg[0] || { rating: 0, rating_count: 0 }, rows });
 });
 
+// סטטיסטיקת תגובה להצעות שיבוץ: פירוט זמן תגובה (שניות) + סיבות דחייה אחרונות
+r.get('/offers/stats', async (req, res) => {
+  const { rows: agg } = await q(
+    `SELECT count(*) FILTER (WHERE status='accepted')::int AS accepted,
+            count(*) FILTER (WHERE status='declined')::int AS declined,
+            count(*) FILTER (WHERE status='offered')::int AS pending,
+            COALESCE(avg(EXTRACT(EPOCH FROM (responded_at - created_at))) FILTER (WHERE responded_at IS NOT NULL),0)::int AS avg_response_seconds
+     FROM courier_offers WHERE courier_id=$1`, [req.courier.id]);
+  const { rows: recent } = await q(
+    `SELECT f.id, f.status, f.decline_reason, f.created_at, f.responded_at,
+            CASE WHEN f.responded_at IS NOT NULL THEN EXTRACT(EPOCH FROM (f.responded_at - f.created_at))::int END AS response_seconds,
+            o.address, t.name AS tenant_name
+     FROM courier_offers f JOIN orders o ON o.id=f.order_id JOIN tenants t ON t.id=o.tenant_id
+     WHERE f.courier_id=$1 AND f.status IN ('accepted','declined')
+     ORDER BY f.responded_at DESC LIMIT 20`, [req.courier.id]);
+  res.json({ stats: agg[0], recent });
+});
+
+// פרופיל שליח: עדכון אזורי פעילות, כלי רכב ושעות פעילות (availability jsonb)
+r.put('/profile', async (req, res) => {
+  const { vehicle, areas, availability } = req.body || {};
+  const veh = String(vehicle || '').trim().slice(0, 100);
+  if (!veh) return res.status(400).json({ error: 'סוג רכב חובה' });
+  const areasArr = (Array.isArray(areas) ? areas : String(areas || '').split(','))
+    .map(x => String(x).trim()).filter(Boolean).slice(0, 10);
+  if (!areasArr.length) return res.status(400).json({ error: 'יש לציין לפחות אזור פעילות אחד' });
+  let avail = {};
+  if (availability && typeof availability === 'object' && !Array.isArray(availability)) {
+    // שעות פעילות לפי יום: { "0": {from:"08:00",to:"18:00",off:false}, ... } — מפתחות 0-6 בלבד
+    for (const [k, v] of Object.entries(availability)) {
+      if (!/^[0-6]$/.test(k) || typeof v !== 'object' || !v) continue;
+      const from = /^\d{2}:\d{2}$/.test(v.from || '') ? v.from : null;
+      const to = /^\d{2}:\d{2}$/.test(v.to || '') ? v.to : null;
+      avail[k] = { from, to, off: !!v.off };
+    }
+  }
+  const { rows } = await q(
+    'UPDATE couriers SET vehicle=$2, areas=$3, availability=$4 WHERE id=$1 RETURNING id, vehicle, areas, availability',
+    [req.courier.id, veh, areasArr, JSON.stringify(avail)]);
+  res.json({ ok: true, courier: rows[0] });
+});
+
 module.exports = r;
