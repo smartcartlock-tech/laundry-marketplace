@@ -69,6 +69,7 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 const { generateDueOrders } = require('./recurring');
 const runRecurring = () => generateDueOrders(require('./db').q).catch(e => console.error('[recurring]', e.message));
 const { issueMonthlyInvoices } = require('./billing');
+require('./retention').startRetention(); // C3: מחיקת נתונים שפגו/ישנים
 const runMonthlyBilling = () => issueMonthlyInvoices(require('./db').q).catch(e => console.error('[billing]', e.message));
 setTimeout(runMonthlyBilling, 20000);
 setInterval(runMonthlyBilling, 60 * 60 * 1000);
