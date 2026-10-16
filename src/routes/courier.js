@@ -10,7 +10,8 @@ r.use(requireAuth, requireCourier);
 r.get('/offers', async (req, res) => {
   const { rows } = await q(
     `SELECT f.id AS offer_id, f.kind, f.created_at, o.id AS order_id, o.address, o.pickup_at, o.delivery_at,
-            o.status, o.total, t.name AS tenant_name, t.address AS tenant_address, t.city AS tenant_city
+            o.status, o.total, t.name AS tenant_name, t.address AS tenant_address, t.city AS tenant_city,
+            (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty)) FROM order_items oi WHERE oi.order_id=o.id) AS items
      FROM courier_offers f JOIN orders o ON o.id=f.order_id JOIN tenants t ON t.id=o.tenant_id
      WHERE f.courier_id=$1 AND f.status='offered' ORDER BY f.created_at DESC`, [req.courier.id]);
   res.json({ offers: rows });
@@ -42,7 +43,8 @@ r.get('/route', async (req, res) => {
   const { rows } = await q(
     `SELECT o.id, o.status, o.address, o.lat, o.lng, o.pickup_at, o.delivery_at, o.total, o.payment_method,
             t.name AS tenant_name, t.address AS tenant_address, t.lat AS tenant_lat, t.lng AS tenant_lng,
-            u.name AS customer_name, u.phone AS customer_phone
+            u.name AS customer_name, u.phone AS customer_phone,
+            (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty)) FROM order_items oi WHERE oi.order_id=o.id) AS items
      FROM orders o JOIN tenants t ON t.id=o.tenant_id JOIN users u ON u.id=o.customer_id
      WHERE o.courier_id=$1 AND o.status IN ('confirmed','picked_up','ready','out_for_delivery')
      ORDER BY COALESCE(o.pickup_at, o.created_at)`, [req.courier.id]);
@@ -52,13 +54,13 @@ r.get('/route', async (req, res) => {
 // סימון איסוף/מסירה על ידי שליח (עם תמונה אופציונלית)
 r.post('/orders/:id/mark', async (req, res) => {
   const { action, photo_url, note } = req.body || {};
-  const map = { picked_up: 'picked_up', delivered: 'delivered' };
+  const map = { picked_up: 'picked_up', out_for_delivery: 'out_for_delivery', delivered: 'delivered' };
   const newStatus = map[action];
   if (!newStatus) return res.status(400).json({ error: 'action: picked_up | delivered' });
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND courier_id=$2', [req.params.id, req.courier.id]);
   const order = o[0];
   if (!order) return res.status(404).json({ error: 'הזמנה לא משובצת אליך' });
-  const allowed = { picked_up: ['confirmed'], delivered: ['out_for_delivery', 'ready'] };
+  const allowed = { picked_up: ['confirmed'], out_for_delivery: ['ready'], delivered: ['out_for_delivery', 'ready'] };
   if (!allowed[newStatus].includes(order.status)) return res.status(409).json({ error: `לא ניתן לסמן מתוך סטטוס ${order.status}` });
   await q('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
   await q('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
@@ -69,7 +71,7 @@ r.post('/orders/:id/mark', async (req, res) => {
     if (order.payment_method === 'cash') await q(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
   }
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
-  const HE = { picked_up: 'נאספה על ידי השליח', delivered: 'סומנה כהוחזרה. תודה!' };
+  const HE = { picked_up: 'נאספה על ידי השליח', out_for_delivery: 'בדרך אליך', delivered: 'סומנה כהוחזרה. תודה!' };
   if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.`, cust[0].phone).catch(() => {});
   res.json({ ok: true });
 });

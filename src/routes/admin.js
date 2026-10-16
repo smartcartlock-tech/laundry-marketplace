@@ -37,6 +37,34 @@ r.post('/tenants/:id/suspend', async (req, res) => {
   res.json({ ok: true });
 });
 
+// פרטי מכבסה מלאים לסקירת אדמין לפני אישור/דחייה
+r.get('/tenants/:id', async (req, res) => {
+  const { rows: t } = await q('SELECT id, slug, name, letter, phone, address, city, services, hours, terms, delivery_fee, min_order, approved, is_open, created_at FROM tenants WHERE id=$1', [req.params.id]);
+  if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const [items, windows, members, orders] = await Promise.all([
+    q('SELECT name, category, price, unit, active FROM price_items WHERE tenant_id=$1 ORDER BY sort, name', [t[0].id]),
+    q('SELECT weekday, start_time, end_time, kind, capacity FROM pickup_windows WHERE tenant_id=$1 ORDER BY weekday, start_time', [t[0].id]),
+    q(`SELECT u.name, u.phone, m.role FROM tenant_members m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=$1`, [t[0].id]),
+    q('SELECT count(*)::int AS n FROM orders WHERE tenant_id=$1', [t[0].id]),
+  ]);
+  res.json({ tenant: t[0], items: items.rows, windows: windows.rows, members: members.rows, orders: orders.rows[0].n });
+});
+
+// דחייה: מחיקת מכבסה שלא אושרה (רק אם אין לה הזמנות)
+r.post('/tenants/:id/reject', async (req, res) => {
+  const { rows: t } = await q('SELECT id, name, approved FROM tenants WHERE id=$1', [req.params.id]);
+  if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const { rows: oc } = await q('SELECT count(*)::int AS n FROM orders WHERE tenant_id=$1', [t[0].id]);
+  if (oc[0].n > 0) return res.status(409).json({ error: 'למכבסה יש הזמנות — ניתן להשעות אבל לא למחוק' });
+  await q('DELETE FROM points_ledger WHERE tenant_id=$1', [t[0].id]);
+  await q('DELETE FROM price_items WHERE tenant_id=$1', [t[0].id]);
+  await q('DELETE FROM pickup_windows WHERE tenant_id=$1', [t[0].id]);
+  await q('DELETE FROM tenant_members WHERE tenant_id=$1', [t[0].id]);
+  await q('DELETE FROM couriers WHERE tenant_id=$1', [t[0].id]);
+  await q('DELETE FROM tenants WHERE id=$1', [t[0].id]);
+  res.json({ ok: true });
+});
+
 r.get('/couriers', async (req, res) => {
   const { rows } = await q(
     `SELECT c.id, c.model, c.vehicle, c.areas, c.approved, c.rating, c.created_at, u.name, u.phone, t.name AS tenant_name

@@ -86,7 +86,9 @@ r.post('/', async (req, res) => {
 // ההזמנות שלי (לקוח)
 r.get('/mine', async (req, res) => {
   const { rows } = await q(
-    `SELECT o.*, t.name AS tenant_name, t.slug, t.color, t.letter FROM orders o JOIN tenants t ON t.id=o.tenant_id
+    `SELECT o.*, t.name AS tenant_name, t.slug, t.color, t.letter,
+       (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty,'price',oi.price)) FROM order_items oi WHERE oi.order_id=o.id) AS items
+     FROM orders o JOIN tenants t ON t.id=o.tenant_id
      WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [req.user.id]);
   res.json({ orders: rows, statusHe: STATUS_HE });
 });

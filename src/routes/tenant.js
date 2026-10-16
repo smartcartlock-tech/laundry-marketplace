@@ -16,7 +16,8 @@ r.get('/orders', async (req, res) => {
   if (status) { params.push(status); where += ` AND o.status=$${params.length}`; }
   const { rows } = await q(
     `SELECT o.*, u.name AS customer_name, u.phone AS customer_phone,
-       EXISTS(SELECT 1 FROM courier_offers co WHERE co.order_id=o.id AND co.status='offered') AS has_open_offer
+       EXISTS(SELECT 1 FROM courier_offers co WHERE co.order_id=o.id AND co.status='offered') AS has_open_offer,
+       (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty,'price',oi.price)) FROM order_items oi WHERE oi.order_id=o.id) AS items
      FROM orders o JOIN users u ON u.id=o.customer_id ${where} ORDER BY o.created_at DESC LIMIT 200`, params);
   res.json({ orders: rows });
 });
@@ -32,6 +33,9 @@ r.post('/orders/:id/status', async (req, res) => {
     if (!order) { client.release(); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
     const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
     if (status !== 'cancelled' && nxt <= cur) { client.release(); return res.status(409).json({ error: 'לא ניתן לחזור אחורה בסטטוס' }); }
+    if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
+      client.release(); return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
+    }
     await client.query('BEGIN');
     await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',

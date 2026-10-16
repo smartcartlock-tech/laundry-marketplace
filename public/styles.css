@@ -84,3 +84,6 @@ table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
 .st-delivered{background:#e8f7ee;color:#178a4c}.st-cancelled{background:#fdeaea;color:#c22}
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .gbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:#fff;border:1.5px solid #d3e8ec;border-radius:12px;padding:12px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;margin-top:8px}
+/* חלון מודאל פנימי (מחליף confirm/prompt של הדפדפן) */
+.modal-ov{position:fixed;inset:0;background:rgba(10,20,25,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#fff;border-radius:16px;padding:18px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);max-height:85vh;overflow-y:auto}

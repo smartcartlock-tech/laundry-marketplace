@@ -24,7 +24,14 @@ r.post('/extract', upload.array('files', 5), async (req, res) => {
 r.post('/tenants', async (req, res) => {
   try {
     const { name, phone, address, city, services, hours, terms, items, windows, delivery_fee, min_order } = req.body || {};
-    if (!name) return res.status(400).json({ error: 'שם מכבסה חובה' });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'שם מכבסה חובה' });
+    if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'טלפון המכבסה חובה' });
+    if (!address || !String(address).trim()) return res.status(400).json({ error: 'כתובת המכבסה חובה' });
+    if (!city || !String(city).trim()) return res.status(400).json({ error: 'עיר חובה' });
+    if (Array.isArray(items)) {
+      const zero = items.filter(it => it && it.name && !(Number(it.price) > 0));
+      if (zero.length) return res.status(400).json({ error: `${zero.length} פריטים ללא מחיר תקין — יש לתקן או למחוק אותם לפני השליחה` });
+    }
     let slug = String(name).trim().replace(/[^\wא-ת]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'laundry';
     const { rows: existing } = await q('SELECT 1 FROM tenants WHERE slug=$1', [slug]);
     if (existing[0]) slug = slug + '-' + Math.random().toString(36).slice(2, 6);
