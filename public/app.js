@@ -969,9 +969,48 @@ async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'P
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
- const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי']];
+ const tabs=[['overview','תמונת מצב'],['dash','דשבורד מרכזי'],['onboarding','צינור קליטה'],['sla','התראות SLA'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי']];
  let body='';
- if(sub==='overview'){
+ if(sub==='dash'){
+  // E7.T1: דשבורד מנהל מרכזי (מוקאפ 30)
+  const d=await api('/admin/dashboard');
+  body=`<div class="kpis">
+   <div class="kpi"><b>₪${d.month.gmv}</b>מחזור (GMV) החודש</div>
+   <div class="kpi"><b>${d.month.orders}</b>הזמנות החודש</div>
+   <div class="kpi"><b>₪${d.month.courier_commission}</b>עמלות שליחים</div>
+   <div class="kpi"><b>${d.sla.on_time_pct===null?'—':d.sla.on_time_pct+'%'}</b>איסוף בזמן (30 יום)</div>
+   <div class="kpi"><b>${d.laundries.active_30d}</b>מכבסות פעילות</div>
+   <div class="kpi"><b>${d.alerts.open}</b>התראות פתוחות</div>
+  </div>
+  <div class="card"><div class="sec">פעילות B2B שבועית</div><div style="display:flex;gap:8px;flex-wrap:wrap">
+   <span class="tag tb">פוסטים: ${d.b2b_weekly.posts}</span><span class="tag tb">מכרזים: ${d.b2b_weekly.tenders}</span>
+   <span class="tag tb">הצעות: ${d.b2b_weekly.bids}</span><span class="tag tb">קבוצות רכש: ${d.b2b_weekly.purchase_groups}</span>
+   <span class="tag tb">קיבולת: ${d.b2b_weekly.capacity_posts}</span></div></div>
+  ${d.alerts.open?`<a href="#/admin/sla" style="text-decoration:none"><div class="warn">⚠ ${d.alerts.open} התראות ממתינות לטיפול (${d.alerts.late} איחורים, ${d.alerts.issues} דיווחי לקוחות) — לחצו לתור הטיפול</div></a>`:'<div class="card mut">אין התראות פתוחות ✓</div>'}
+  <div class="card mut">מכבסות מאושרות: ${d.laundries.approved} · ברוטו שליחים החודש: ₪${d.month.courier_gross}</div>`;
+ } else if(sub==='onboarding'){
+  // E7.T2: צינור אונבורדינג מכבסות
+  const d=await api('/admin/onboarding');
+  const ST={agreement:'הסכם',pricing:'מחירון',bot:'בוט',training:'הדרכה',active:'פעיל'};
+  body=`<div class="kpis">${d.stages.map(s=>`<div class="kpi"><b>${d.pipeline[s]}</b>${ST[s]}</div>`).join('')}</div>
+  ${d.tenants.map(t=>`<div class="card"><b>${esc(t.name)}</b> <span class="mut">${esc(t.city||'')}</span>${t.approved?'':' <span class="tag ta">ממתינה לאישור</span>'}
+   <div class="mut">נפתחה ${fmtDate(t.created_at)} · פריטי מחירון: ${t.price_items}${t.notes?' · '+esc(t.notes):''}</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${d.stages.map(st=>`<button class="btn2 ${t.stage===st?'green':''}" onclick="adminOnboardStage('${t.id}','${st}')">${ST[st]}</button>`).join('')}</div></div>`).join('')}`;
+ } else if(sub==='sla'){
+  // E7.T3: תור התראות SLA ומחלוקות
+  await api('/admin/sla/sync',{method:'POST',body:'{}'});
+  const d=await api('/admin/sla?status=all');
+  const KIND={late_pickup:'איחור איסוף',late_delivery:'איחור משלוח',customer_issue:'דיווח לקוח',courier_dispute:'מחלוקת שליח'};
+  const open=d.alerts.filter(a=>a.status==='open'), done=d.alerts.filter(a=>a.status==='handled');
+  body=(open.length?`<div class="sec">פתוחות (${open.length})</div>`+open.map(a=>`<div class="card"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
+    <div class="mut">${esc(a.details||'')}</div>
+    ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${ST_HE[a.order_status]||a.order_status||''} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
+    <div class="mut">נוצרה ${fmtDT(a.created_at)}</div>
+    <div style="margin-top:6px"><button class="btn2 green" onclick="adminSlaHandle('${a.id}')">סימון כטופלה</button></div></div>`).join(''):'<div class="card mut">אין התראות פתוחות ✓</div>')
+   +(done.length?`<div class="sec">טופלו (${done.length})</div>`+done.map(a=>`<div class="card" style="opacity:.7"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
+    <div class="mut">${esc(a.details||'')}</div><div class="mut">טופלה ע"י ${esc(a.handled_by_name||'')} · ${fmtDT(a.handled_at)}${a.handle_note?' · '+esc(a.handle_note):''}</div>
+    <div style="margin-top:6px"><button class="btn2" onclick="adminSlaReopen('${a.id}')">פתיחה מחדש</button></div></div>`).join(''):'');
+ } else if(sub==='overview'){
   const d=await api('/admin/overview');
   body=`<div class="kpis"><div class="kpi"><b>${d.tenants.approved}</b>מכבסות</div><div class="kpi"><b>${d.orders.total}</b>הזמנות</div><div class="kpi"><b>₪${d.orders.gmv}</b>מחזור</div><div class="kpi"><b>${d.users.total}</b>משתמשים</div></div>
    ${d.tenants.pending?`<a href="#/admin/tenants" style="text-decoration:none"><div class="warn">${d.tenants.pending} מכבסות ממתינות לאישור — לחצו לסקירה</div></a>`:''}
@@ -1134,6 +1173,10 @@ async function viewCourierDoc(id){
   const b=await r.blob();window.open(URL.createObjectURL(b),'_blank');
  }catch(e){toast(e.message)}
 }
+
+async function adminOnboardStage(tid,stage){try{await api(`/admin/onboarding/${tid}/stage`,{method:'POST',body:JSON.stringify({stage})});toast('השלב עודכן');route()}catch(e){toast(e.message)}}
+async function adminSlaHandle(id){const note=await xmodal({title:'טיפול בהתראה',body:'תיעוד הטיפול (רשות):',okText:'סימון כטופלה',fields:[{id:'note',label:'הערת טיפול'}]});if(!note)return;try{await api(`/admin/sla/${id}/handle`,{method:'POST',body:JSON.stringify({note:note.note||''})});toast('ההתראה טופלה');route()}catch(e){toast(e.message)}}
+async function adminSlaReopen(id){try{await api(`/admin/sla/${id}/reopen`,{method:'POST',body:'{}'});toast('ההתראה נפתחה מחדש');route()}catch(e){toast(e.message)}}
 async function adminRegisterCourier(){try{await api('/admin/couriers/register',{method:'POST',body:JSON.stringify({name:$('#rc-name').value,phone:$('#rc-phone').value,vehicle:$('#rc-vehicle').value,model:$('#rc-model').value,tenant_slug:$('#rc-tenant').value||undefined})});toast('השליח נרשם');go('#/admin/couriers')}catch(e){toast(e.message)}}
 
 /* ---- join: onboarding מכבסה עם AI ---- */

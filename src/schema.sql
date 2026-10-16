@@ -600,3 +600,28 @@ CREATE TABLE IF NOT EXISTS business_prices (
   PRIMARY KEY (account_id, item_id)
 );
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS business_account_id uuid REFERENCES business_accounts(id) ON DELETE SET NULL;
+
+-- E7.T2: צינור אונבורדינג מכבסות — הסכם → מחירון → בוט → הדרכה → פעיל
+CREATE TABLE IF NOT EXISTS tenant_onboarding (
+  tenant_id uuid PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  stage text NOT NULL DEFAULT 'agreement' CHECK (stage IN ('agreement','pricing','bot','training','active')),
+  notes text,
+  updated_by uuid REFERENCES users(id),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- E7.T3: התראות SLA, דיווחי תקלות מלקוחות ומחלוקות — תור טיפול מרכזי
+CREATE TABLE IF NOT EXISTS sla_alerts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid REFERENCES orders(id) ON DELETE CASCADE,
+  tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('late_pickup','late_delivery','customer_issue','courier_dispute')),
+  details text,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','handled')),
+  handled_by uuid REFERENCES users(id),
+  handled_at timestamptz,
+  handle_note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sla_alerts_order_kind_idx ON sla_alerts(order_id, kind) WHERE order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS sla_alerts_status_idx ON sla_alerts(status, created_at DESC);
