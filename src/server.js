@@ -22,7 +22,13 @@ app.use('/api/bot', require('./routes/bot'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
 
 // PWA סטטי + נפילה ל-index.html לנתיבי SPA
-app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: 'index.html' }));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  index: 'index.html',
+  setHeaders(res, filePath) {
+    if (/icon-\d+\.png$|manifest\.webmanifest$/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=86400');
+    else res.setHeader('Cache-Control', 'no-cache'); // html/css/js/sw תמיד עם אימות מחדש מול השרת
+  }
+}));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 // eslint-disable-next-line no-unused-vars
