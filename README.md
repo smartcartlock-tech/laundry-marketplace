@@ -41,4 +41,4 @@ SEED_DEMO=true npm start   # מגרית, מזריע דמו אם ריק, ומאז
 Express + PostgreSQL (pg, ללא ORM). כל הישויות נושאות tenant_id. סטטוסים: new → confirmed → picked_up → in_work → ready → out_for_delivery → delivered (+cancelled). נקודות נזקפות רק בסטטוס delivered. JWT stateless. PWA סטטי מוגש מאותו שירות.
 
 ## פריסה (Render)
-ראו render.yaml. הערה על DB: Render free מוגבל ל-Postgres אחד לחשבון — כרגע חולקים אינסטנס עם הבוט דרך PGSCHEMA=marketplace. חלופה יציבה מומלצת: Neon free tier (500MB, ללא תפוגת 30 יום) — להחליף DATABASE_URL ולהסיר PGSCHEMA.
+ראו render.yaml. ה-DB בפרוד הוא Neon free Postgres נפרד (eu-central-1, ללא PGSCHEMA). SEED_DEMO ו-DEMO_OTP פעילים בסביבת הדמו בלבד — כיבוי שניהם הוא go-live gate (ראו docs/GO-LIVE.md כשייווצר).

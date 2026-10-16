@@ -1,5 +1,5 @@
-# Blueprint ל-Render. DB: חסרון — Render free Postgres מוגבל לאחד לחשבון (תפוס ע"י cleanshop-db)
-# לכן השירות משתמש באותו אינסטנס עם PGSCHEMA=marketplace. חלופה יציבה מומלצת: Neon free (ללא תפוגה).
+# Blueprint ל-Render. מציאות נוכחית (אומת 16.10.26): Neon free Postgres נפרד (eu-central-1) —
+# אין PGSCHEMA בפרוד. DATABASE_URL מצביע ל-Neon (sync:false, מוזן ידנית בלוח Render).
 services:
   - type: web
     name: laundry-marketplace
@@ -12,15 +12,13 @@ services:
     envVars:
       - key: APP_MODE   # A2: demo|pilot — ברירת מחדל demo; לעבור ל-pilot רק ב-go-live (ראה docs/GO-LIVE.md)
         value: "demo"
-      - key: PGSCHEMA
-        value: marketplace
       - key: SEED_DEMO
         value: "true"   # לסביבת הדמו בלבד — לכבות בפרודקשן אמיתי
       - key: DEMO_OTP
         value: "true"
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL   # internal connection string של cleanshop-db
+      - key: DATABASE_URL   # Neon free Postgres (eu-central-1) — connection string מלא
         sync: false
       - key: GEMINI_API_KEY
         sync: false

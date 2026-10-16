@@ -14,8 +14,8 @@ let tenantM, tenantP, user;
 
 before(async () => {
   await q(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
-  const sql = fs.readFileSync(path.join(__dirname, '..', 'src', 'schema.sql'), 'utf8');
-  await q(sql);
+  const { runMigrations } = require('../src/migrate'); // במקום schema.sql הישן — מיגרציות מגורסות (A2)
+  await runMigrations(pool, SCHEMA);
   const u = await q(`INSERT INTO users(phone, name) VALUES ('+972500000777', 'בודק מסמכים') RETURNING *`);
   user = u.rows[0];
   const tm = await q(`INSERT INTO tenants(slug, name, approved, is_open, dealer_type, dealer_id) VALUES ('docs-m', 'מכבסת מורשה', true, true, 'morasha', '123456789') RETURNING *`);

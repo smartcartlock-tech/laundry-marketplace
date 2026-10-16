@@ -1,6 +1,4 @@
 const { Pool } = require('pg');
-const fs = require('fs');
-const path = require('path');
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) { console.error('DATABASE_URL is required'); process.exit(1); }
@@ -17,13 +15,8 @@ const pool = new Pool({
 async function q(text, params) { return pool.query(text, params); }
 
 async function migrate() {
-  if (SCHEMA) await pool.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
-  const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  await pool.query(sql);
-  // QA2.T8: הרחבת יחידת 'שק' גם במסדי נתונים קיימים (האילוץ נוצר עם הטבלה ולא מתעדכן מ-IF NOT EXISTS)
-  await pool.query(`ALTER TABLE price_items DROP CONSTRAINT IF EXISTS price_items_unit_check`);
-  await pool.query(`ALTER TABLE price_items ADD CONSTRAINT price_items_unit_check CHECK (unit IN ('item','kg','bag'))`);
-  console.log('[db] schema migrated' + (SCHEMA ? ` (schema ${SCHEMA})` : ''));
+  const { runMigrations } = require('./migrate');
+  await runMigrations(pool, SCHEMA);
 }
 
 module.exports = { pool, q, migrate };
