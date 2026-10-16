@@ -49,6 +49,7 @@ test('עוסק פטור: בלי חשבונית מס/חשבונית מס-קבלה
   assert.ok(!html.includes('value="tax_invoice_receipt"'), 'חשבונית מס/קבלה לא תוצע לפטור');
   assert.ok(!html.includes('מספר מבקשים באזור האישי של רשות המסים'), 'באנר ההקצאה מוסתר לפטור');
   assert.ok(html.includes('value="invoice"') && html.includes('value="receipt"'), 'חשבונית עסקה וקבלה נשארות');
+  assert.ok(!html.includes('id="bk-exp-vat"'), 'שדה מע״מ בטופס ההוצאה מוסתר לפטור');
   assert.ok(html.includes('הנה״ח'), 'שבב הנה״ח מוצג לבעלים');
 });
 
@@ -58,6 +59,7 @@ test('עוסק מורשה: כל ארבעת הסוגים + באנר ההקצאה 
   assert.ok(html.includes('value="tax_invoice_receipt"'), 'חשבונית מס/קבלה מוצעת למורשה');
   assert.ok(html.includes('value="invoice"') && html.includes('value="receipt"'));
   assert.ok(html.includes('מספר מבקשים באזור האישי של רשות המסים'), 'באנר ההקצאה מוצג למורשה');
+  assert.ok(html.includes('id="bk-exp-vat"'), 'שדה מע״מ בטופס ההוצאה מוצג למורשה');
 });
 
 test('סוג עוסק לא הוגדר: נחשב פטור (תואם לאכיפת השרת)', async () => {

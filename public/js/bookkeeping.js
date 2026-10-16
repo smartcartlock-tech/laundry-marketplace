@@ -83,7 +83,7 @@
         <input class="inp" id="bk-exp-desc" placeholder="תיאור" style="flex:2">
         <input class="inp" id="bk-exp-date" type="date" style="width:140px">
         <input class="inp" id="bk-exp-net" type="number" min="0" step="0.01" placeholder="נטו ₪" style="width:90px">
-        <input class="inp" id="bk-exp-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">
+        ${isMorasha ? `<input class="inp" id="bk-exp-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">` : ''}
         <input type="file" id="bk-exp-file" accept=".pdf,image/jpeg,image/png,image/webp" style="width:170px">
         <button class="btn2 on" data-bk-act="create-exp">הוספת הוצאה</button>
       </div>
