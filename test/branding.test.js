@@ -57,6 +57,7 @@ test('branding: settings, logo, manifest, qr, card, attribution, commission spli
     target: '+972507777777', code: req.json.demoCode, name: 'לקוח מותג', signup_source: 'branded', signup_slug: 'achuza' } });
   assert.equal(ver.status, 200);
   const branded = ver.json.token;
+  await api('/api/auth/consent', { method: 'POST', token: branded }); // C4
 
   // הזמנה מהדף הממותג (source=branded)
   const laundry = (await api('/api/laundries/achuza')).json;

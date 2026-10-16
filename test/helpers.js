@@ -52,6 +52,7 @@ async function startApp(t) {
     if (!req.json || !req.json.demoCode) throw new Error('no demoCode: ' + JSON.stringify(req.json));
     const ver = await api('/api/auth/otp/verify', { method: 'POST', body: { target: phone, code: req.json.demoCode, name } });
     if (!ver.json || !ver.json.token) throw new Error('login failed: ' + JSON.stringify(ver.json));
+    await api('/api/auth/consent', { method: 'POST', token: ver.json.token }); // C4: הסכמה אוטומטית בטסטים
     return ver.json.token;
   };
   return { base, api, schema };

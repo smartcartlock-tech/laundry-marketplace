@@ -130,12 +130,19 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({ user: publicUser(req.user), memberships, courier: courier[0] || null });
 });
 
-function publicUser(u) { return { id: u.id, phone: u.phone, email: u.email, name: u.name, role: u.role }; }
+function publicUser(u) { return { id: u.id, phone: u.phone, email: u.email, name: u.name, role: u.role, consent_at: u.consent_at || null }; }
 
 // B1: התנתקות — מבטלת את כל הטוקנים הקיימים של המשתמש (העלאת token_version)
 r.post('/logout', requireAuth, async (req, res) => {
   await q('UPDATE users SET token_version=token_version+1 WHERE id=$1', [req.user.id]);
   res.json({ ok: true });
+});
+
+// C4: רישום הסכמה לתנאי שימוש ומדיניות פרטיות (פעם אחת; נשמרת חותמת זמן)
+r.post('/consent', requireAuth, async (req, res) => {
+  if (!req.user.consent_at) await q('UPDATE users SET consent_at=now() WHERE id=$1', [req.user.id]);
+  const { rows } = await q('SELECT consent_at FROM users WHERE id=$1', [req.user.id]);
+  res.json({ ok: true, consent_at: rows[0].consent_at });
 });
 
 module.exports = r;

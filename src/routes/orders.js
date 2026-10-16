@@ -21,6 +21,15 @@ r.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
     const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes, use_subscription, source } = req.body || {};
+    // C4: צ'ק-אאוט ראשון מחייב הסכמה לתנאים ולמדיניות — מתועדת פעם אחת ב-consent_at
+    if (!req.user.consent_at) {
+      if (req.body.consent_terms === true) {
+        await q('UPDATE users SET consent_at=now() WHERE id=$1', [req.user.id]);
+        req.user.consent_at = new Date();
+      } else {
+        return res.status(409).json({ error: 'נדרש אישור תנאי שימוש ומדיניות פרטיות', code: 'CONSENT_REQUIRED' });
+      }
+    }
     if (!slug || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'חסרים פרטי הזמנה' });
     const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
     const tenant = t[0];
