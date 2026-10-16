@@ -187,6 +187,7 @@ function setQty(slug,itemId,delta){
 /* ---- checkout ---- */
 async function vCheckout(slug){
  if(!state.token)return needLogin();
+ window.__coCoupon=null;
  const d=await api('/laundries/'+slug);
  const l=d.laundry;
  const items=state.cart.filter(c=>c.slug===slug);
@@ -202,9 +203,12 @@ async function vCheckout(slug){
    ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${c.qty}${c.unit==='kg'?' ק״ג':''} × ₪${c.price}</div></div>`).join('')}
    <div class="row"><div class="mut">סכום ביניים</div><div>₪${subtotal}</div></div>
    <div class="row"><div class="mut">שליחות</div><div>₪${l.delivery_fee||0}</div></div>
+   <div class="row" id="co-coupon-row" style="display:none"><div class="mut">הנחת קופון <b id="co-coupon-code"></b></div><div id="co-coupon-disc" style="color:#0a7">−₪0</div></div>
    <div class="row" id="co-discount-row" style="display:none"><div class="mut">הנחת נקודות</div><div id="co-discount">−₪0</div></div>
-   <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
-   <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
+   <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-subtotal="${subtotal}" data-fee="${Number(l.delivery_fee||0)}" data-points="${points}" data-pct="${l.points_redeem_max_pct??0.2}" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
+   <div class="row"><div class="mut">יש קופון?</div><div style="display:flex;gap:6px"><input class="inp" id="co-coupon" placeholder="קוד קופון" style="margin:0;flex:1"><button class="btn2 on" onclick="applyCoupon('${slug}')">החלה</button></div></div>
+   <div id="co-coupon-msg" class="mut" style="display:none;margin-top:4px"></div>
+   <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"><span id="co-redeem-lbl"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</span></label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
   </div>
   <div class="card">
    <label class="lb">כתובת לאיסוף והחזרה</label>
@@ -221,7 +225,34 @@ async function vCheckout(slug){
   <button class="btn" onclick="submitOrder('${slug}')">אישור הזמנה</button>
  </div>`;
 }
-function updTotal(){const t=$('#co-total');if(!t)return;const on=$('#redeem')&&$('#redeem').checked;const disc=on?Number(t.dataset.redeem):0;$('#co-discount').textContent='−₪'+disc;$('#co-discount-row').style.display=disc?'flex':'none';t.textContent='₪'+(Number(t.dataset.base)-disc)}
+function updTotal(){
+ const t=$('#co-total');if(!t)return;
+ const subtotal=Number(t.dataset.subtotal),fee=Number(t.dataset.fee),points=Number(t.dataset.points),pct=Number(t.dataset.pct);
+ const coupon=window.__coCoupon?Number(window.__coCoupon.discount):0;
+ const remaining=Math.max(0,subtotal-coupon);
+ const maxRedeem=Math.min(points,Math.floor(remaining*pct));
+ const lbl=$('#co-redeem-lbl');if(lbl)lbl.textContent=' מימוש '+maxRedeem+' נקודות (−₪'+maxRedeem+')';
+ const on=$('#redeem')&&$('#redeem').checked;
+ const pdisc=on?maxRedeem:0;
+ $('#co-discount').textContent='−₪'+pdisc;$('#co-discount-row').style.display=pdisc?'flex':'none';
+ $('#co-coupon-disc').textContent='−₪'+coupon;$('#co-coupon-row').style.display=coupon?'flex':'none';
+ t.textContent='₪'+Math.max(0,subtotal+fee-coupon-pdisc);
+}
+async function applyCoupon(slug){
+ const inp=$('#co-coupon'),msg=$('#co-coupon-msg');const code=inp.value.trim();if(!code)return;
+ const t=$('#co-total');
+ try{
+  const r=await api('/orders/validate-coupon',{method:'POST',body:JSON.stringify({slug,code,subtotal:Number(t.dataset.subtotal)})});
+  window.__coCoupon={code,discount:r.discount};
+  $('#co-coupon-code').textContent=code.toUpperCase();
+  msg.style.display='block';msg.style.color='#0a7';msg.textContent='הקופון הוחל: הנחה של ₪'+r.discount;
+  updTotal();
+ }catch(e){
+  window.__coCoupon=null;
+  msg.style.display='block';msg.style.color='#c22';msg.textContent=e.message||'קופון לא תקף';
+  updTotal();
+ }
+}
 async function submitOrder(slug){
  if(!state.token)return needLogin();
  try{
@@ -233,7 +264,7 @@ async function submitOrder(slug){
   const pickup_at=w.length===2?nextWindowDate(Number(w[0]),w[1]):null;
   const w2=($('#co-delivery')&&$('#co-delivery').value||'').split('|');
   const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
-  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),notes:$('#co-notes').value.trim()};
+  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim()};
   const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);route();
@@ -349,7 +380,7 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
  if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
@@ -390,6 +421,23 @@ async function vManage(sub){
     </div>
     <button class="btn2 on" onclick="addWindow('${slug}')">הוספה</button></div>
    <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}<div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" onclick="delWindow('${slug}','${w.id}')">מחיקה</button></div>`).join('')}</div>`;
+ } else if(sub==='coupons'){
+  const d=await api(`/t/${slug}/coupons`);
+  body=`<div class="card">
+    <label class="lb">קופון חדש</label>
+    <div style="display:flex;gap:8px"><input class="inp" id="cp-code" placeholder="קוד (למשל SAVE10)" style="flex:2">
+    <select class="inp" id="cp-kind" style="flex:1"><option value="percent">אחוז %</option><option value="amount">סכום ₪</option></select>
+    <input class="inp" id="cp-value" type="number" placeholder="ערך" style="flex:1"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+     <input class="inp" id="cp-min" type="number" placeholder="מינימום הזמנה ₪" style="flex:1">
+     <input class="inp" id="cp-usage" type="number" placeholder="מגבלת שימושים" style="flex:1">
+     <input class="inp" id="cp-peruser" type="number" placeholder="מגבלה ללקוח" style="flex:1">
+     <input class="inp" id="cp-exp" type="date" style="flex:1">
+    </div>
+    <button class="btn2 on" onclick="addCoupon('${slug}')">יצירת קופון</button></div>
+   <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
+    <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
+    <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
  } else if(sub==='couriers'){
   const d=await api(`/t/${slug}/couriers`);
   body=`<div class="card">${d.couriers.map(c=>`<div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
@@ -455,6 +503,8 @@ async function editItem(slug,id,btn){
  try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({name:vals.name.trim()||undefined,price:vals.price?Number(vals.price):undefined})});toast('הפריט עודכן');route()}catch(e){toast(e.message)}
 }
 async function delItem(slug,id){try{await api(`/t/${slug}/items/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
+async function addCoupon(slug){try{const b={code:$('#cp-code').value,kind:$('#cp-kind').value,value:$('#cp-value').value,min_order:$('#cp-min').value||undefined,usage_limit:$('#cp-usage').value||undefined,per_user_limit:$('#cp-peruser').value||undefined,expires_at:$('#cp-exp').value||undefined};await api(`/t/${slug}/coupons`,{method:'POST',body:JSON.stringify(b)});toast('הקופון נוצר');route()}catch(e){toast(e.message)}}
+async function toggleCoupon(slug,id,active){try{await api(`/t/${slug}/coupons/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
 async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
 async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value})});toast('נשמר')}catch(e){toast(e.message)}}
@@ -475,6 +525,23 @@ async function vAdmin(sub){
   body=`<div class="card"><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th><th></th></tr>
    ${d.tenants.map(t=>`<tr><td><a href="#/admin/tenant/${t.id}" style="color:#0e7a8a;font-weight:600">${esc(t.name)}</a>${t.approved?'':' <span class="tag ta">ממתינה</span>'}<div class="mut">${esc(t.city||'')}</div></td><td>${t.orders}</td><td>₪${t.gmv}</td>
     <td>${t.approved?`<button class="btn2" onclick="adminTenant('${t.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminTenant('${t.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
+ } else if(sub==='coupons'){
+  const d=await api(`/t/${slug}/coupons`);
+  body=`<div class="card">
+    <label class="lb">קופון חדש</label>
+    <div style="display:flex;gap:8px"><input class="inp" id="cp-code" placeholder="קוד (למשל SAVE10)" style="flex:2">
+    <select class="inp" id="cp-kind" style="flex:1"><option value="percent">אחוז %</option><option value="amount">סכום ₪</option></select>
+    <input class="inp" id="cp-value" type="number" placeholder="ערך" style="flex:1"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+     <input class="inp" id="cp-min" type="number" placeholder="מינימום הזמנה ₪" style="flex:1">
+     <input class="inp" id="cp-usage" type="number" placeholder="מגבלת שימושים" style="flex:1">
+     <input class="inp" id="cp-peruser" type="number" placeholder="מגבלה ללקוח" style="flex:1">
+     <input class="inp" id="cp-exp" type="date" style="flex:1">
+    </div>
+    <button class="btn2 on" onclick="addCoupon('${slug}')">יצירת קופון</button></div>
+   <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
+    <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
+    <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
   body=`<div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
