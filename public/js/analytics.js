@@ -12,7 +12,16 @@
        <div style="width:100%;max-width:18px;background:linear-gradient(180deg,#12869b,#0a4f5c);border-radius:3px 3px 0 0;height:${d.revenue?Math.max(3,Math.round(d.revenue/max*88)):1}%;${d.revenue?'':'background:#d5dde2'}"></div>
        <div class="mut" style="font-size:9px;margin-top:3px;height:11px;white-space:nowrap">${i%step===0?shortDay(d.day):''}</div></div>`).join('')}</div>`;
   }
-  function card(a,csvPath,csvName,scope){
+  function opsBlock(o,csvPath){
+    if(!o)return '';
+    const h=o.handling||{}, m=v=>v===null||v===undefined?'—':v+' דק׳';
+    return `<div style="margin-top:14px"><b>זמני טיפול (ממוצע)</b>
+     <div class="kpis"><div class="kpi"><b>${m(h.avg_to_confirm_min)}</b>עד אישור</div><div class="kpi"><b>${m(h.avg_to_pickup_min)}</b>עד איסוף</div><div class="kpi"><b>${m(h.avg_to_delivery_min)}</b>עד מסירה</div></div>
+     <b>לפי שליח</b><table class="tbl"><tr><th>שליח</th><th>הזמנות</th><th>נמסרו</th><th>שווי</th><th>איסוף→מסירה</th></tr>
+     ${o.couriers.map(c=>`<tr><td>${esc(c.courier)}</td><td>${c.orders}</td><td>${c.delivered}</td><td>₪${c.value}</td><td>${m(c.avg_pickup_to_delivery_min)}</td></tr>`).join('')||'<tr><td colspan="5" class="mut">אין נתונים</td></tr>'}</table>
+     <button class="btn2" style="margin-top:8px" onclick="downloadCsv('${csvPath}?days=${days()}','analytics-couriers.csv')">ייצוא שליחים וזמנים CSV</button></div>`;
+  }
+  function card(a,csvPath,csvName,scope,ops,opsCsvPath){
     const T=a.totals, C=a.customers;
     const maxS=Math.max(1,...a.services.map(s=>Number(s.revenue)));
     const pct=C.repeat_pct||0;
@@ -30,6 +39,7 @@
        <div class="mut">${C.returning} מתוך ${C.customers} לקוחות חוזרים${Number(C.returning_revenue)?` · הכנסה מהם ₪${C.returning_revenue}`:''}
         ${C.top.length?`<div>המובילים: ${C.top.map(c=>esc(c.name||'לקוח')+' ('+c.orders+')').join(', ')}</div>`:''}</div></div></div>
      ${a.by_tenant.length?`<div style="margin-top:14px"><b>לפי מכבסה</b><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>הכנסות</th></tr>${a.by_tenant.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.orders}</td><td>₪${t.revenue}</td></tr>`).join('')}</table></div>`:''}
+     ${opsBlock(ops,opsCsvPath)}
      <button class="btn2" style="margin-top:12px" onclick="downloadCsv('${csvPath}?days=${days()}','${csvName}')">ייצוא אנליטיקה CSV</button></div>`;
   }
   function inject(html,c){const i=html.lastIndexOf('</div>');return i<0?html+c:html.slice(0,i)+c+html.slice(i)}
@@ -42,8 +52,8 @@
       try{
         const m=(state.memberships||[]).find(x=>x.slug===store.get('lastTenant',''))||(state.memberships||[])[0];
         if(!m)return html;
-        const a=await api(`/t/${m.slug}/analytics?days=${days()}`);
-        return inject(html,card(a,`/t/${m.slug}/analytics.csv`,'analytics.csv'));
+        const [a,ops]=await Promise.all([api(`/t/${m.slug}/analytics?days=${days()}`),api(`/t/${m.slug}/analytics/couriers?days=${days()}`).catch(()=>null)]);
+        return inject(html,card(a,`/t/${m.slug}/analytics.csv`,'analytics.csv','',ops,`/t/${m.slug}/analytics/couriers.csv`));
       }catch(e){return html}
     };
   }
@@ -53,8 +63,8 @@
       const html=await o(sub);
       if(sub!=='weekly')return html;
       try{
-        const a=await api(`/admin/analytics?days=${days()}`);
-        return inject(html,card(a,'/admin/analytics.csv','analytics.csv','כל הפלטפורמה'));
+        const [a,ops]=await Promise.all([api(`/admin/analytics?days=${days()}`),api(`/admin/analytics/couriers?days=${days()}`).catch(()=>null)]);
+        return inject(html,card(a,'/admin/analytics.csv','analytics.csv','כל הפלטפורמה',ops,'/admin/analytics/couriers.csv'));
       }catch(e){return html}
     };
   }

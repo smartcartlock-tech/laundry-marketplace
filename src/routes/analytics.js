@@ -96,11 +96,63 @@ async function handle(req, res, tenant, csv) {
   res.json(a);
 }
 
+// דוח שליחים וזמני טיפול: לפי שליח (הזמנות, נמסרו, שווי, זמן איסוף→מסירה) וסיכום זמני טיפול כלליים (דקות).
+async function buildOps(tenantId, range) {
+  const base = `o.status <> 'cancelled' AND ($1::uuid IS NULL OR o.tenant_id=$1)
+    AND (o.created_at AT TIME ZONE '${TZ}')::date BETWEEN $2::date AND $3::date`;
+  const p = [tenantId, range.from, range.to];
+  const evCte = `WITH ord AS (SELECT o.id, o.courier_id, o.total, o.status, o.created_at FROM orders o WHERE ${base}),
+    ev AS (SELECT e.order_id,
+        min(e.created_at) FILTER (WHERE e.status='confirmed') AS conf,
+        min(e.created_at) FILTER (WHERE e.status='picked_up') AS pu,
+        min(e.created_at) FILTER (WHERE e.status='delivered') AS del
+      FROM order_events e JOIN ord ON ord.id=e.order_id GROUP BY e.order_id)`;
+  const mins = (a, b) => `round(avg(extract(epoch FROM (${b} - ${a}))/60) FILTER (WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL AND ${b} >= ${a}))::int`;
+  const [couriers, summary] = await Promise.all([
+    q(`${evCte}
+       SELECT COALESCE(u.name,'ללא שליח') AS courier, count(*)::int AS orders,
+         count(*) FILTER (WHERE ord.status='delivered')::int AS delivered,
+         COALESCE(sum(ord.total) FILTER (WHERE ord.status='delivered'),0)::numeric(10,2) AS value,
+         ${mins('ev.pu', 'ev.del')} AS avg_pickup_to_delivery_min
+       FROM ord LEFT JOIN ev ON ev.order_id=ord.id
+       LEFT JOIN couriers c ON c.id=ord.courier_id LEFT JOIN users u ON u.id=c.user_id
+       GROUP BY c.id, u.name ORDER BY delivered DESC, orders DESC LIMIT 50`, p),
+    q(`${evCte}
+       SELECT count(*)::int AS orders, count(*) FILTER (WHERE ord.status='delivered')::int AS delivered,
+         ${mins('ord.created_at', 'ev.conf')} AS avg_to_confirm_min,
+         ${mins('ord.created_at', 'ev.pu')} AS avg_to_pickup_min,
+         ${mins('ord.created_at', 'ev.del')} AS avg_to_delivery_min
+       FROM ord LEFT JOIN ev ON ev.order_id=ord.id`, p),
+  ]);
+  return { range, couriers: couriers.rows, handling: summary.rows[0] };
+}
+function opsCsv(o, scopeName) {
+  const h = o.handling;
+  return [
+    ['מסמך דמו — דוח שליחים וזמני טיפול', scopeName, `${o.range.from} עד ${o.range.to}`],
+    [],
+    ['זמני טיפול (דקות, ממוצע)'], ['הזמנות', 'נמסרו', 'עד אישור', 'עד איסוף', 'עד מסירה'],
+    [h.orders, h.delivered, h.avg_to_confirm_min ?? '', h.avg_to_pickup_min ?? '', h.avg_to_delivery_min ?? ''],
+    [],
+    ['לפי שליח'], ['שליח', 'הזמנות', 'נמסרו', 'שווי הזמנות ₪', 'איסוף עד מסירה (דקות)'],
+    ...o.couriers.map(c => [c.courier, c.orders, c.delivered, c.value, c.avg_pickup_to_delivery_min ?? '']),
+  ];
+}
+async function handleOps(req, res, tenant, csv) {
+  const range = parseRange(req.query);
+  if (!range) return res.status(400).json({ error: 'טווח תאריכים לא תקין (עד 366 ימים)' });
+  const o = await buildOps(tenant ? tenant.id : null, range);
+  if (csv) return sendCsv(res, `analytics-couriers-${range.from}_${range.to}.csv`, opsCsv(o, tenant ? tenant.name : 'כל הפלטפורמה'));
+  res.json(o);
+}
+
 const r = express.Router();
 const t = express.Router({ mergeParams: true });
 t.use(requireAuth, requireTenantMember);
 t.get('/analytics', (req, res) => handle(req, res, req.tenant, false));
 t.get('/analytics.csv', (req, res) => handle(req, res, req.tenant, true));
+t.get('/analytics/couriers', (req, res) => handleOps(req, res, req.tenant, false));
+t.get('/analytics/couriers.csv', (req, res) => handleOps(req, res, req.tenant, true));
 r.use('/t/:slug', t);
 
 const adm = express.Router();
@@ -113,6 +165,8 @@ async function adminTenant(req, res) {
 }
 adm.get('/analytics', async (req, res) => { const tn = await adminTenant(req, res); if (tn !== false) handle(req, res, tn, false); });
 adm.get('/analytics.csv', async (req, res) => { const tn = await adminTenant(req, res); if (tn !== false) handle(req, res, tn, true); });
+adm.get('/analytics/couriers', async (req, res) => { const tn = await adminTenant(req, res); if (tn !== false) handleOps(req, res, tn, false); });
+adm.get('/analytics/couriers.csv', async (req, res) => { const tn = await adminTenant(req, res); if (tn !== false) handleOps(req, res, tn, true); });
 r.use('/admin', adm);
 
 module.exports = r;
