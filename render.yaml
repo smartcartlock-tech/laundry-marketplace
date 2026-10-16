@@ -16,6 +16,8 @@ services:
         value: "true"   # לסביבת הדמו בלבד — לכבות בפרודקשן אמיתי
       - key: DEMO_OTP
         value: "true"
+      - key: DEMO_NOTIFY_ALLOWLIST   # G5: בדמו יוצאות הודעות אמיתיות רק למספרים האלה (מספר חיים)
+        value: "+972503500750"
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL   # Neon free Postgres (eu-central-1) — connection string מלא

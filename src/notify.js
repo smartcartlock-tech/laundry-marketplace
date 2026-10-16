@@ -32,6 +32,12 @@ async function sendViaBot(toE164, body, tag) {
 }
 
 async function sendWhatsApp(toE164, body) {
+  // G5: במצב דמו לא יוצאת הודעה אמיתית למספר שלא ברשימת ההיתר — נרשם כסימולציה (בקשת המשתמש; תואם עם J)
+  const { isDemo, DEMO_NOTIFY_ALLOWLIST } = require('./config');
+  if (isDemo && !DEMO_NOTIFY_ALLOWLIST.includes(toE164)) {
+    console.log(`[notify] demo: שליחה אמיתית ל-${toE164} נחסמה (לא ב-DEMO_NOTIFY_ALLOWLIST) — סומלה כסימולציה`);
+    return { sent: false, simulated: true, reason: 'demo-not-allowlisted' };
+  }
   const viaBot = await sendViaBot(toE164, body, 'notify');
   if (viaBot.sent || viaBot.via === 'bot-simulated') return viaBot;
   const client = twilio();
