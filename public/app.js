@@ -1034,7 +1034,7 @@ async function vAdmin(sub){
   const open=d.alerts.filter(a=>a.status==='open'), done=d.alerts.filter(a=>a.status==='handled');
   body=(open.length?`<div class="sec">פתוחות (${open.length})</div>`+open.map(a=>`<div class="card"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
     <div class="mut">${esc(a.details||'')}</div>
-    ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${ST_HE[a.order_status]||a.order_status||''} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
+    ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${esc(a.order_status||'')} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
     <div class="mut">נוצרה ${fmtDT(a.created_at)}</div>
     <div style="margin-top:6px"><button class="btn2 green" onclick="adminSlaHandle('${a.id}')">סימון כטופלה</button></div></div>`).join(''):'<div class="card mut">אין התראות פתוחות ✓</div>')
    +(done.length?`<div class="sec">טופלו (${done.length})</div>`+done.map(a=>`<div class="card" style="opacity:.7"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
