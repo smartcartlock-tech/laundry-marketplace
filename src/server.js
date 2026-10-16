@@ -48,6 +48,8 @@ app.use('/api/courier', require('./routes/courier'));
 app.use('/api/courier', require('./routes/courier-day')); // מסך שליח: משימות/מסלול יום/אישור מסירה
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/apply')); // B2: טופס הצטרפות ציבורי
+app.use('/api', require('./routes/search')); // הצעות חיפוש חכמות
+app.use('/api/me/favorites', require('./routes/favorites')); // מועדפים מסונכרנים לחשבון
 app.use('/api/admin', require('./routes/adminplus')); // E7: dashboard/onboarding/sla
 app.use('/api/admin', require('./routes/admin-applications')); // B2: תור בקשות הצטרפות
 app.use('/api/admin', require('./routes/errlog')); // ניטור: יומן תקלות לאדמין
