@@ -92,47 +92,49 @@ async function restoreAll(data, { databaseUrl, schema, force = false, log = cons
 
     // מטא-דאטה של עמודות ותלויות FK
     const { rows: cols } = await client.query(
-      `SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema()`);
+      `SELECT c.relname AS table_name, a.attname AS column_name, format_type(a.atttypid, a.atttypmod) AS data_type
+       FROM pg_attribute a
+       JOIN pg_class c ON c.oid = a.attrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = current_schema() AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped`);
     const colMeta = new Map(); // table -> Map(col -> data_type)
     for (const c of cols) {
       if (!colMeta.has(c.table_name)) colMeta.set(c.table_name, new Map());
       colMeta.get(c.table_name).set(c.column_name, c.data_type);
     }
-    const { rows: fks } = await client.query(
-      `SELECT tc.table_name AS t, ccu.table_name AS ref
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
-       WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema()`);
+    // pg_catalog ישירות — information_schema זוחל כשב-DB יש סכימות רבות (בדיקות מקבילות)
+    const { rows: fkCols } = await client.query(
+      `SELECT con.conname AS constraint_name, src.relname AS t, dst.relname AS ref,
+              (SELECT array_agg(att.attname::text ORDER BY u.ord) FROM unnest(con.conkey) WITH ORDINALITY u(attnum, ord)
+               JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = u.attnum) AS cols,
+              (SELECT array_agg(att.attname::text ORDER BY u.ord) FROM unnest(con.confkey) WITH ORDINALITY u(attnum, ord)
+               JOIN pg_attribute att ON att.attrelid = con.confrelid AND att.attnum = u.attnum) AS ref_cols,
+              con.confupdtype AS update_rule, con.confdeltype AS delete_rule
+       FROM pg_constraint con
+       JOIN pg_class src ON src.oid = con.conrelid
+       JOIN pg_namespace ns ON ns.oid = src.relnamespace
+       JOIN pg_class dst ON dst.oid = con.confrelid
+       WHERE con.contype = 'f' AND ns.nspname = current_schema()`);
+    const fks = fkCols.map(f => ({ t: f.t, ref: f.ref }));
     const deps = {};
     for (const f of fks) { (deps[f.t] = deps[f.t] || new Set()).add(f.ref); }
     const depsObj = Object.fromEntries(Object.entries(deps).map(([k, v]) => [k, [...v]]));
     const { order, cyclic } = topoSort(wanted, depsObj);
     stats.cyclic = cyclic;
 
-    // מעגלי FK (למשל tenders.winner_bid_id <-> tender_bids.tender_id): לא ניתן לסדר
-    // הכנסה שמקיימת את שני הצדדים, ועמודת FK בתוך-מעגל יכולה להיות NOT NULL.
-    // פתרון: הורדת האילוצים בתוך-המעגל לפני ההכנסה והחזרתם אחריה (DDL טרנזקציוני,
-    // דורש בעלות על הטבלה בלבד — עובד ב-Neon בלי superuser). החזרה מאמתת את הנתונים.
+    // מעגלי FK (למשל tenders.winner_bid_id <-> tender_bids.tender_id): הורדת האילוצים
+    // בתוך-המעגל לפני ההכנסה והחזרתם אחריה (DDL טרנזקציוני; החזרה מאמתת את הנתונים).
     const cyclicSet = new Set(cyclic);
     let droppedConstraints = [];
     if (cyclic.length) {
-      const { rows: fkCols } = await client.query(
-        `SELECT tc.constraint_name, tc.table_name AS t, kcu.column_name AS col,
-                ccu.table_name AS ref, ccu.column_name AS ref_col, rc.update_rule, rc.delete_rule
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name AND kcu.constraint_schema = tc.constraint_schema AND kcu.table_name = tc.table_name
-         JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.constraint_schema = tc.constraint_schema
-         JOIN information_schema.referential_constraints rc ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
-         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema()
-         ORDER BY tc.constraint_name, kcu.ordinal_position`);
+      const ruleName = { a: null, r: 'RESTRICT', c: 'CASCADE', n: 'SET NULL', d: 'SET DEFAULT' };
       const byName = new Map();
       for (const f of fkCols) {
         if (!cyclicSet.has(f.t) || !cyclicSet.has(f.ref)) continue;
-        if (!byName.has(f.constraint_name)) {
-          byName.set(f.constraint_name, { name: f.constraint_name, t: f.t, ref: f.ref, cols: [], refCols: [], updateRule: f.update_rule, deleteRule: f.delete_rule });
-        }
-        byName.get(f.constraint_name).cols.push(f.col);
-        byName.get(f.constraint_name).refCols.push(f.ref_col);
+        byName.set(f.constraint_name + '|' + f.t, {
+          name: f.constraint_name, t: f.t, ref: f.ref, cols: f.cols, refCols: f.ref_cols,
+          updateRule: ruleName[f.update_rule], deleteRule: ruleName[f.delete_rule],
+        });
       }
       droppedConstraints = [...byName.values()];
     }
@@ -170,8 +172,8 @@ async function restoreAll(data, { databaseUrl, schema, force = false, log = cons
       }
       // החזרת אילוצי FK בתוך-המעגל — החזרה מצליחה רק אם כל ההפניות שלמות (בדיקת תקינות מובנית)
       for (const c of droppedConstraints) {
-        const rules = (c.deleteRule && c.deleteRule !== 'NO ACTION' ? ` ON DELETE ${c.deleteRule}` : '') +
-                      (c.updateRule && c.updateRule !== 'NO ACTION' ? ` ON UPDATE ${c.updateRule}` : '');
+        const rules = (c.deleteRule ? ` ON DELETE ${c.deleteRule}` : '') +
+                      (c.updateRule ? ` ON UPDATE ${c.updateRule}` : '');
         await client.query(
           `ALTER TABLE ${quoteIdent(c.t)} ADD CONSTRAINT ${quoteIdent(c.name)} FOREIGN KEY (${c.cols.map(quoteIdent).join(', ')}) REFERENCES ${quoteIdent(c.ref)} (${c.refCols.map(quoteIdent).join(', ')})${rules}`);
       }

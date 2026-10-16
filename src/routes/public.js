@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const bwip = require('bwip-js');
 const jwt = require('jsonwebtoken');
 const { q } = require('../db');
@@ -71,8 +72,13 @@ r.get('/laundries/:slug', async (req, res) => {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
     ten.rating_count = reviews.rows.length;
   } else { ten.rating = null; ten.rating_count = 0; }
+  // D2: ETag על כל המטען — טעינה חוזרת של דף מכבסה מקבלת 304 בלי גוף (חוסך את רוב התעבורה)
+  const payload = { laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows };
+  const etag = 'W/"' + crypto.createHash('sha256').update(JSON.stringify(payload)).digest('base64url') + '"';
   pubCache(res, 30);
-  res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows });
+  res.set('ETag', etag);
+  if (req.headers['if-none-match'] === etag) return res.status(304).end();
+  res.json(payload);
 });
 
 // E14.T2: השוואת מחירים — לכל פריט במכבסה, המחיר הזול ביותר אצל מתחרים (אותו שם + אותה יחידה)
