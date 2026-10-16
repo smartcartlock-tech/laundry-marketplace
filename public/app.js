@@ -202,6 +202,8 @@ function homeFilterReset(){
  homeFilter();
 }
 async function vHome(q){
+ /* E13.T8: היסטוריית חיפושים מקומית (עד 5) */
+ if(q){let hs=store.get('searches',[]).filter(x=>x!==q);hs.unshift(q);store.set('searches',hs.slice(0,5))}
  let laundries=[],offlineData=false;
  try{const r=await api('/laundries'+(q?'?q='+encodeURIComponent(q):''));laundries=r.laundries;if(!q)store.set('homeCache',{laundries:laundries,ts:Date.now()})}
  catch(e){const c=store.get('homeCache',null);if(c&&c.laundries&&c.laundries.length){laundries=c.laundries;offlineData=true}else toast(e.message)}
@@ -218,6 +220,7 @@ async function vHome(q){
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
+  ${!q&&store.get('searches',[]).length?`<div style="margin:0 2px 10px"><span class="mut">חיפושים אחרונים: </span>${store.get('searches',[]).map(h=>`<a class="chip" href="#/?q=${encodeURIComponent(h)}">${esc(h)}</a>`).join('')}<a href="#/" onclick="store.set('searches',[]);return true" class="chip" style="color:#8a99a3">ניקוי ✕</a></div>`:''}
   ${laundries.length?`<div style="display:flex;gap:8px;align-items:center;margin:0 2px 10px">
    <button class="btn2 hf-mob" type="button" onclick="const s=document.querySelector('.home-side');if(s)s.classList.toggle('open')">☰ סינון</button>
    <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px" onchange="homeFilter()">
