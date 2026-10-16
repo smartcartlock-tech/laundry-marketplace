@@ -21,7 +21,9 @@
         <div style="display:flex;gap:8px;margin:6px 0">${stat(d.created_today,'נוצרו','#0e7a8a')}${stat(d.picked_today,'נאספו','#8a6d1a')}${stat(d.delivered_today,'נמסרו','#178a4c')}</div>
         <div class="sec" style="font-size:13px">איחורים (${d.late.length})</div>${lateRows}
         <div class="sec" style="font-size:13px">שליחים</div>${courierRows}</div>`;
-      return html.replace('<div class="body"><div class="subtabs">', '<div class="body">' + card + '<div class="subtabs">');
+      // עיגון גמיש (כלל DEVELOPMENT.md): מיד אחרי <div class="body"> — עמיד לשינויי מבנה של הלוח
+      const anchor = '<div class="body">';
+      return html.includes(anchor) ? html.replace(anchor, anchor + card) : card + html;
     }catch(e){ return html; }
   };
 })();

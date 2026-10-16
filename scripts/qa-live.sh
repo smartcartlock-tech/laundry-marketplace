@@ -13,6 +13,7 @@ check "laundries list" "$BASE/api/laundries" '"slug":"achuza"'
 check "laundry page" "$BASE/api/laundries/achuza" '"name":"מכבסת האחוזה"'
 check "PWA html" "$BASE/" 'מכבסה'
 check "manifest" "$BASE/manifest.webmanifest" 'name'
+check "config exposes mode" "$BASE/api/config" '"mode":'
 
 # OTP דמו -> הזמנת דמו -> ביטול (זרימת כתיבה מלאה ללא שאריות)
 CODE=$(curl -s -m 30 -X POST "$BASE/api/auth/otp/request" -H 'content-type: application/json' -d '{"target":"+972500000002"}' | python3 -c "import json,sys;print(json.load(sys.stdin).get('demoCode',''))")
@@ -27,5 +28,8 @@ if [ -z "$OID" ]; then echo "FAIL: create order -> $(echo "$ORDER" | head -c 200
 echo "PASS: create demo order $OID"
 CANCEL=$(curl -s -m 30 -X POST "$BASE/api/orders/$OID/cancel" -H "authorization: Bearer $TOKEN")
 echo "$CANCEL" | grep -q '"ok":true' && echo "PASS: cancel demo order" || { echo "FAIL: cancel -> $CANCEL"; fail=1; }
+# QA-flow: ביטול חוזר של אותה הזמנה חייב להידחות ב-409 (מניעת החזרי נקודות/מכסה כפולים)
+CODE2=$(curl -s -o /dev/null -w '%{http_code}' -m 30 -X POST "$BASE/api/orders/$OID/cancel" -H "authorization: Bearer $TOKEN")
+[ "$CODE2" = "409" ] && echo "PASS: double-cancel rejected 409" || { echo "FAIL: double-cancel -> $CODE2"; fail=1; }
 [ $fail -eq 0 ] && echo "QA LIVE: ALL PASS" || echo "QA LIVE: FAILURES"
 exit $fail
