@@ -14,6 +14,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/public'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/documents', require('./routes/documents'));
+app.use('/api/verify', require('./routes/verify'));
 app.use('/api/t/:slug', require('./routes/tenant'));
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));

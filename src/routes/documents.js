@@ -3,7 +3,7 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { creditDocument, KIND_HE } = require('../documents');
-const { buildDocumentPDF } = require('../receipt');
+const { buildDocumentPDF, docVerificationImages } = require('../receipt');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -24,7 +24,7 @@ function docToResponse(d) {
     doc_number: d.doc_number, doc_year: d.doc_year, allocation_number: d.allocation_number,
     amount: Number(d.amount), vat: Number(d.vat), total: Number(d.total),
     status: d.status, credited_amount: Number(d.credited_amount),
-    order_id: d.order_id, issued_at: d.issued_at,
+    order_id: d.order_id, covered_order_ids: d.covered_order_ids || [], verify_code: d.verify_code, issued_at: d.issued_at,
     tenant_name: d.tenant_name, slug: d.slug, customer_name: d.customer_name,
   };
 }
@@ -33,6 +33,11 @@ async function sendPdf(res, d, copy) {
   const { rows: items } = d.order_id
     ? await q('SELECT * FROM order_items WHERE order_id=$1', [d.order_id])
     : { rows: [] };
+  const { rows: covered } = await q(
+    'SELECT o.id, o.total, o.created_at FROM document_orders dor JOIN orders o ON o.id=dor.order_id WHERE dor.document_id=$1 ORDER BY o.created_at', [d.id]);
+  const pdfItems = covered.length
+    ? covered.map(o => ({ name: `הזמנה #${o.id.slice(0, 8)} · ${new Date(o.created_at).toLocaleDateString('he-IL')}`, qty: 1, price: Number(o.total) }))
+    : items;
   const tenant = { name: d.tenant_name, address: d.tenant_address, city: d.tenant_city, color: d.color, dealer_type: d.dealer_type, dealer_id: d.dealer_id };
   const customer = { name: d.customer_name, phone: d.customer_phone };
   const order = d.order_id ? { id: d.order_id } : null;
@@ -41,7 +46,9 @@ async function sendPdf(res, d, copy) {
     res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}.pdf"`);
     return res.end(d.pdf);
   }
-  const pdf = buildDocumentPDF({ doc: d, order, items, tenant, customer, copy: true });
+  const codes = await docVerificationImages(d);
+  const pdf = buildDocumentPDF({ doc: d, order, items: pdfItems, tenant, customer, copy: true, codes,
+    note: covered.length ? `חשבונית מרכזת המכסה ${covered.length} הזמנות` : null });
   res.set('content-type', 'application/pdf');
   res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}-copy.pdf"`);
   pdf.pipe(res);
@@ -50,7 +57,9 @@ async function sendPdf(res, d, copy) {
 // המסמכים שלי (לקוח)
 r.get('/mine', async (req, res) => {
   const { rows } = await q(
-    `SELECT d.*, t.name AS tenant_name, t.slug FROM documents d JOIN tenants t ON t.id=d.tenant_id
+    `SELECT d.*, t.name AS tenant_name, t.slug,
+            (SELECT array_agg(dor.order_id) FROM document_orders dor WHERE dor.document_id=d.id) AS covered_order_ids
+     FROM documents d JOIN tenants t ON t.id=d.tenant_id
      WHERE d.customer_id=$1 ORDER BY d.issued_at DESC LIMIT 200`, [req.user.id]);
   res.json({ documents: rows.map(docToResponse) });
 });

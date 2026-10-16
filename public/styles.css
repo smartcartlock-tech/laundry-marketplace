@@ -87,3 +87,11 @@ table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
 /* חלון מודאל פנימי (מחליף confirm/prompt של הדפדפן) */
 .modal-ov{position:fixed;inset:0;background:rgba(10,20,25,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .modal{background:#fff;border-radius:16px;padding:18px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);max-height:85vh;overflow-y:auto}
+
+/* E12.T6: התאמת מובייל לרשימת מסמכים וכפתורי פעולה */
+.docs-actions{display:flex;gap:6px;flex-wrap:wrap}
+@media (max-width:640px){
+ .docs-list .row{flex-direction:column;align-items:stretch}
+ .docs-actions{display:grid;grid-template-columns:1fr 1fr 1fr}
+ .docs-actions .btn2{text-align:center}
+}

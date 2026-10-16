@@ -304,7 +304,7 @@ async function vOrder(id){
  const idx=FLOW.indexOf(o.status);
  const isMine=o.customer_id===(state.me&&state.me.id);
  let docs=[];
- if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id)}catch(e){}}
+ if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id||(x.covered_order_ids||[]).includes(id))}catch(e){}}
  return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   <div class="card">
@@ -540,15 +540,16 @@ async function vManage(sub){
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
-  body=d.documents.length?`<div class="card">${d.documents.map(dc=>`<div class="row"><div>
+  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" onclick="consolidatedModal('${slug}')">🧾 הפק חשבונית מרכזת</button>`;
+  body=consBtn+(d.documents.length?`<div class="card docs-list">${d.documents.map(dc=>`<div class="row"><div>
     <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
-    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${dc.orders_count?' · מכסה '+dc.orders_count+' הזמנות':''}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
+    <div class="docs-actions">
      <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
      <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
      ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
     </div></div>`).join('')}</div>`
-   :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
+   :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
   const d=await api(`/t/${slug}/couriers/overview`);
   const est=d.estimate;
@@ -577,7 +578,7 @@ async function vManage(sub){
  } else if(sub==='settings'){
   const d=await api('/laundries/'+slug);
   const l=d.laundry;
-  try{const td=await api(`/t/${slug}/settings`);if(td.tenant){l.dealer_type=td.tenant.dealer_type;l.dealer_id=td.tenant.dealer_id}}catch(e){}
+  try{const td=await api(`/t/${slug}/settings`);if(td.tenant){l.dealer_type=td.tenant.dealer_type;l.dealer_id=td.tenant.dealer_id;l.invoice_mode=td.tenant.invoice_mode||'per_order'}}catch(e){}
   body=`<div class="card">
    <label class="lb">שם</label><input class="inp" id="s-name" value="${esc(l.name)}">
    <label class="lb">טלפון</label><input class="inp" id="s-phone" value="${esc(l.phone||'')}">
@@ -589,6 +590,7 @@ async function vManage(sub){
    <div style="border-top:1px solid #e3edf0;margin-top:10px;padding-top:8px"><b>חשבוניות (דמו)</b>
    <div class="mut" style="margin:4px 0">המסמכים מסומנים ״מסמך דמו״ עד לרישום התוכנה ברשות המסים. בלי סוג עוסק לא יונפקו מסמכים.</div>
    <label class="lb">סוג עוסק</label><select class="inp" id="s-dealer-type"><option value="">לא הוגדר — לא יונפקו מסמכים</option><option value="patur" ${l.dealer_type==='patur'?'selected':''}>עוסק פטור — מונפקת קבלה</option><option value="morasha" ${l.dealer_type==='morasha'?'selected':''}>עוסק מורשה — חשבונית עסקה + קבלה</option></select>
+   <label class="lb">אופן הפקת מסמכים</label><select class="inp" id="s-invoice-mode"><option value="per_order" ${l.invoice_mode!=='consolidated'?'selected':''}>מסמך לכל הזמנה — אוטומטי בסיום הזמנה</option><option value="consolidated" ${l.invoice_mode==='consolidated'?'selected':''}>חשבונית מרכזת — הפקה ידנית מרוכזת בלשונית מסמכים</option></select>
    <label class="lb">ח.פ/ע.מ (9 ספרות)</label><input class="inp" id="s-dealer-id" value="${esc(l.dealer_id||'')}" maxlength="9" inputmode="numeric" placeholder="למשל 512345678">
    </div>
    <label class="lb">תקנון</label><textarea class="inp" id="s-terms" rows="3">${esc(l.terms||'')}</textarea>
@@ -628,6 +630,33 @@ async function editItem(slug,id,btn){
  try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({name:vals.name.trim()||undefined,price:vals.price?Number(vals.price):undefined})});toast('הפריט עודכן');route()}catch(e){toast(e.message)}
 }
 async function delItem(slug,id){try{await api(`/t/${slug}/items/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
+
+async function consolidatedModal(slug){
+ let d; try{d=await api(`/t/${slug}/documents/consolidated/eligible`)}catch(e){return toast(e.message)}
+ if(!d.customers.length)return toast('אין הזמנות מוכנות לחשבונית מרכזת — נדרשות הזמנות שהושלמו ועדיין לא הונפק להן מסמך');
+ const ov=document.createElement('div');ov.className='modal-ov';
+ ov.innerHTML=`<div class="modal"><b>הפקת חשבונית מרכזת</b>
+  <div class="mut" style="margin:6px 0">מסמך A4 מעוצב המרכז מספר הזמנות של לקוח אחד — כולל QR וברקוד לאימות. הזמנות שייכוסו כאן לא יקבלו מסמך נפרד.</div>
+  <label class="lb">לקוח</label>
+  <select class="inp" id="cm-cust">${d.customers.map((c,i)=>`<option value="${i}">${esc(c.customer.name||'לקוח')} · ${c.orders.length} הזמנות זכאיות</option>`).join('')}</select>
+  <div id="cm-orders" style="max-height:220px;overflow:auto;margin-top:8px"></div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="cm-ok" style="flex:1">הפק חשבונית מרכזת</button><button class="btn2" id="cm-cancel" style="flex:1">ביטול</button></div></div>`;
+ document.body.appendChild(ov);
+ const renderOrders=()=>{const c=d.customers[+ov.querySelector('#cm-cust').value];
+  ov.querySelector('#cm-orders').innerHTML=c.orders.map(o=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eef3f5;cursor:pointer"><input type="checkbox" class="cm-o" value="${o.id}" checked> הזמנה #${o.id.slice(0,8)} · ${new Date(o.created_at).toLocaleDateString('he-IL')} · ₪${o.total}</label>`).join('')};
+ renderOrders();
+ ov.querySelector('#cm-cust').onchange=renderOrders;
+ ov.querySelector('#cm-cancel').onclick=()=>ov.remove();
+ ov.onclick=e=>{if(e.target===ov)ov.remove()};
+ ov.querySelector('#cm-ok').onclick=async()=>{
+  const c=d.customers[+ov.querySelector('#cm-cust').value];
+  const ids=[...ov.querySelectorAll('.cm-o:checked')].map(x=>x.value);
+  if(!ids.length)return toast('בחרו לפחות הזמנה אחת');
+  try{const r=await api(`/t/${slug}/documents/consolidated`,{method:'POST',body:JSON.stringify({customer_id:c.customer.id,order_ids:ids})});
+   ov.remove();toast(`חשבונית מרכזת ${r.document.doc_number}/${r.document.doc_year} הונפקה`);route()}catch(e){toast(e.message)}
+ };
+}
+
 async function creditDoc(slug,id,total,credited){
  const rem=Math.round((Number(total)-Number(credited))*100)/100;
  const vals=await xmodal({title:'הנפקת זיכוי',body:`יתרה לזיכוי במסמך: ₪${rem}. השאר את השדה ריק לזיכוי מלא.`,okText:'הנפק זיכוי',fields:[{id:'amt',label:'סכום חלקי (אופציונלי)',type:'number'}]});
@@ -638,7 +667,7 @@ async function addCoupon(slug){try{const b={code:$('#cp-code').value,kind:$('#cp
 async function toggleCoupon(slug,id,active){try{await api(`/t/${slug}/coupons/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
 async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
-async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value,dealer_type:$('#s-dealer-type').value||null,dealer_id:$('#s-dealer-id').value||null})});toast('נשמר')}catch(e){toast(e.message)}}
+async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value,dealer_type:$('#s-dealer-type').value||null,dealer_id:$('#s-dealer-id').value||null,invoice_mode:$('#s-invoice-mode').value})});toast('נשמר')}catch(e){toast(e.message)}}
 
 /* ---- admin ---- */
 async function vAdmin(sub){
@@ -676,15 +705,16 @@ async function vAdmin(sub){
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
-  body=d.documents.length?`<div class="card">${d.documents.map(dc=>`<div class="row"><div>
+  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" onclick="consolidatedModal('${slug}')">🧾 הפק חשבונית מרכזת</button>`;
+  body=consBtn+(d.documents.length?`<div class="card docs-list">${d.documents.map(dc=>`<div class="row"><div>
     <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
-    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${dc.orders_count?' · מכסה '+dc.orders_count+' הזמנות':''}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
+    <div class="docs-actions">
      <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
      <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
      ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
     </div></div>`).join('')}</div>`
-   :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
+   :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
   const pd=await api('/admin/couriers/pending');
@@ -869,6 +899,26 @@ async function joinSubmit(){
 }
 
 /* ---- router ---- */
+
+async function vVerify(code){
+ const ST={issued:'st-delivered',partially_credited:'st-out_for_delivery',credited:'st-cancelled'};
+ let d=null,notFound=false;
+ try{d=await api(`/verify/${encodeURIComponent(code||'')}`)}catch(e){if(e.status===404)notFound=true;else throw e}
+ const ok=d&&!notFound&&d.status!=='credited';
+ return `<div class="hdr"><h2>אימות מסמך</h2></div><div class="body">
+  <div class="card" style="text-align:center">
+   <div style="font-size:44px">${ok?'✅':notFound?'❓':'⚠️'}</div>
+   ${notFound?`<b>המסמך לא נמצא</b><div class="mut" style="margin-top:6px">בדקו שהקוד הוזן כראוי או סרקו שוב את ה-QR.</div>`
+   :`<b>${d.kind_he} ${d.doc_number}/${d.doc_year}</b>
+    <div style="margin:6px 0"><span class="st-pill ${ST[d.status]||''}">${d.status_he}</span></div>
+    <div class="mut">${esc(d.tenant_name)} · ${esc(d.customer_name||'לקוח')}</div>
+    <div style="font-size:22px;font-weight:700;margin:6px 0">₪${d.total}</div>
+    <div class="mut">הופק ב-${new Date(d.issued_at).toLocaleDateString('he-IL')}${d.orders_count?` · מכסה ${d.orders_count} הזמנות`:''}</div>
+    <div class="mut" style="margin-top:10px;color:#b00">מסמך דמו — לא לצורכי מע"מ (טרם רישום תוכנה ברשות המסים)</div>`}
+   <div style="margin-top:12px"><button class="btn2" onclick="go('#/');route()">לדף הבית</button></div>
+  </div></div>`;
+}
+
 async function route(){
  const seq=++routeSeq;
  document.querySelectorAll('.modal-ov').forEach(m=>m.remove());
@@ -893,6 +943,7 @@ async function route(){
   else if(parts[0]==='admin'&&parts[1]==='tenant')html=await vAdminTenant(parts[2]);
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);
   else if(parts[0]==='join')html=await vJoin();
+  else if(parts[0]==='verify')html=await vVerify(parts[1]);
   else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/')">חזרה לדף הבית</button></div></div>`;
  }catch(e){
   if(e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();html=vLogin()}

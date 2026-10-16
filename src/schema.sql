@@ -199,7 +199,7 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS dealer_id text;
 
 CREATE TABLE IF NOT EXISTS doc_counters (
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit')),
+  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit','consolidated')),
   year int NOT NULL,
   next_number int NOT NULL DEFAULT 1,
   PRIMARY KEY (tenant_id, kind, year)
@@ -210,7 +210,7 @@ CREATE TABLE IF NOT EXISTS documents (
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   order_id uuid REFERENCES orders(id),
   customer_id uuid REFERENCES users(id),
-  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit')),
+  kind text NOT NULL CHECK (kind IN ('invoice','receipt','credit','consolidated')),
   doc_year int NOT NULL,
   doc_number int NOT NULL,
   allocation_number varchar(9),
@@ -363,3 +363,24 @@ CREATE INDEX IF NOT EXISTS sub_usage_idx ON subscription_usage(subscription_id, 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS subscription_id uuid REFERENCES subscriptions(id);
 
 ALTER TABLE price_items ADD COLUMN IF NOT EXISTS subscription_eligible boolean NOT NULL DEFAULT false;
+
+-- E12.T6: חשבונית מרכזת, קוד אימות לסריקה, מצב הפקת מסמכים
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_kind_check;
+ALTER TABLE documents ADD CONSTRAINT documents_kind_check CHECK (kind IN ('invoice','receipt','credit','consolidated'));
+ALTER TABLE doc_counters DROP CONSTRAINT IF EXISTS doc_counters_kind_check;
+ALTER TABLE doc_counters ADD CONSTRAINT doc_counters_kind_check CHECK (kind IN ('invoice','receipt','credit','consolidated'));
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS verify_code text;
+UPDATE documents SET verify_code = upper(substr(md5(random()::text || id::text), 1, 10)) WHERE verify_code IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS documents_verify_code_uq ON documents(verify_code);
+
+-- הזמנות המכוסות בחשבונית מרכזת — הזמנה מכוסה לכל היותר פעם אחת
+CREATE TABLE IF NOT EXISTS document_orders (
+  document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  order_id uuid NOT NULL REFERENCES orders(id),
+  PRIMARY KEY (document_id, order_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS document_orders_order_uq ON document_orders(order_id);
+
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS invoice_mode text NOT NULL DEFAULT 'per_order';
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_invoice_mode_check;
+ALTER TABLE tenants ADD CONSTRAINT tenants_invoice_mode_check CHECK (invoice_mode IN ('per_order','consolidated'));

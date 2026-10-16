@@ -151,7 +151,20 @@ module.exports = { buildReceiptPDF, drawRtl, splitRuns };
 
 // E12.T2: PDF למסמך חשבונאי (חשבונית עסקה / קבלה / זיכוי) — כולל חותמת דמו תמידית
 // עד לרישום התוכנה ברשות המסים, וסימון "העתק" בהפקה חוזרת.
-const KIND_TITLE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי' };
+const KIND_TITLE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
+const bwipjs = require('bwip-js');
+const APP_BASE_URL = process.env.APP_BASE_URL || 'https://washup-qa0d.onrender.com';
+
+
+// QR לסריקה (עמוד אימות ציבורי) + ברקוד Code128 של מזהה המסמך — אפס עלות, נוצר מקומית
+async function docVerificationImages(d) {
+  const verifyUrl = `${APP_BASE_URL}/#/verify/${d.verify_code}`;
+  const [qr, barcode] = await Promise.all([
+    bwipjs.toBuffer({ bcid: 'qrcode', text: verifyUrl, scale: 4, eclevel: 'M' }),
+    bwipjs.toBuffer({ bcid: 'code128', text: `WLM-${d.doc_year}-${d.doc_number}`, height: 10, includetext: false }),
+  ]);
+  return { qr, barcode, verifyUrl };
+}
 
 function collectPdf(doc) {
   return new Promise((resolve, reject) => {
@@ -163,7 +176,7 @@ function collectPdf(doc) {
 }
 
 // doc: שורת documents; copy=true מסמן "העתק"; מחזיר pdfkit document (צריך doc.end() של הקורא)
-function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy }) {
+function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes, note }) {
   const pdf = new PDFDocument({ size: 'A4', margin: 50, info: { Title: `${KIND_TITLE[d.kind]} ${d.doc_number}` } });
   pdf.registerFont('he', FONT_REG);
   pdf.registerFont('heb', FONT_BOLD);
@@ -194,6 +207,7 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy }) {
   line(pdf, `תאריך הפקה: ${dt.toLocaleDateString('he-IL')} ${dt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`);
   if (order) line(pdf, `בגין הזמנה: #${order.id.slice(0, 8)}`);
   line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח'}${customer && customer.phone ? ' · ' + customer.phone : ''}`);
+  if (note) line(pdf, note);
   if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.doc_year}`);
   pdf.moveDown(0.8);
 
@@ -230,6 +244,18 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy }) {
     row2(pdf, 'זוכה', '-' + money(d.credited_amount));
   }
   pdf.moveDown(1);
+  // אימות מסמך: QR לסריקה + ברקוד + קוד ידני (מערכות מתקדמות — סריקה לאימות קבלות/חשבוניות)
+  if (codes && codes.qr && d.verify_code) {
+    if (pdf.y > 660) pdf.addPage();
+    const vy = pdf.y + 4;
+    pdf.image(codes.qr, 50, vy, { width: 52 });
+    if (codes.barcode) pdf.image(codes.barcode, 116, vy + 10, { width: 130 });
+    pdf.font('he').fontSize(9).fillColor('#333');
+    drawRtl(pdf, `אימות מסמך: סרקו את ה-QR או הזינו את הקוד ${d.verify_code} בעמוד האימות`, PAGE_RIGHT, vy + 14);
+    pdf.fontSize(8).fillColor('#999');
+    drawRtl(pdf, codes.verifyUrl, PAGE_RIGHT, vy + 28);
+    pdf.y = vy + 58;
+  }
   pdf.font('he').fontSize(9).fillColor('#999');
   line(pdf, 'הופק אוטומטית על ידי מערכת מכבסה בקליק — מסמך דמו, אינו חשבונית מס לצורכי מע"מ.');
   pdf.end();
@@ -238,3 +264,4 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy }) {
 
 module.exports.buildDocumentPDF = buildDocumentPDF;
 module.exports.collectPdf = collectPdf;
+module.exports.docVerificationImages = docVerificationImages;

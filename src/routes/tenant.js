@@ -4,7 +4,7 @@ const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
 const { issueDocumentsForOrder, creditDocument } = require('../documents');
 const { restoreBags } = require('../subscriptions');
-const { buildDocumentPDF } = require('../receipt');
+const { buildDocumentPDF, docVerificationImages } = require('../receipt');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
@@ -141,7 +141,10 @@ r.patch('/settings', async (req, res) => {
   if (req.body.dealer_id !== undefined && req.body.dealer_id !== null && req.body.dealer_id !== '' && !/^\d{9}$/.test(String(req.body.dealer_id))) {
     return res.status(400).json({ error: 'ח.פ/ע.מ חייב להיות 9 ספרות' });
   }
-  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id'];
+  if (req.body.invoice_mode !== undefined && !['per_order', 'consolidated'].includes(req.body.invoice_mode)) {
+    return res.status(400).json({ error: 'אופן הפקת מסמכים לא תקין (per_order/consolidated)' });
+  }
+  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id','invoice_mode'];
   const sets = [], params = [];
   for (const k of allowed) {
     if (req.body[k] !== undefined) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
@@ -309,10 +312,11 @@ r.patch('/coupons/:id', async (req, res) => {
 r.get('/documents', async (req, res) => {
   const { rows } = await q(
     `SELECT d.id, d.kind, d.doc_number, d.doc_year, d.allocation_number, d.amount, d.vat, d.total,
-            d.status, d.credited_amount, d.order_id, d.issued_at, u.name AS customer_name
+            d.status, d.credited_amount, d.order_id, d.issued_at, u.name AS customer_name,
+            (SELECT count(*)::int FROM document_orders dor WHERE dor.document_id=d.id) AS orders_count
      FROM documents d LEFT JOIN users u ON u.id=d.customer_id
      WHERE d.tenant_id=$1 ORDER BY d.doc_year DESC, d.doc_number DESC LIMIT 300`, [req.tenant.id]);
-  const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי' };
+  const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
   res.json({ documents: rows.map(d => ({ ...d, kind_he: KIND_HE[d.kind] || d.kind })) });
 });
 
@@ -330,10 +334,17 @@ r.get('/documents/:id/pdf', async (req, res) => {
     return res.end(d.pdf);
   }
   const { rows: items } = d.order_id ? await q('SELECT * FROM order_items WHERE order_id=$1', [d.order_id]) : { rows: [] };
+  const { rows: covered } = await q(
+    `SELECT o.id, o.total, o.created_at FROM document_orders dor JOIN orders o ON o.id=dor.order_id WHERE dor.document_id=$1 ORDER BY o.created_at`, [d.id]);
+  const pdfItems = covered.length
+    ? covered.map(o => ({ name: `הזמנה #${o.id.slice(0, 8)} · ${new Date(o.created_at).toLocaleDateString('he-IL')}`, qty: 1, price: Number(o.total) }))
+    : items;
+  const codes = await docVerificationImages(d);
   const pdf = buildDocumentPDF({
-    doc: d, order: d.order_id ? { id: d.order_id } : null, items,
+    doc: d, order: d.order_id ? { id: d.order_id } : null, items: pdfItems, codes,
     tenant: { name: d.tenant_name, address: d.tenant_address, city: d.tenant_city, color: d.color, dealer_type: d.dealer_type, dealer_id: d.dealer_id },
     customer: { name: d.customer_name, phone: d.customer_phone }, copy: true,
+    note: covered.length ? `חשבונית מרכזת המכסה ${covered.length} הזמנות` : null,
   });
   res.set('content-type', 'application/pdf');
   pdf.pipe(res);
@@ -352,6 +363,52 @@ r.post('/documents/:id/credit', async (req, res) => {
     });
     await client.query('COMMIT');
     res.status(201).json({ credit });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (e.status) return res.status(e.status).json({ error: e.error });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+// E12.T6: הזמנות הזכאיות לחשבונית מרכזת (delivered, ללא מסמך קודם), מקובצות לפי לקוח
+r.get('/documents/consolidated/eligible', async (req, res) => {
+  const { rows } = await q(
+    `SELECT o.id, o.total, o.created_at, u.id AS customer_id, u.name AS customer_name, u.phone AS customer_phone
+     FROM orders o JOIN users u ON u.id = o.customer_id
+     WHERE o.tenant_id=$1 AND o.status='delivered'
+       AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.order_id=o.id AND d.kind<>'credit')
+       AND NOT EXISTS (SELECT 1 FROM document_orders dor WHERE dor.order_id=o.id)
+     ORDER BY u.name, o.created_at`, [req.tenant.id]);
+  const byCustomer = {};
+  for (const o of rows) {
+    if (!byCustomer[o.customer_id]) byCustomer[o.customer_id] = { customer: { id: o.customer_id, name: o.customer_name, phone: o.customer_phone }, orders: [] };
+    byCustomer[o.customer_id].orders.push({ id: o.id, total: Number(o.total), created_at: o.created_at });
+  }
+  res.json({ customers: Object.values(byCustomer) });
+});
+
+// E12.T6: הפקת חשבונית מרכזת מעוצבת (A4) ללקוח על מספר הזמנות
+r.post('/documents/consolidated', async (req, res) => {
+  const { customer_id, order_ids } = req.body || {};
+  if (!customer_id || !Array.isArray(order_ids) || !order_ids.length) {
+    return res.status(400).json({ error: 'יש לבחור לקוח והזמנות' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: tt } = await client.query('SELECT * FROM tenants WHERE id=$1', [req.tenant.id]);
+    const tenant = tt[0];
+    if (!tenant.dealer_type) throw { status: 409, error: 'יש להגדיר סוג עוסק בהגדרות לפני הפקת מסמכים' };
+    const { rows: orders } = await client.query(
+      `SELECT o.id, o.total, o.created_at FROM orders o
+       WHERE o.tenant_id=$1 AND o.customer_id=$2 AND o.id = ANY($3::uuid[]) AND o.status='delivered'
+       ORDER BY o.created_at FOR UPDATE`, [req.tenant.id, customer_id, order_ids]);
+    if (orders.length !== order_ids.length) throw { status: 400, error: 'חלק מההזמנות לא נמצאו או עדיין לא הושלמו' };
+    const { rows: cust } = await client.query('SELECT id, name, phone FROM users WHERE id=$1', [customer_id]);
+    const { issueConsolidatedInvoice } = require('../documents');
+    const doc = await issueConsolidatedInvoice(client, { tenant, customer: cust[0], orders, actorId: req.user.id });
+    await client.query('COMMIT');
+    res.status(201).json({ document: { id: doc.id, kind: doc.kind, doc_number: doc.doc_number, doc_year: doc.doc_year, total: Number(doc.total), verify_code: doc.verify_code } });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     if (e.status) return res.status(e.status).json({ error: e.error });
