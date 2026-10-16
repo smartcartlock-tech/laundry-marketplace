@@ -56,7 +56,7 @@ async function buildRoutesForDate(dateStr) {
   }
   const { rows: couriers } = await q(
     `SELECT c.*, u.name FROM couriers c JOIN users u ON u.id=c.user_id
-     WHERE c.approved=true AND c.rejected_reason IS NULL AND c.model IN ('platform','shared')
+     WHERE c.approved=true AND c.rejected_reason IS NULL AND c.is_online AND c.model IN ('platform','shared')
      ORDER BY c.priority DESC NULLS LAST, c.rating DESC, c.created_at`, []);
   if (!couriers.length) return { date: day, routes: [], skipped: 'no approved platform couriers' };
 

@@ -5,6 +5,7 @@ const { q } = require('../db');
 const { requireAuth, requireCourier } = require('../auth');
 const { completeDelivery } = require('../courier-actions');
 const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+const { nearestNeighbor, haversineKm, weekStart } = require('../routes-engine');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -83,19 +84,33 @@ r.get('/day-route', async (req, res) => {
       when: kind === 'pickup' ? o.pickup_at : o.delivery_at,
     };
   });
+  let ordered = stops;
+  // ?order=proximity: סידור nearest-neighbor לפי קרבה גיאוגרפית (haversine, בלי API חיצוני).
+  // עם lat/lng של מיקום השליח השרשרת מתחילה מהנקודה הקרובה אליו.
+  if (req.query.order === 'proximity') {
+    const lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
+    const geo = stops.filter(s2 => s2.stop_lat != null && s2.stop_lng != null)
+      .map(s2 => ({ ...s2, lat: s2.stop_lat, lng: s2.stop_lng }));
+    const noGeo = stops.filter(s2 => s2.stop_lat == null || s2.stop_lng == null);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && geo.length > 1) {
+      geo.sort((a, b) => haversineKm({ lat, lng }, a) - haversineKm({ lat, lng }, b));
+    }
+    ordered = nearestNeighbor(geo).concat(noGeo).map((s2, i) => ({ ...s2, seq: i + 1 }));
+  }
   const doneStops = doneRows.map((o, i) => ({
-    seq: stops.length + i + 1, kind: 'deliver', done: true,
+    seq: ordered.length + i + 1, kind: 'deliver', done: true,
     order: pubOrder(o), stop_address: o.address, stop_lat: o.lat, stop_lng: o.lng, when: o.updated_at,
   }));
   res.json({
     date: dateParam || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }),
-    stops: [...stops, ...doneStops],
+    ordered_by: req.query.order === 'proximity' ? 'proximity' : 'schedule',
+    stops: [...ordered, ...doneStops],
     summary: {
-      total: stops.length + doneStops.length,
+      total: ordered.length + doneStops.length,
       done: doneStops.length,
-      remaining: stops.length,
-      pickups: stops.filter(s => s.kind === 'pickup').length,
-      deliveries: stops.filter(s => s.kind !== 'pickup').length,
+      remaining: ordered.length,
+      pickups: ordered.filter(s2 => s2.kind === 'pickup').length,
+      deliveries: ordered.filter(s2 => s2.kind !== 'pickup').length,
     },
   });
 });
@@ -131,6 +146,62 @@ r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) 
   }
   await completeDelivery({ order, courierId: req.courier.id, actorId: req.user.id, photoUrl: photo_url || null, note: note || 'מסירה אושרה על ידי הלקוח' });
   res.json({ ok: true, confirmed: true, method });
+});
+
+// מתג זמינות: אונליין/אופליין — השיבוץ האוטומטי (routes-engine) משבץ רק שליחים זמינים
+r.get('/availability', async (req, res) => {
+  const { rows } = await q('SELECT is_online FROM couriers WHERE id=$1', [req.courier.id]);
+  res.json({ online: rows[0] ? rows[0].is_online : true });
+});
+
+r.post('/availability', async (req, res) => {
+  const online = !!(req.body || {}).online;
+  await q('UPDATE couriers SET is_online=$2 WHERE id=$1', [req.courier.id, online]);
+  res.json({ ok: true, online });
+});
+
+// רווחים לפי משימה: יומי (?period=day&date=YYYY-MM-DD) או שבועי (?period=week&date=יום-כלשהו-בשבוע).
+// נתוני דמו בלבד מתוך courier_earnings — אין תשלום אמיתי.
+r.get('/earnings/detail', async (req, res) => {
+  const period = req.query.period === 'week' ? 'week' : 'day';
+  const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
+  const params = [req.courier.id];
+  let where;
+  if (period === 'day') {
+    params.push(dateParam);
+    where = `e.courier_id=$1 AND (e.created_at AT TIME ZONE 'Asia/Jerusalem')::date = COALESCE($2::date, (now() AT TIME ZONE 'Asia/Jerusalem')::date)`;
+  } else {
+    params.push(weekStart(new Date((dateParam || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })) + 'T12:00:00')));
+    where = `e.courier_id=$1 AND e.week_start=$2::date`;
+  }
+  const { rows: tasks } = await q(
+    `SELECT e.id, e.kind, e.stops, e.gross, e.commission, e.net, e.status, e.created_at,
+            to_char(e.created_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD') AS day,
+            COALESCE(t.name,'—') AS tenant_name, o.address AS order_address
+     FROM courier_earnings e LEFT JOIN tenants t ON t.id=e.tenant_id LEFT JOIN orders o ON o.id=e.order_id
+     WHERE ${where} AND e.status<>'disputed'
+     ORDER BY e.created_at DESC`, params);
+  const totals = tasks.reduce((a, x) => ({ stops: a.stops + x.stops, gross: +(a.gross + Number(x.gross)).toFixed(2), net: +(a.net + Number(x.net)).toFixed(2) }), { stops: 0, gross: 0, net: 0 });
+  const byDayMap = {};
+  for (const x of tasks) {
+    const d = byDayMap[x.day] || (byDayMap[x.day] = { day: x.day, stops: 0, net: 0 });
+    d.stops += x.stops; d.net = +(d.net + Number(x.net)).toFixed(2);
+  }
+  res.json({ period, date: dateParam, tasks, totals, by_day: Object.values(byDayMap).sort((a, b) => b.day.localeCompare(a.day)) });
+});
+
+// היסטוריית משימות שהושלמו + הדירוג שהשליח רואה: דירוג לקוח לכל הזמנה והממוצע הכולל שלו
+r.get('/history', async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 100);
+  const { rows } = await q(
+    `SELECT o.id, o.address, o.total, o.updated_at, t.name AS tenant_name, u.name AS customer_name,
+            (SELECT json_build_object('method',dc.method,'at',dc.created_at,'id',dc.id,'has_photo',(dc.photo_data IS NOT NULL)) FROM delivery_confirmations dc WHERE dc.order_id=o.id) AS confirmation,
+            (SELECT json_build_object('rating',rv.rating,'text',rv.text,'at',rv.created_at) FROM reviews rv WHERE rv.order_id=o.id AND rv.target_courier_id=$1 LIMIT 1) AS review
+     FROM orders o JOIN tenants t ON t.id=o.tenant_id JOIN users u ON u.id=o.customer_id
+     WHERE o.courier_id=$1 AND o.status='delivered'
+     ORDER BY o.updated_at DESC LIMIT $2`, [req.courier.id, limit]);
+  const { rows: agg } = await q('SELECT rating, rating_count FROM couriers WHERE id=$1', [req.courier.id]);
+  res.json({ rating: agg[0] || { rating: 0, rating_count: 0 }, rows });
 });
 
 module.exports = r;
