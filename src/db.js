@@ -20,6 +20,9 @@ async function migrate() {
   if (SCHEMA) await pool.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
   await pool.query(sql);
+  // QA2.T8: הרחבת יחידת 'שק' גם במסדי נתונים קיימים (האילוץ נוצר עם הטבלה ולא מתעדכן מ-IF NOT EXISTS)
+  await pool.query(`ALTER TABLE price_items DROP CONSTRAINT IF EXISTS price_items_unit_check`);
+  await pool.query(`ALTER TABLE price_items ADD CONSTRAINT price_items_unit_check CHECK (unit IN ('item','kg','bag'))`);
   console.log('[db] schema migrated' + (SCHEMA ? ` (schema ${SCHEMA})` : ''));
 }
 

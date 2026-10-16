@@ -60,6 +60,7 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
 /* desktop */
 @media(min-width:900px){
  body{max-width:1080px;margin:0 auto;background:#dfe7ee}
+ #app{max-width:920px}
  .body{max-width:1080px}
  .body .card{max-width:none}
  .kpis{max-width:none}

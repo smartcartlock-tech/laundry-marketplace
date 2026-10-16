@@ -41,6 +41,7 @@ async function openPdf(path){
  }catch(e){toast('שגיאה בפתיחת PDF')}
 }
 function fmtQ(q){const n=Number(q);return (n%1)?String(n):String(Math.round(n))}
+function unitLbl(u,qty){if(u==='kg')return 'ק״ג';if(u==='bag')return Number(qty)>1?'שקים':'שק';return 'יח׳'}
 const HE={new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
 const FLOW=['new','confirmed','picked_up','in_work','ready','out_for_delivery','delivered'];
 const WD=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
@@ -170,7 +171,7 @@ async function vLaundry(slug){
   <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" onclick="document.getElementById('info').scrollIntoView({behavior:'smooth'})">מידע</button><button class="chip" type="button" onclick="document.getElementById('revs').scrollIntoView({behavior:'smooth'})">ביקורות</button></div>
   <div class="card">
    ${d.items.map(it=>{const c=state.cart.find(x=>x.item_id===it.id);return `<div class="row">
-     <div><b>${esc(it.name)}</b><div class="mut">${esc(it.category)} · ₪${it.price}${it.unit==='kg'?' לק״ג':''}</div></div>
+     <div><b>${esc(it.name)}</b><div class="mut">${esc(it.category)} · ₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}</div></div>
      ${c?`<span class="stepper"><button onclick="setQty('${slug}','${it.id}',-1)">−</button><b>${c.qty}</b><button onclick="setQty('${slug}','${it.id}',1)">+</button></span>`
         :`<button class="btn2" onclick="setQty('${slug}','${it.id}',1)">הוספה</button>`}
     </div>`}).join('')||'<div class="mut">המחירון טרם הוזן</div>'}
@@ -213,7 +214,7 @@ async function vCheckout(slug){
  return `<div class="hdr"><h2><a href="#/laundry/${slug}" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה — ${esc(l.name)}</h2></div>
  <div class="body">
   <div class="card">
-   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${fmtQ(c.qty)}${c.unit==='kg'?' ק״ג':''} × ₪${c.price}</div></div>`).join('')}
+   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${fmtQ(c.qty)} ${unitLbl(c.unit,c.qty)} × ₪${c.price}</div></div>`).join('')}
    <div class="row"><div class="mut">סכום ביניים</div><div>₪${subtotal}</div></div>
    <div class="row"><div class="mut">שליחות</div><div>₪${l.delivery_fee||0}</div></div>
    <div class="row" id="co-coupon-row" style="display:none"><div class="mut">הנחת קופון <b id="co-coupon-code"></b></div><div id="co-coupon-disc" style="color:#0a7">−₪0</div></div>
@@ -504,10 +505,10 @@ async function vManage(sub){
     <label class="lb">פריט חדש</label>
     <input class="inp" id="it-name" placeholder="שם הפריט">
     <div style="display:flex;gap:8px"><input class="inp" id="it-price" type="number" placeholder="מחיר ₪" style="flex:1">
-    <select class="inp" id="it-unit" style="flex:1"><option value="item">ליחידה</option><option value="kg">לק״ג</option></select>
+    <select class="inp" id="it-unit" style="flex:1"><option value="item">ליחידה</option><option value="kg">לק״ג</option><option value="bag">לשק</option></select>
     <select class="inp" id="it-cat" style="flex:1"><option>כביסה</option><option>ניקוי יבש</option><option>גיהוץ</option><option>שטיחים</option><option>אחר</option></select></div>
     <button class="btn2 on" onclick="addItem('${slug}')">הוספה</button></div>
-   <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='kg'?'לק״ג':'ליחידה'}</div></div>
+   <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='item'?'ליחידה':'ל'+unitLbl(i.unit)}</div></div>
     <div>₪${i.price} <button class="btn2" onclick="editItem('${slug}','${i.id}',this)" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
  } else if(sub==='windows'){
   const d=await api(`/t/${slug}/windows`);
@@ -777,7 +778,7 @@ async function vAdminTenant(id){
    ${(t.services||[]).length?`<div class="mut">שירותים: ${t.services.map(esc).join(', ')}</div>`:''}
   </div>
   <div class="card"><b>מחירון (${d.items.length})</b>
-   ${d.items.map(i=>`<div class="row"><div>${esc(i.name)}<div class="mut">${esc(i.category||'')}</div></div><div>₪${i.price}${i.unit==='kg'?'/ק״ג':''}${i.active?'':' · מוסתר'}</div></div>`).join('')||'<div class="mut">אין פריטים</div>'}
+   ${d.items.map(i=>`<div class="row"><div>${esc(i.name)}<div class="mut">${esc(i.category||'')}</div></div><div>₪${i.price}${i.unit==='item'?'':'/'+unitLbl(i.unit)}${i.active?'':' · מוסתר'}</div></div>`).join('')||'<div class="mut">אין פריטים</div>'}
   </div>
   ${hoursTxt?`<div class="card"><b>שעות פעילות</b><div class="mut">${hoursTxt}</div></div>`:''}
   ${winTxt?`<div class="card"><b>חלונות איסוף/החזרה</b><div class="mut">${winTxt}</div></div>`:''}
@@ -863,7 +864,7 @@ function renderJoinReview(){
   </div>
   <div class="card"><b>מחירון (${(d.items||[]).length} פריטים)</b>
    ${lowItems?`<div class="warn">${lowItems} פריטים מסומנים בענבר — הזיהוי לא בטוח, יש לוודא את המחיר.</div>`:''}
-   ${(d.items||[]).map((it,i)=>`<div class="row" style="${it.confidence==='low'?'background:#fff7e6;border-radius:8px':''}"><div style="flex:2"><input class="inp" value="${esc(it.name)}" onchange="joinDraft.items[${i}].name=this.value"><div class="mut">${esc(it.category||'')}${it.unit==='kg'?' · לק״ג':' · ליחידה'}</div></div><div style="display:flex;align-items:center;gap:4px;flex:1">₪<input class="inp" type="number" style="width:80px" value="${it.price}" onchange="joinDraft.items[${i}].price=Number(this.value)"> <button class="btn2" onclick="joinDraft.items.splice(${i},1);renderJoinReview()">✕</button></div></div>`).join('')||'<div class="mut">לא זוהו פריטים — הוסיפו ידנית בלוח הניהול אחרי ההצטרפות</div>'}
+   ${(d.items||[]).map((it,i)=>`<div class="row" style="${it.confidence==='low'?'background:#fff7e6;border-radius:8px':''}"><div style="flex:2"><input class="inp" value="${esc(it.name)}" onchange="joinDraft.items[${i}].name=this.value"><div class="mut">${esc(it.category||'')}${it.unit==='item'?' · ליחידה':' · ל'+unitLbl(it.unit)}</div></div><div style="display:flex;align-items:center;gap:4px;flex:1">₪<input class="inp" type="number" style="width:80px" value="${it.price}" onchange="joinDraft.items[${i}].price=Number(this.value)"> <button class="btn2" onclick="joinDraft.items.splice(${i},1);renderJoinReview()">✕</button></div></div>`).join('')||'<div class="mut">לא זוהו פריטים — הוסיפו ידנית בלוח הניהול אחרי ההצטרפות</div>'}
   </div>
   ${hoursRows?`<div class="card"><b>שעות פעילות</b>${d.hours_confidence==='low'?'<div class="warn">השעות שזוהו לא בטוחות — יש לוודא.</div>':''}${hoursRows}</div>`:''}
   ${d.terms?`<div class="card"><b>תקנון</b><div class="mut">${esc(d.terms)}</div></div>`:''}

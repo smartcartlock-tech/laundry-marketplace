@@ -82,18 +82,19 @@ r.post('/items', async (req, res) => {
   if (!name || !(Number(price) >= 0)) return res.status(400).json({ error: 'שם ומחיר חובה' });
   const { rows } = await q(
     'INSERT INTO price_items(tenant_id, name, price, category, unit, subscription_eligible) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-    [req.tenant.id, name, price, category || 'כביסה', unit === 'kg' ? 'kg' : 'item', !!subscription_eligible]);
+    [req.tenant.id, name, price, category || 'כביסה', ['kg','bag'].includes(unit) ? unit : 'item', !!subscription_eligible]);
   res.status(201).json({ item: rows[0] });
 });
 r.patch('/items/:id', async (req, res) => {
-  const { name, price, category, active, subscription_eligible } = req.body || {};
+  const { name, price, category, active, subscription_eligible, unit } = req.body || {};
   const { rows } = await q(
     `UPDATE price_items SET name=COALESCE($1,name), price=COALESCE($2,price),
        category=COALESCE($3,category), active=COALESCE($4,active),
-       subscription_eligible=COALESCE($5,subscription_eligible)
-     WHERE id=$6 AND tenant_id=$7 RETURNING *`,
+       subscription_eligible=COALESCE($5,subscription_eligible), unit=COALESCE($6,unit)
+     WHERE id=$7 AND tenant_id=$8 RETURNING *`,
     [name ?? null, price ?? null, category ?? null, active ?? null,
-     subscription_eligible === undefined ? null : !!subscription_eligible, req.params.id, req.tenant.id]);
+     subscription_eligible === undefined ? null : !!subscription_eligible,
+     ['kg','bag','item'].includes(unit) ? unit : null, req.params.id, req.tenant.id]);
   if (!rows[0]) return res.status(404).json({ error: 'לא נמצא' });
   res.json({ item: rows[0] });
 });

@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS price_items (
   name text NOT NULL,
   category text DEFAULT 'כביסה',
   price numeric(8,2) NOT NULL,
-  unit text DEFAULT 'item' CHECK (unit IN ('item','kg')),
+  unit text DEFAULT 'item' CHECK (unit IN ('item','kg','bag')),
   active boolean DEFAULT true,
   sort int DEFAULT 0
 );

@@ -2,14 +2,14 @@
 const { q, pool } = require('./db');
 
 const LAUNDRIES = [
- { slug:'achuza', name:'מכבסת האחוזה', letter:'א', color:'#0e7a8a', city:'תל אביב', address:'שדרות רוטשילד 40', services:['כביסה','ניקוי יבש','גיהוץ'], delivery_fee:15, min_order:50, rating:4.8, rc:212,
-   items:[['שק כביסה (עד 8 ק״ג)',56,'item','כביסה'],['חולצה — כביסה וקיפול',8,'item','כביסה'],['מכנסיים — כביסה וגיהוץ',12,'item','גיהוץ'],['חליפה — ניקוי יבש',45,'item','ניקוי יבש'],['שמיכת פוך — ניקוי',70,'item','ניקוי יבש']] },
- { slug:'express', name:'כביסה אקספרס', letter:'כ', color:'#c26a12', city:'תל אביב', address:'דיזנגוף 120', services:['כביסה','גיהוץ'], delivery_fee:12, min_order:40, rating:4.6, rc:98,
-   items:[['שק כביסה (עד 8 ק״ג)',49,'item','כביסה'],['חולצה — כביסה וקיפול',7,'item','כביסה'],['מכנסיים — כביסה וגיהוץ',11,'item','גיהוץ'],['שמיכה — כביסה',55,'item','כביסה']] },
- { slug:'mumchim', name:'ניקוי יבש המומחים', letter:'נ', color:'#3557c9', city:'רמת גן', address:'ביאליק 32', services:['ניקוי יבש'], delivery_fee:18, min_order:60, rating:4.9, rc:340,
+ { slug:'achuza', name:'מכבסת האחוזה', letter:'א', color:'#0e7a8a', city:'תל אביב', address:'שדרות רוטשילד 40', phone:'03-5550101', services:['כביסה','ניקוי יבש','גיהוץ'], delivery_fee:15, min_order:50, rating:4.8, rc:212,
+   items:[['שק כביסה (עד 8 ק״ג)',56,'bag','כביסה'],['חולצה — כביסה וקיפול',8,'item','כביסה'],['מכנסיים — כביסה וגיהוץ',12,'item','גיהוץ'],['חליפה — ניקוי יבש',45,'item','ניקוי יבש'],['שמיכת פוך — ניקוי',70,'item','ניקוי יבש']] },
+ { slug:'express', name:'כביסה אקספרס', letter:'כ', color:'#c26a12', city:'תל אביב', address:'דיזנגוף 120', phone:'03-5550102', services:['כביסה','גיהוץ'], delivery_fee:12, min_order:40, rating:4.6, rc:98,
+   items:[['שק כביסה (עד 8 ק״ג)',49,'bag','כביסה'],['חולצה — כביסה וקיפול',7,'item','כביסה'],['מכנסיים — כביסה וגיהוץ',11,'item','גיהוץ'],['שמיכה — כביסה',55,'item','כביסה']] },
+ { slug:'mumchim', name:'ניקוי יבש המומחים', letter:'נ', color:'#3557c9', city:'רמת גן', address:'ביאליק 32', phone:'03-5550103', services:['ניקוי יבש'], delivery_fee:18, min_order:60, rating:4.9, rc:340,
    items:[['חליפה — ניקוי יבש',45,'item','ניקוי יבש'],['שמלה — ניקוי יבש',38,'item','ניקוי יבש'],['מעיל — ניקוי יבש',52,'item','ניקוי יבש'],['מפה — ניקוי יבש',25,'item','ניקוי יבש']] },
- { slug:'carmel', name:'מכבסת הכרמל', letter:'ה', color:'#178a4c', city:'חיפה', address:'הרצל 75', services:['כביסה','שטיחים'], delivery_fee:14, min_order:45, rating:4.7, rc:156,
-   items:[['שק כביסה (עד 8 ק״ג)',52,'item','כביסה'],['חולצה — כביסה וקיפול',8,'item','כביסה'],['שטיח קטן — ניקוי',60,'item','שטיחים']] },
+ { slug:'carmel', name:'מכבסת הכרמל', letter:'ה', color:'#178a4c', city:'חיפה', address:'הרצל 75', phone:'04-5550104', services:['כביסה','שטיחים'], delivery_fee:14, min_order:45, rating:4.7, rc:156,
+   items:[['שק כביסה (עד 8 ק״ג)',52,'bag','כביסה'],['חולצה — כביסה וקיפול',8,'item','כביסה'],['שטיח קטן — ניקוי',60,'item','שטיחים']] },
 ];
 
 async function run() {
@@ -30,9 +30,9 @@ async function run() {
 
     for (const L of LAUNDRIES) {
       const { rows: t } = await client.query(
-        `INSERT INTO tenants(slug, name, letter, color, city, address, services, delivery_fee, min_order, approved, rating, rating_count, hours)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12) ON CONFLICT (slug) DO NOTHING RETURNING id`, 
-        [L.slug, L.name, L.letter, L.color, L.city, L.address, L.services, L.delivery_fee, L.min_order, L.rating, L.rc,
+        `INSERT INTO tenants(slug, name, letter, color, city, address, phone, services, delivery_fee, min_order, approved, rating, rating_count, hours)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11,$12,$13) ON CONFLICT (slug) DO NOTHING RETURNING id`,
+        [L.slug, L.name, L.letter, L.color, L.city, L.address, L.phone || null, L.services, L.delivery_fee, L.min_order, L.rating, L.rc,
          JSON.stringify({ '0': [['08:00','20:00']], '1': [['08:00','20:00']], '2': [['08:00','20:00']], '3': [['08:00','20:00']], '4': [['08:00','20:00']], '5': [['08:00','13:00']], '6': [] })]);
       if (!t[0]) continue;
       const tid = t[0].id;
