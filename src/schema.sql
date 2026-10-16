@@ -575,3 +575,28 @@ CREATE TABLE IF NOT EXISTS bot_sessions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS bot_sessions_token_idx ON bot_sessions(token);
+
+-- E4.T1: חשבונות עסקיים (B2B) — חברה, מחירון הסכמי, שיוך משתמשים, תנאי תשלום
+CREATE TABLE IF NOT EXISTS business_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  company_id text,
+  contact_name text,
+  contact_phone text,
+  payment_terms text NOT NULL DEFAULT 'net30',
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS business_account_users (
+  account_id uuid NOT NULL REFERENCES business_accounts(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (account_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS business_prices (
+  account_id uuid NOT NULL REFERENCES business_accounts(id) ON DELETE CASCADE,
+  item_id uuid NOT NULL REFERENCES price_items(id) ON DELETE CASCADE,
+  price numeric(10,2) NOT NULL CHECK (price >= 0),
+  PRIMARY KEY (account_id, item_id)
+);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS business_account_id uuid REFERENCES business_accounts(id) ON DELETE SET NULL;

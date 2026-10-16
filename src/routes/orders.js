@@ -41,6 +41,20 @@ r.post('/', async (req, res) => {
       subtotal += Number(db.price) * qty;
       lines.push({ item_id: db.id, name: db.name, price: db.price, qty, unit: db.unit, subscription_eligible: !!db.subscription_eligible });
     }
+    // E4.T1: מחירון הסכמי גובר על המחירון הרגיל כשהלקוח משויך לחשבון עסקי פעיל
+    let businessAccount = null;
+    {
+      const { rows: biz } = await client.query(
+        `SELECT ba.id, ba.name FROM business_accounts ba JOIN business_account_users bau ON bau.account_id=ba.id
+         WHERE ba.tenant_id=$1 AND bau.user_id=$2 AND ba.active LIMIT 1`, [tenant.id, req.user.id]);
+      businessAccount = biz[0] || null;
+    }
+    if (businessAccount) {
+      const { rows: bp } = await client.query('SELECT item_id, price FROM business_prices WHERE account_id=$1', [businessAccount.id]);
+      const omap = new Map(bp.map(x => [x.item_id, Number(x.price)]));
+      subtotal = 0;
+      for (const ln of lines) { if (omap.has(ln.item_id)) ln.price = omap.get(ln.item_id); subtotal += Number(ln.price) * Number(ln.qty); }
+    }
     if (!use_subscription && Number(tenant.min_order) > 0 && subtotal < Number(tenant.min_order)) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: `מינימום הזמנה ₪${tenant.min_order}` });
@@ -93,11 +107,11 @@ r.post('/', async (req, res) => {
 
     const { rows: o } = await client.query(
       `INSERT INTO orders(tenant_id, customer_id, source, address, lat, lng, pickup_at, delivery_at,
-        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes, subscription_id)
-       VALUES ($1,$2,$19,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes, subscription_id, business_account_id)
+       VALUES ($1,$2,$19,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$20) RETURNING *`,
       [tenant.id, req.user.id, address, lat || null, lng || null, pickup_at || null, delivery_at || null,
        subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, coupon ? coupon.id : null, notes || null,
-       subscription ? subscription.id : null, source === 'branded' ? 'branded' : 'app']);
+       subscription ? subscription.id : null, source === 'branded' ? 'branded' : 'app', businessAccount ? businessAccount.id : null]);
     const order = o[0];
     for (const ln of lines) {
       await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
