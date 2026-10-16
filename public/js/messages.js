@@ -47,12 +47,9 @@ async function msgMarkUnread(id) {
 }
 
 async function msgDelete(id) {
-  try {
-    await api('/messages/' + id, { method: 'DELETE' });
-    const el = document.getElementById('msg-' + id);
-    if (el) el.remove();
-  } catch (e) { toast(e.message); }
+  try { await api('/messages/' + id, { method: 'DELETE' }); } catch (e) { toast(e.message); }
   msgRefreshBadge();
+  route(); // רענון הרשימה — גם מונה "סמן הכל כנקרא" מתעדכן
 }
 
 async function msgReadAll() {
