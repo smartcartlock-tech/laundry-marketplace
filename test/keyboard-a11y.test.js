@@ -20,3 +20,10 @@ test('keyboard-a11y.js: Esc סוגר, Tab לכוד בדיאלוג, פוקוס ח
   assert.match(js, /modal-ov/, 'generic overlay hook');
   assert.match(js, /#xm-cancel/, 'xmodal cancel');
 });
+
+test('keyboard-a11y.js: ARIA לדיאלוגים — aria-labelledby + שיוך תוויות בתוך overlay', () => {
+  const js = pub('js/keyboard-a11y.js');
+  assert.match(js, /aria-labelledby/, 'dialog labelledby');
+  assert.match(js, /dlg-title-/, 'title id');
+  assert.match(js, /label\.lb:not\(\[for\]\)/, 'label association inside overlays');
+});

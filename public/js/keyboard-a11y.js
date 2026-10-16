@@ -6,11 +6,30 @@
   const topOverlay = () => { const o = document.querySelectorAll('.modal-ov'); return o.length ? o[o.length-1] : null; };
   const visibleFocusables = (dlg) => [...dlg.querySelectorAll(SELECTOR)].filter(el => el.offsetParent !== null);
 
+  // G7: ARIA לדיאלוגים — קישור כותרת (aria-labelledby), שיוך תוויות לשדות, תיאור גוף
+  let dlgSeq = 0;
+  function ariaPass(ov) {
+    const dlg = ov.querySelector('.modal');
+    if (!dlg) return;
+    const title = dlg.querySelector('b');
+    if (title && !dlg.getAttribute('aria-labelledby')) {
+      if (!title.id) title.id = 'dlg-title-' + (++dlgSeq);
+      dlg.setAttribute('aria-labelledby', title.id);
+    }
+    // תווית .lb שאחריה שדה עם id — שיוך for (מודאלים מתווספים ל-body, מחוץ לכיסוי של a11y.js)
+    dlg.querySelectorAll('label.lb:not([for])').forEach(lb => {
+      let el = lb.nextElementSibling;
+      while (el && !/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el = el.nextElementSibling;
+      if (el && el.id) lb.setAttribute('for', el.id);
+    });
+  }
+
   // פתיחה: שמירת הפוקוס הקודם + פוקוס ראשוני בתוך הדיאלוג
   new MutationObserver(muts => {
     for (const m of muts) for (const n of m.addedNodes) {
       if (n.nodeType === 1 && n.classList && n.classList.contains('modal-ov')) {
         focusStack.push(document.activeElement);
+        ariaPass(n);
         const f = n.querySelector('input,button,select,textarea,a[href]');
         if (f) setTimeout(() => f.focus(), 0);
       }
