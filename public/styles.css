@@ -64,7 +64,8 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
  .body .card{max-width:none}
  .kpis{max-width:none}
  #tabs .in{position:static;background:transparent;box-shadow:none;justify-content:center;gap:26px}
- #tabs{position:sticky;top:0;z-index:9;background:#0a4f5c}
+ #tabs{position:fixed;top:0;bottom:auto;left:0;right:0;z-index:60;background:#0a4f5c}
+ #app{padding-top:52px}
  #tabs a{color:#cfe8ee}#tabs a.on{color:#fff;border-top:2px solid #fff}
 }
 /* הרחבות למערכת האמיתית */
