@@ -34,6 +34,7 @@ app.use('/api/t/:slug', require('./routes/issues')); // E9.T1: טיפול מכב
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin', require('./routes/adminplus')); // E7: dashboard/onboarding/sla
+app.use('/api/admin', require('./routes/errlog')); // ניטור: יומן תקלות לאדמין
 app.use('/api/onboard', require('./routes/onboard'));
 app.use('/api/bot', require('./routes/bot'));
 app.use('/api/community', require('./routes/community'));
@@ -69,12 +70,13 @@ setInterval(runMonthlyBilling, 60 * 60 * 1000);
 setTimeout(runRecurring, 15000);
 setInterval(runRecurring, 60 * 60 * 1000);
 
-app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'server error' }); });
+app.use(require('./errlog').errorHandler);
 
 const PORT = process.env.PORT || 3000;
 (async () => {
   await migrate();
   await require('./documents').migrateDocumentIntegrity().catch(e => console.error('[documents] integrity migration failed:', e.message));
+  await require('./errlog').migrateErrorLog().catch(e => console.error('[errlog] migration failed:', e.message));
   if (process.env.SEED_DEMO === 'true') {
     const { rows } = await q('SELECT count(*)::int AS n FROM tenants');
     if (rows[0].n === 0) { await require('./seed').run(); console.log('[db] demo seed done'); }
