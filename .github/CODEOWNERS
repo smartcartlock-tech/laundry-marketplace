@@ -1,0 +1,37 @@
+# בעלות לפי אפיקי התוכנית (docs/UPGRADE-PLAN.md + docs/PILOT-PLAN-PRODUCT-OPS.md)
+# ברירת מחדל: מנהל הפיתוח (אינטגרציה)
+* @smartcartlock-tech
+
+# תשתית, מיגרציות, פריסה — אפיק A (מנהל פיתוח)
+src/migrations/ @smartcartlock-tech
+src/migrate.js @smartcartlock-tech
+src/db.js @smartcartlock-tech
+render.yaml @smartcartlock-tech
+scripts/ @smartcartlock-tech
+
+# מבנה קוד — אפיק G (מנהל פיתוח)
+.github/ @smartcartlock-tech
+docs/DEVELOPMENT.md @smartcartlock-tech
+public/js/core.js @smartcartlock-tech
+public/js/router.js @smartcartlock-tech
+public/index.html @smartcartlock-tech
+public/sw.js @smartcartlock-tech
+
+# אבטחה — אפיקי B,C (מפתח C)
+src/auth.js @smartcartlock-tech
+src/routes/auth.js @smartcartlock-tech
+src/uploads.js @smartcartlock-tech
+src/routes/me.js @smartcartlock-tech
+src/retention.js @smartcartlock-tech
+public/privacy.html @smartcartlock-tech
+public/terms.html @smartcartlock-tech
+
+# ביצועים, גיבוי, בדיקות — אפיקי D,E,F (מפתח F)
+docs/PERF.md @smartcartlock-tech
+docs/RECOVERY.md @smartcartlock-tech
+e2e/ @smartcartlock-tech
+
+# מוצר — תפעול מכבסה/תמיכה/מדידה (מפתח D): קבצי routes ומודולי JS ייעודיים לפי משימה
+# מוצר — הצטרפות ומצב APP_MODE (מפתח A): routes/onboard, tenant-checklist
+src/routes/onboard.js @smartcartlock-tech
+src/routes/tenant-checklist.js @smartcartlock-tech

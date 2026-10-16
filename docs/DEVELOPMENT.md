@@ -31,6 +31,15 @@ npm run test:e2e        # Playwright: דסקטופ + מובייל, מול השר
 - בדיקות: `e2e/smoke.spec.js` (דפים, RTL, חיפוש, SEO, API) ו-`e2e/customer-flow.spec.js` (זרימת הזמנה מלאה דרך UI: סל → OTP דמו → צ'קאאוט → מעקב).
 - בדיקה חיה מול פרודקשן (קריאות + הזמנת דמו שמבוטלת): `BASE=https://laundry-marketplace-ay5h.onrender.com ./scripts/qa-live.sh`
 
+
+## מבנה צד-לקוח (אחרי פיצול F1)
+
+`public/app.js` פוצל ל-16 מודולים ב-`public/js/` (classic scripts, scope משותף, טעינה מסודרת ב-`index.html`). כללים: פיצ'ר צד-לקוח חדש = קובץ JS חדש משלך + שורת טעינה אחת ב-`index.html` · אין עריכת קובץ JS של משימה אחרת בלי תיאום · `core.js` ו-`router.js` בבעלות מנהל הפיתוח.
+
+## מיגרציות (אחרי A2)
+
+הסכימה מנוהלת ב-`src/migrations/*.sql` עם טבלת `schema_migrations`. **מיגרציה חדשה = קובץ חדש עם מספר רץ (`003_name.sql`), אף פעם לא עריכת קובץ קיים.** `src/schema.sql` הוא עותק עיון בלבד ולא מורץ. DB קיים מסומן baseline אוטומטית ב-boot הראשון.
+
 ## CI (GitHub Actions)
 
 ה-workflow מוכן אך **דורש טוקן עם scope של `workflow`** כדי לדחוף אותו (PAT רגיל חסום על ידי GitHub). עד אז — הדביקו את התוכן הבא דרך ממשק הווב של GitHub (Add file → `.github/workflows/ci.yml`), או צרו PAT חדש עם ✓ workflow:
