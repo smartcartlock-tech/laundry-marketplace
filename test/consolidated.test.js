@@ -1,7 +1,8 @@
 // E12.T6: חשבונית מרכזת (בחירת אופן הפקה), קוד אימות + עמוד אימות ציבורי, QR/ברקוד.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { startApp } = require('./helpers');
+const { startApp, TEST_DB } = require('./helpers');
+const { Pool } = require('pg');
 
 async function deliverOrder(api, { owner, customer, courierUser, slug, items, address }) {
   const created = await api('/api/orders', { method: 'POST', token: customer, body: { slug, items, address, payment_method: 'cash' } });
@@ -101,4 +102,31 @@ test('E12.T6: חשבונית מרכזת + אימות ציבורי + מצב הפ�
   assert.equal(o3docs.length, 2, 'חשבונית + קבלה אוטומטיות חזרו לפעול');
   const elig3 = await api('/api/t/achuza/documents/consolidated/eligible', { token: owner });
   assert.ok(!elig3.json.customers.some(c => c.orders.some(o => o.id === o3.id)), 'הזמנה עם מסמך לא זכאית');
+});
+
+test('E12.T7-hotfix: מקור ללא sha256 (דור קדם-QR) מוגש ברינדור חוזר עם רצועת אימות', async (t) => {
+  const { api, schema, base } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const courierUser = await api.login('+972500000004');
+  const page = await api('/api/laundries/achuza');
+  const bag = page.json.items.find(i => i.name.includes('שק'));
+  await api('/api/t/achuza/settings', { method: 'PATCH', token: owner, body: { dealer_type: 'morasha', dealer_id: '512345678' } });
+  const o = await deliverOrder(api, { owner, customer, courierUser, slug: 'achuza', items: [{ item_id: bag.id, qty: 1 }], address: 'דור ישן 1' });
+  const docs = await api('/api/t/achuza/documents', { token: owner });
+  const inv = docs.json.documents.find(d => d.order_id === o.id && d.kind === 'invoice');
+  const rawGet = async () => {
+    const r = await fetch(`${base}/api/t/achuza/documents/${inv.id}/pdf`, { headers: { authorization: 'Bearer ' + owner } });
+    return { status: r.status, buf: Buffer.from(await r.arrayBuffer()) };
+  };
+  const orig = await rawGet();
+  assert.equal(orig.status, 200);
+  // דמיון לדור ישן: מחיקת sha256 (PDF המקור נשאר — רק ההגשה משתנה)
+  const pool = new Pool({ connectionString: TEST_DB, options: `-c search_path=${schema},public` });
+  await pool.query('UPDATE documents SET sha256=NULL WHERE id=$1', [inv.id]);
+  const legacy = await rawGet();
+  await pool.end();
+  assert.equal(legacy.status, 200);
+  assert.ok(legacy.buf.length > 1000 && legacy.buf.slice(0, 5).toString() === '%PDF-');
+  assert.notEqual(legacy.buf.length, orig.buf.length, 'רינדור חוזר (עם QR) שונה מהמקור השמור');
 });

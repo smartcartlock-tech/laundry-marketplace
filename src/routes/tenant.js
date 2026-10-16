@@ -466,7 +466,8 @@ r.get('/documents/:id/pdf', async (req, res) => {
      WHERE d.id=$1 AND d.tenant_id=$2`, [req.params.id, req.tenant.id]);
   const d = rows[0];
   if (!d) return res.status(404).json({ error: 'מסמך לא נמצא' });
-  if (req.query.copy !== '1' && d.pdf) {
+  // מקור: הבייטים המקוריים בלבד; מסמך קדם-רצועת-אימות (sha256 חסר) מרונדר מחדש עם QR/ברקוד ("העתק")
+  if (req.query.copy !== '1' && d.pdf && d.sha256) {
     res.set('content-type', 'application/pdf');
     res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}.pdf"`);
     return res.end(d.pdf);
@@ -478,10 +479,11 @@ r.get('/documents/:id/pdf', async (req, res) => {
     ? covered.map(o => ({ name: `הזמנה #${o.id.slice(0, 8)} · ${new Date(o.created_at).toLocaleDateString('he-IL')}`, qty: 1, price: Number(o.total) }))
     : items;
   const codes = await docVerificationImages(d);
+  const effectiveCopy = req.query.copy === '1' || !d.sha256;
   const pdf = buildDocumentPDF({
     doc: d, order: d.order_id ? { id: d.order_id } : null, items: pdfItems, codes,
     tenant: { name: d.tenant_name, address: d.tenant_address, city: d.tenant_city, color: d.color, dealer_type: d.dealer_type, dealer_id: d.dealer_id },
-    customer: { name: d.customer_name, phone: d.customer_phone }, copy: true,
+    customer: { name: d.customer_name, phone: d.customer_phone }, copy: effectiveCopy,
     note: covered.length ? `חשבונית מרכזת המכסה ${covered.length} הזמנות` : null,
   });
   res.set('content-type', 'application/pdf');

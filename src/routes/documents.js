@@ -41,13 +41,16 @@ async function sendPdf(res, d, copy) {
   const tenant = { name: d.tenant_name, address: d.tenant_address, city: d.tenant_city, color: d.color, dealer_type: d.dealer_type, dealer_id: d.dealer_id };
   const customer = { name: d.customer_name, phone: d.customer_phone };
   const order = d.order_id ? { id: d.order_id } : null;
-  if (!copy && d.pdf) {
+  // מקור: הבייטים המקוריים, בלתי משתנים. מסמך מדור קדם-רצועת-אימות (sha256 חסר)
+  // עובר לרינדור חוזר מאותו צילום עם QR/ברקוד — מסומן "העתק" כנדרש באיפיון.
+  if (!copy && d.pdf && d.sha256) {
     res.set('content-type', 'application/pdf');
     res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}.pdf"`);
     return res.end(d.pdf);
   }
   const codes = await docVerificationImages(d);
-  const pdf = buildDocumentPDF({ doc: d, order, items: pdfItems, tenant, customer, copy: true, codes,
+  const effectiveCopy = copy || !d.sha256;
+  const pdf = buildDocumentPDF({ doc: d, order, items: pdfItems, tenant, customer, copy: effectiveCopy, codes,
     note: covered.length ? `חשבונית מרכזת המכסה ${covered.length} הזמנות` : null });
   res.set('content-type', 'application/pdf');
   res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}-copy.pdf"`);
