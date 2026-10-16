@@ -15,7 +15,8 @@ r.get('/orders', async (req, res) => {
   let where = 'WHERE o.tenant_id=$1';
   if (status) { params.push(status); where += ` AND o.status=$${params.length}`; }
   const { rows } = await q(
-    `SELECT o.*, u.name AS customer_name, u.phone AS customer_phone
+    `SELECT o.*, u.name AS customer_name, u.phone AS customer_phone,
+       EXISTS(SELECT 1 FROM courier_offers co WHERE co.order_id=o.id AND co.status='offered') AS has_open_offer
      FROM orders o JOIN users u ON u.id=o.customer_id ${where} ORDER BY o.created_at DESC LIMIT 200`, params);
   res.json({ orders: rows });
 });
