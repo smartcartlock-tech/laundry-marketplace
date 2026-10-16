@@ -11,17 +11,32 @@ async function cqSync(){
  const q=cqGet();if(!q.length)return 0;
  let done=0;const rest=[];
  for(let i=0;i<q.length;i++){
-  try{await api(q[i].path,q[i].opts);done++}
+  try{
+   if(q[i].kind==='photo'){await cqSyncPhoto(q[i]);done++}
+   else{await api(q[i].path,q[i].opts);done++}
+  }
   catch(e){if(e.status===0){rest.push(...q.slice(i));break}/* שגיאת שרת (למשל 409 כפילות): הפעולה לא תישלח שוב */}
  }
  cqSet(rest);
  return done;
 }
+/* סנכרון צילום אישור מסירה שנשמר לא-מקוון: בניית FormData מחדש מה-blob ב-IndexedDB (courier-offline.js) */
+async function cqSyncPhoto(item){
+ const rec=await coffGetPhoto(item.ref);
+ if(!rec||!rec.blob)return; /* הבלוב כבר טופל */
+ const fd=new FormData();fd.append('method','photo');fd.append('photo',rec.blob,'delivery.jpg');
+ let r;
+ try{r=await fetch('/api/courier/orders/'+item.orderId+'/confirm-delivery',{method:'POST',headers:{authorization:'Bearer '+state.token},body:fd})}
+ catch(e){const ne=new Error('offline');ne.status=0;throw ne} /* רשת — נשאר בתור וב-IndexedDB */
+ await coffDelPhoto(item.ref).catch(()=>{});
+ if(r.ok)return;
+ const se=new Error('server '+r.status);se.status=r.status;throw se; /* שגיאת שרת (כולל 409): לא יישלח שוב */
+}
 window.addEventListener('online',async()=>{
  const n=await cqSync();
  if(n>0){toast('החיבור חזר — סונכרנו '+n+' פעולות ✓');route()}
 });
-function cqBadge(){const n=cqGet().length;return n?`<span class="tag" style="background:#fff3cd;color:#7a5c00">⏳ ${n} ${n===1?'פעולה ממתינה':'פעולות ממתינות'} לסנכרון</span>`:''}
+function cqBadge(){const q=cqGet();const n=q.length;const p=q.filter(x=>x.kind==='photo').length;return n?`<span class="tag" style="background:#fff3cd;color:#7a5c00">⏳ ${n} ${n===1?'פעולה ממתינה':'פעולות ממתינות'} לסנכרון${p?` (${p} ${p===1?'כולל צילום':'כולל צילומים'})`:''}</span>`:''}
 
 function courierSubtabs(on){
  return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a></div>`;
@@ -31,6 +46,7 @@ async function vCourierDay(dayDate){
  if(!state.token)return needLogin();
  let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
  if(!me.courier||!me.courier.approved)return vCourier();
+ coffPersist(); /* אחסון מתמשך לתור הצילומים הלא-מקוון */
  const hq=new URLSearchParams((location.hash.split('?')[1]||''));
  const order=hq.get('order'),olat=hq.get('lat'),olng=hq.get('lng');
  let qs='';
@@ -146,7 +162,15 @@ function courierPhotoDelivery(orderId){
    const j=await r.json().catch(()=>({}));
    if(!r.ok)throw new Error(j.error||'שגיאה בהעלאה');
    done();toast('המסירה אושרה עם צילום ✓');route();
-  }catch(e){toast(e.message)}
+  }catch(e){
+   if(!navigator.onLine||e.name==='TypeError'){ /* כשל רשת: שמירה ב-IndexedDB + סמן בתור המאוחד */
+    try{
+     const ref=await coffSavePhoto(orderId,f);
+     cqPush({kind:'photo',orderId,ref});
+     done();toast('אין חיבור — הצילום נשמר ויישלח כשהחיבור יחזור ✓');route();
+    }catch(ie){toast('שמירה מקומית נכשלה: '+ie.message)}
+   }else toast(e.message)
+  }
  };
 }
 

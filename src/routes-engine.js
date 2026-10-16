@@ -127,7 +127,12 @@ async function buildRoutesForDate(dateStr) {
     }
     await client.query('COMMIT');
     require('./courier-notify').notifyRouteBuilt(built).catch(e => console.error('[notify]', e.message)); // שליחים: התראת משימה חדשה
-  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; }
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    // מיגרציה 045: מרוץ auto-build מקבילי — הצד המפסיד נבלם באילוץ הייחודיות ומקבל skipped ידידותי במקום 500 (לנסות שוב)
+    if (e && e.code === '23505') return { date: day, routes: [], skipped: 'parallel auto-build lost the race; orders already assigned — retry' };
+    throw e;
+  }
   finally { client.release(); }
   return { date: day, routes: built };
 }

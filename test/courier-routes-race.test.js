@@ -30,8 +30,9 @@ test('auto-build מקבילי: הזמנה לא משובצת ליותר ממסל�
   // 6 בניית מסלולים במקביל — הצד המפסיד במרוץ מתבטל (אינדקס ייחודי), בלי שיבוץ כפול
   const results = await Promise.all(Array.from({ length: 6 }, () =>
     api('/api/admin/routes/auto-build', { method: 'POST', token: admin, body: {} })));
-  for (const r of results) assert.ok([200, 500].includes(r.status), 'status בלתי צפוי: ' + r.status);
-  assert.ok(results.some(r => r.status === 200), 'לפחות בניה אחת צריכה להצליח');
+  for (const r of results) assert.equal(r.status, 200, 'status בלתי צפוי: ' + r.status + ' ' + JSON.stringify(r.json));
+  assert.ok(results.some(r => r.json.routes && r.json.routes.length), 'לפחות בניה אחת צריכה לשבץ');
+  for (const r of results) if (!r.json.routes.length) assert.match(r.json.skipped || '', /parallel|no unassigned/, 'skipped בלתי צפוי: ' + r.json.skipped);
 
   const db = new Client({ connectionString: TEST_DB });
   await db.connect();
