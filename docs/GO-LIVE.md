@@ -21,7 +21,7 @@
 
 ## 3. נתונים
 - [ ] גיבוי מלא לפני כל שינוי: `node scripts/backup.js` (מאומת לפי E1)
-- [ ] ניקוי נתוני דמו: `CONFIRM_PURGE_DEMO=yes node scripts/purge-demo.js` — מסיר 4 מכבסות דמו ומשתמשי +9725000000xx
+- [ ] ניקוי נתוני דמו: `CONFIRM_PURGE_DEMO=yes node scripts/purge-demo.js` — מסיר רק טננטים/משתמשים עם is_demo=true; נעצר אם משתמש דמו קשור לטננט שאינו דמו (ראו docs/OPERATIONS.md)
 - [ ] אדמין ראשון: הדיפלוי עם `ADMIN_PHONE` יוצר אדמין אוטומטית ב-boot (בלי SEED_DEMO). כניסה ראשונה דרך OTP אמיתי.
 - [ ] מכבסת הדגל נרשמת דרך זרימת ההצטרפות האמיתית (A1) — לא דרך זריעה
 
