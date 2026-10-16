@@ -856,4 +856,128 @@ async function acctByCode(tid, code) {
   return rows[0] || null;
 }
 
+
+// --- 095: הפקת קבצים במבנה אחיד (OPENFRMT) לפי הוראות גרסה 1.31 ---
+// טיוטה בלבד: שדה רישום התוכנה (1006) מאופס עד לרישום התוכנה ברשות המסים. אין שליחה לרשות.
+const { buildFiles, mainId, DOC_TYPES } = require('../openformat');
+const { safeDecryptField } = require('../fieldcrypto');
+
+const DRAFT_NOTE = 'טיוטה — התוכנה טרם נרשמה ברשות המסים (שדה רישום התוכנה מאופס). הקבצים לעיון ולרואה החשבון בלבד, לא להגשה לרשות.';
+
+async function assembleUniformData(tid, from, to) {
+  const { rows: accounts } = await q(
+    `SELECT a.code, a.name_he,
+       COALESCE(SUM(l.debit - l.credit) FILTER (WHERE e.entry_date < $2), 0) AS opening,
+       COALESCE(SUM(l.debit)  FILTER (WHERE e.entry_date BETWEEN $2 AND $3), 0) AS debit,
+       COALESCE(SUM(l.credit) FILTER (WHERE e.entry_date BETWEEN $2 AND $3), 0) AS credit
+     FROM bk_accounts a
+     LEFT JOIN bk_lines l ON l.account_id = a.id AND l.tenant_id = a.tenant_id
+     LEFT JOIN bk_entries e ON e.id = l.entry_id
+     WHERE a.tenant_id = $1 AND a.active
+     GROUP BY a.code, a.name_he ORDER BY a.code`, [tid, from, to]);
+
+  const { rows: rawLines } = await q(
+    `SELECT e.entry_no, e.entry_date, e.description, e.source, e.created_at,
+            l.debit, l.credit, a.code AS account_code,
+            d.kind AS doc_kind, d.doc_year, d.doc_number,
+            ROW_NUMBER() OVER (PARTITION BY e.id ORDER BY l.id) AS line_no
+     FROM bk_entries e
+     JOIN bk_lines l ON l.entry_id = e.id AND l.tenant_id = e.tenant_id
+     JOIN bk_accounts a ON a.id = l.account_id
+     LEFT JOIN bk_documents d ON d.entry_id = e.id AND d.tenant_id = e.tenant_id
+     WHERE e.tenant_id = $1 AND e.entry_date BETWEEN $2 AND $3
+     ORDER BY e.entry_no, line_no`, [tid, from, to]);
+
+  const lines = rawLines.map((l) => {
+    const debit = Number(l.debit) > 0;
+    const out = {
+      entryNo: l.entry_no, lineNo: Number(l.line_no),
+      typeHe: { manual: 'פקודת יומן', invoice: 'חשבונית', expense: 'הוצאה', bank: 'בנק', reversal: 'סטורנו' }[l.source] || 'פקודת יומן',
+      details: l.description, date: l.entry_date, valueDate: l.entry_date,
+      inputDate: (l.created_at || '').toISOString ? l.created_at.toISOString().slice(0, 10) : String(l.created_at).slice(0, 10),
+      account: l.account_code, side: debit ? 'debit' : 'credit',
+      amount: debit ? Number(l.debit) : Number(l.credit),
+    };
+    if (l.doc_kind && l.doc_number) {
+      out.ref1 = `${l.doc_year}-${l.doc_number}`;
+      out.ref1Type = DOC_TYPES[l.doc_kind];
+    }
+    return out;
+  });
+
+  const { rows: docs } = await q(
+    `SELECT * FROM bk_documents
+     WHERE tenant_id = $1 AND status = 'issued' AND issue_date BETWEEN $2 AND $3
+     ORDER BY doc_year, doc_number`, [tid, from, to]);
+  const docIds = docs.map((d) => d.id);
+  const { rows: docLines } = docIds.length
+    ? await q(`SELECT * FROM bk_document_lines WHERE tenant_id=$1 AND document_id = ANY($2) ORDER BY id`, [tid, docIds])
+    : { rows: [] };
+  const byDoc = {};
+  for (const l of docLines) (byDoc[l.document_id] = byDoc[l.document_id] || []).push(l);
+  const documents = docs.map((d) => ({
+    ...d,
+    customer_tax_id: d.customer_tax_id ? safeDecryptField(d.customer_tax_id, 'customer_tax_id') : null,
+    vat_rate_x100: Number(d.amount_net) > 0 ? Math.round((Number(d.vat_amount) / Number(d.amount_net)) * 10000) : 0,
+    lines: byDoc[d.id] || [],
+  }));
+
+  return { accounts, lines, documents };
+}
+
+r.post('/bookkeeping/uniform-export', async (req, res) => {
+  const tid = req.tenant.id;
+  const { from, to } = req.body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) {
+    return res.status(400).json({ error: 'טווח תאריכים חסר או שגוי (from/to בפורמט YYYY-MM-DD)' });
+  }
+  const dealer = String(req.tenant.dealer_id || '').replace(/\D/g, '');
+  if (!/^\d{9}$/.test(dealer)) {
+    return res.status(409).json({ error: 'לא הוגדר מספר עוסק (9 ספרות) בהגדרות המכבסה — לא ניתן להפיק מבנה אחיד' });
+  }
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mmddhhmm = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const p = {
+    dealer, mainId: mainId(),
+    bizName: req.tenant.name, street: req.tenant.address || '', city: req.tenant.city || '',
+    from, to, now: now.toISOString().slice(0, 10), nowDate: now,
+    dirPath: `OPENFRMT\\${dealer.slice(0, 8)}.${yy}\\${mmddhhmm}`, // סעיף 2.2
+  };
+  const data = await assembleUniformData(tid, from, to);
+  const { iniBuf, zipBuf, counts, total } = buildFiles(p, data);
+  const sha = (b) => require('crypto').createHash('sha256').update(b).digest('hex');
+  const { rows } = await q(
+    `INSERT INTO bk_uniform_exports (tenant_id, from_date, to_date, main_identifier, counts, ini_sha256, zip_sha256, ini_data, zip_data, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at`,
+    [tid, from, to, p.mainId, JSON.stringify({ ...counts, total }), sha(iniBuf), sha(zipBuf), iniBuf, zipBuf, req.user.id]);
+  await audit(req, 'bk_uniform_export', 'bk_uniform_export', rows[0].id, { from, to, counts });
+  res.status(201).json({ id: rows[0].id, draft: true, note: DRAFT_NOTE, from, to, counts: { ...counts, total }, created_at: rows[0].created_at });
+});
+
+r.get('/bookkeeping/uniform-export', async (req, res) => {
+  const { rows } = await q(
+    `SELECT id, from_date, to_date, main_identifier, counts, ini_sha256, zip_sha256, created_at
+     FROM bk_uniform_exports WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.tenant.id]);
+  res.json({ exports: rows, draft: true, note: DRAFT_NOTE });
+});
+
+r.get('/bookkeeping/uniform-export/:id/ini', async (req, res) => {
+  const { rows } = await q(`SELECT ini_data, ini_sha256 FROM bk_uniform_exports WHERE id=$1 AND tenant_id=$2`, [req.params.id, req.tenant.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'הפקה לא נמצאה' });
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="INI.TXT"');
+  res.setHeader('X-Content-SHA256', rows[0].ini_sha256);
+  res.send(rows[0].ini_data);
+});
+
+r.get('/bookkeeping/uniform-export/:id/bkmv', async (req, res) => {
+  const { rows } = await q(`SELECT zip_data, zip_sha256 FROM bk_uniform_exports WHERE id=$1 AND tenant_id=$2`, [req.params.id, req.tenant.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'הפקה לא נמצאה' });
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="BKMVDATA.zip"');
+  res.setHeader('X-Content-SHA256', rows[0].zip_sha256);
+  res.send(rows[0].zip_data);
+});
+
 module.exports = r;

@@ -9,11 +9,10 @@
 
   async function bookkeepingBody(slug){
     const B = `/t/${slug}/bookkeeping`;
-    const [accs, parties, docs, exps, bankTx, tb, pnl, vat, pend, recon] = await Promise.all([
+    const [accs, parties, docs, exps, bankTx, tb, pnl, vat, pend, uni, recon] = await Promise.all([
       api(`${B}/accounts`), api(`${B}/parties`), api(`${B}/documents`), api(`${B}/expenses`),
       api(`${B}/bank/transactions`), api(`${B}/trial-balance`),
-      api(`${B}/reports/pnl`), api(`${B}/reports/vat`), api(`${B}/reports/pending-allocation`),
-      api(`${B}/bank/reconciliation`),
+      api(`${B}/reports/pnl`), api(`${B}/reports/vat`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
     ]);
     const supOpts = parties.parties.filter(p => p.kind === 'supplier' && p.active)
       .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
@@ -97,6 +96,20 @@
     <div class="card"><div class="sec">דוחות · מתחילת שנה</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn2" data-bk-act="csv-accountant">ייצוא לרואה חשבון CSV</button>
+      </div>
+      <div style="border:1px solid #e3edf0;border-radius:8px;padding:8px;margin-bottom:8px">
+        <b>מבנה אחיד (OPENFRMT) — טיוטה</b>
+        <div class="mut" style="margin:4px 0">התוכנה טרם נרשמה ברשות המסים, ולכן שדה רישום התוכנה מאופס. הקבצים לעיון ולרואה החשבון, לא להגשה.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <input class="inp" id="bk-uni-from" type="date" style="width:140px">
+          <input class="inp" id="bk-uni-to" type="date" style="width:140px">
+          <button class="btn2 on" data-bk-act="uniform-gen">הפקת INI.TXT + BKMVDATA.zip</button>
+        </div>
+        ${(uni.exports && uni.exports.length) ? `<table class="tbl" style="margin-top:6px"><tr><th>טווח</th><th>הופק</th><th>רשומות</th><th>הורדה</th></tr>${uni.exports.slice(0, 5).map(x => `
+          <tr><td>${esc(x.from_date.slice(0, 10))} — ${esc(x.to_date.slice(0, 10))}</td>
+            <td>${esc(x.created_at.slice(0, 10))}</td><td>${(x.counts && x.counts.total) || 0}</td>
+            <td><button class="btn2" data-bk-act="uniform-dl-ini" data-id="${x.id}">INI.TXT</button>
+                <button class="btn2" data-bk-act="uniform-dl-bkmv" data-id="${x.id}">BKMVDATA.zip</button></td></tr>`).join('')}</table>` : ''}
       </div>
       <div class="row"><div><b>הכנסות</b></div><div><b>${money(pnl.total_income)}</b></div></div>
       ${pnlIncRows ? `<table class="tbl">${pnlIncRows}</table>` : ''}
@@ -187,6 +200,15 @@
         toast('התנועה נרשמה בספר'); route();
       } else if (act === 'csv-accountant'){
         downloadCsv(`${B}/accountant-export.csv`, 'bookkeeping-export.csv');
+      } else if (act === 'uniform-gen'){
+        const from = val('bk-uni-from'), to = val('bk-uni-to');
+        if (!from || !to) { toast('לבחור טווח תאריכים'); return; }
+        const r = await api(`${B}/uniform-export`, { method: 'POST', body: JSON.stringify({ from, to }) });
+        toast(`הופק (טיוטה): ${r.counts.total} רשומות`); route();
+      } else if (act === 'uniform-dl-ini'){
+        downloadCsv(`${B}/uniform-export/${id}/ini`, 'INI.TXT');
+      } else if (act === 'uniform-dl-bkmv'){
+        downloadCsv(`${B}/uniform-export/${id}/bkmv`, 'BKMVDATA.zip');
       }
     }catch(e){ toast(e.message || 'שגיאה'); }
   });

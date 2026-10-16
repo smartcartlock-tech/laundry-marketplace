@@ -18,6 +18,7 @@ const TENANT_GETS = [
   '/bookkeeping/bank/transactions', '/bookkeeping/bank/reconciliation',
   '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
   '/bookkeeping/accountant-export.csv',
+  '/bookkeeping/uniform-export', '/bookkeeping/uniform-export/x/ini', '/bookkeeping/uniform-export/x/bkmv',
 ];
 // מודול הנה"ח (K) — בדיקה שגם staff (חבר, לא בעלים) נדחה, לא רק זר
 const BOOKKEEPING_GETS = ['/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries', '/bookkeeping/trial-balance', '/bookkeeping/periods'];
@@ -35,6 +36,7 @@ const TENANT_WRITES = [
   ['POST', '/bookkeeping/expenses/x/void', {}],
   ['POST', '/bookkeeping/documents', {}], ['POST', '/bookkeeping/documents/x/allocate', {}],
   ['POST', '/bookkeeping/documents/x/issue', {}], ['POST', '/bookkeeping/documents/x/cancel', {}],
+  ['POST', '/bookkeeping/uniform-export', {}],
 ];
 
 test('סריקת בידוד: זר לא מקבל דבר מאף נתיב טננטי', async (t) => {
