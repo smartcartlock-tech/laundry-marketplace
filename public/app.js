@@ -82,7 +82,7 @@ function renderTabs(route){
  const T=[['#/','⌂','בית']];
  if(state.token)T.push(['#/orders','▤','הזמנות'],['#/club','★','מועדון']);
  if(state.courier)T.push(['#/courier','▸','שליח']);
- if(state.memberships&&state.memberships.length)T.push(['#/manage','⚙','ניהול']);
+ if(state.memberships&&state.memberships.length)T.push(['#/community','✦','קהילה'],['#/manage','⚙','ניהול']);
  if(state.me&&state.me.role==='admin')T.push(['#/admin','▣','אדמין']);
  $('#tabs').innerHTML='<div class="in">'+T.map(t=>`<a href="${t[0]}" class="${route===t[0]||(t[0]!=='#/'&&route.startsWith(t[0]))?'on':''}"><span class="ic">${t[1]}</span>${t[2]}</a>`).join('')+'</div>';
 }
@@ -544,6 +544,135 @@ async function courierRegister(){
   state.courier={id:d.courier.id,model:d.courier.model,approved:false};save();
   toast('הבקשה נשלחה לאישור');route();
  }catch(e){toast(e.message)}
+}
+/* ---- E6: קהילת מכבסות (B2B) ---- */
+const FORUM_CATS=[['operations','תפעול'],['suppliers','ספקים'],['group_purchase','רכש משותף'],['pricing','תמחור']];
+const CONTENT_CATS={article:'מאמר',guide:'מדריך',standard:'תקן',news:'חדשות'};
+async function vCommunity(sub,id){
+ if(!state.token)return needLogin();
+ sub=sub||'forum';
+ const tabs=[['forum','פורום'],['tenders','מכרזים'],['groups','רכש משותף'],['capacity','קיבולת'],['content','תוכן']];
+ let body='';
+ try{
+ if(sub==='forum'){
+  const cat=new URLSearchParams(location.hash.split('?')[1]||'').get('cat')||'';
+  const d=await api('/community/forum/posts'+(cat?'?category='+cat:''));
+  body=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><a class="chip ${!cat?'on':''}" href="#/community/forum">הכל</a>${FORUM_CATS.map(c=>`<a class="chip ${cat===c[0]?'on':''}" href="#/community/forum?cat=${c[0]}">${c[1]}</a>`).join('')}
+   <button class="btn2 on" style="margin-right:auto" onclick="forumNewPost()">+ פוסט חדש</button></div>
+  ${d.posts.map(p=>`<a href="#/community/post/${p.id}" style="text-decoration:none;color:inherit"><div class="card">
+    <b>${esc(p.title)}</b> <span class="tag tb">${(FORUM_CATS.find(c=>c[0]===p.category)||['',''])[1]}</span>
+    <div class="mut">${esc(p.excerpt)}${p.excerpt&&p.excerpt.length>=200?'…':''}</div>
+    <div class="mut">${esc(p.author_name||'')} · <b>${esc(p.tenant_name)}</b> ✓ · ${fmtDate(p.created_at)} · 👍 ${p.useful} · 💬 ${p.comments}</div></div></a>`).join('')||'<div class="card mut">אין פוסטים עדיין — היו הראשונים לשתף</div>'}`;
+ } else if(sub==='post'){
+  const d=await api('/community/forum/posts/'+id);
+  const p=d.post;
+  body=`<a href="#/community/forum" style="color:#0e7a8a">← חזרה לפורום</a>
+  <div class="card"><b style="font-size:17px">${esc(p.title)}</b> <span class="tag tb">${(FORUM_CATS.find(c=>c[0]===p.category)||['',''])[1]}</span>
+   <div class="mut">${esc(p.author_name||'')} · <b>${esc(p.tenant_name)}</b> ✓ · ${fmtDT(p.created_at)}</div>
+   <div style="margin:10px 0;white-space:pre-wrap">${esc(p.body)}</div>
+   <button class="btn2" onclick="forumUseful('${p.id}')">👍 שימושי (${p.useful})${p.voted?' ✓':''}</button></div>
+  <div class="sec">תגובות (${d.comments.length})</div>
+  ${d.comments.map(c=>`<div class="card"><div class="mut"><b>${esc(c.author_name||'')}</b> · ${esc(c.tenant_name)} ✓ · ${fmtDT(c.created_at)}</div><div style="white-space:pre-wrap">${esc(c.body)}</div></div>`).join('')}
+  <div class="card"><input class="inp" id="fc-body" placeholder="כתבו תגובה…"><button class="btn2 on" onclick="forumComment('${p.id}')">פרסום תגובה</button></div>`;
+ } else if(sub==='tenders'){
+  const d=await api('/community/tenders');
+  body=`<button class="btn2 on" onclick="tenderNew()">+ פרסום מכרז</button>
+  ${d.tenders.map(t=>`<a href="#/community/tender/${t.id}" style="text-decoration:none;color:inherit"><div class="card">
+    <b>${esc(t.title)}</b> <span class="tag ${t.status==='open'?'tg':t.status==='awarded'?'tb':'ta'}">${t.status==='open'?'פתוח':t.status==='awarded'?'נבחר זוכה':'סגור'}</span>
+    <div class="mut">${esc(t.poster_name)}${t.volume_kg?' · '+t.volume_kg+' ק"ג':''}${t.frequency?' · '+esc(t.frequency):''}${t.budget?' · תקציב ₪'+t.budget:''} · הגשה עד ${fmtDT(t.deadline)} · ${t.bids} הצעות</div></div></a>`).join('')||'<div class="card mut">אין מכרזים</div>'}`;
+ } else if(sub==='tender'){
+  const d=await api('/community/tender/'+id);
+  const t=d.tender;
+  body=`<a href="#/community/tenders" style="color:#0e7a8a">← חזרה למכרזים</a>
+  <div class="card"><b style="font-size:17px">${esc(t.title)}</b> <span class="tag ${t.status==='open'?'tg':'ta'}">${t.status==='open'?'פתוח':t.status==='awarded'?'נבחר זוכה':'סגור'}</span>
+   <div class="mut">${esc(t.poster_name)} · הגשה עד ${fmtDT(t.deadline)}</div>
+   ${t.description?`<div style="margin:8px 0;white-space:pre-wrap">${esc(t.description)}</div>`:''}
+   <div class="mut">${[t.volume_kg&&'נפח '+t.volume_kg+' ק"ג',t.frequency,t.sla_text&&'SLA: '+t.sla_text,t.budget&&'תקציב ₪'+t.budget].filter(Boolean).map(esc).join(' · ')}</div></div>
+  <div class="sec">הצעות (${d.bids_count})</div>
+  ${d.bids.map(b=>`<div class="card"><div class="row"><div><b>₪${b.price_per_kg}</b> לק"ג ${b.is_winner?'<span class="tag tg">זוכה ✓</span>':''}
+    <div class="mut">${esc(b.bidder_name)} · ${fmtDT(b.created_at)}${b.notes?' · '+esc(b.notes):''}</div></div>
+    ${d.is_poster&&t.status==='open'?`<button class="btn2 green" onclick="tenderAward('${t.id}','${b.id}')">בחירה כזוכה</button>`:''}</div></div>`).join('')||'<div class="card mut">אין הצעות עדיין</div>'}
+  ${!d.is_poster&&t.status==='open'?`<div class="card"><label class="lb">הגשת הצעה — מחיר לק"ג</label>
+   <div style="display:flex;gap:6px"><input class="inp" id="tb-price" type="number" step="0.1" placeholder="₪" style="flex:1"><input class="inp" id="tb-notes" placeholder="הערות" style="flex:2"></div>
+   <button class="btn2 on" onclick="tenderBid('${t.id}')">הגשת הצעה</button></div>`:''}`;
+ } else if(sub==='groups'){
+  const d=await api('/community/groups');
+  body=`<button class="btn2 on" onclick="groupNew()">+ קבוצת רכש חדשה</button>
+  ${d.groups.map(g=>`<div class="card"><b>${esc(g.product)}</b> ${g.status!=='open'?'<span class="tag ta">נסגר</span>':g.participants>=g.target_participants?'<span class="tag tg">היעד הושג!</span>':''}
+   <div class="mut">${esc(g.creator_name)}${g.supplier?' · ספק: '+esc(g.supplier):''} · מחיר רגיל ₪${g.unit_price} → <b>מחיר קבוצה ₪${g.group_price}</b></div>
+   <div class="mut">${g.participants}/${g.target_participants} משתתפים · ${g.total_qty} יח' · חיסכון משוער: <b>₪${Math.round(g.est_savings)}</b> · סגירה ${fmtDate(g.deadline)}</div>
+   <div style="display:flex;gap:6px;margin-top:6px">${g.status==='open'?(g.joined?`<button class="btn2" onclick="groupLeave('${g.id}')">עזיבה</button>`:`<input class="inp" id="gq-${g.id}" type="number" value="10" style="width:80px"><button class="btn2 green" onclick="groupJoin('${g.id}')">הצטרפות</button>`):''}</div></div>`).join('')||'<div class="card mut">אין קבוצות רכש</div>'}`;
+ } else if(sub==='capacity'){
+  const d=await api('/community/capacity');
+  body=`<button class="btn2 on" onclick="capacityNew()">+ מודעת קיבולת</button>
+  ${d.posts.map(p=>`<div class="card"><b>${p.kind==='request'?'מבוקש':'מוצע'}: ${esc(p.equipment)}</b> <span class="tag ${p.status==='open'?'tg':p.status==='engaged'?'tb':'ta'}">${p.status==='open'?'פתוח':p.status==='engaged'?'בהתקשרות':'נסגר'}</span>
+   <div class="mut">${esc(p.tenant_name)} (${esc(p.tenant_city||'')})${p.kg_per_day?' · '+p.kg_per_day+' ק"ג/יום':''}${p.days?' · '+p.days+' ימים':''}${p.area?' · '+esc(p.area):''}${p.price?' · ₪'+p.price:''}</div>
+   ${p.notes?`<div class="mut">${esc(p.notes)}</div>`:''}
+   ${(p.engagements||[]).map(e=>`<div class="mut">התקשרות עם ${esc(e.tenant)} — ${e.status==='done'?`הושלם ✓${e.payment_demo?' · תשלום דמו ₪'+e.payment_demo:''}`:'פעילה'} ${e.status==='active'?`<button class="btn2" onclick="capacityDone('${e.id}')">סימון הושלם + תשלום דמו</button>`:''}</div>`).join('')}
+   ${p.status==='open'?`<button class="btn2 green" style="margin-top:6px" onclick="capacityEngage('${p.id}','${p.kind}')">${p.kind==='request'?'הצעת קיבולת':'בקשת קיבולת'}</button>`:''}</div>`).join('')||'<div class="card mut">אין מודעות קיבולת</div>'}`;
+ } else if(sub==='content'){
+  const d=await api('/community/content');
+  body=(state.me&&state.me.role==='admin'?`<button class="btn2 on" onclick="contentNew()">+ פרסום תוכן</button>`:'')+
+  `${d.articles.map(a=>`<a href="#/community/article/${a.id}" style="text-decoration:none;color:inherit"><div class="card">
+    <b>${esc(a.title)}</b> <span class="tag tb">${CONTENT_CATS[a.category]||a.category}</span>
+    <div class="mut">${esc(a.excerpt)}${a.excerpt&&a.excerpt.length>=200?'…':''}</div>
+    <div class="mut">${esc(a.author_name||'')} · ${fmtDate(a.created_at)} · 👁 ${a.views}</div></div></a>`).join('')||'<div class="card mut">אין תוכן עדיין</div>'}`;
+ } else if(sub==='article'){
+  const d=await api('/community/article/'+id);
+  body=`<a href="#/community/content" style="color:#0e7a8a">← חזרה לתוכן</a>
+  <div class="card"><b style="font-size:17px">${esc(d.article.title)}</b> <span class="tag tb">${CONTENT_CATS[d.article.category]}</span>
+   <div class="mut">${esc(d.article.author_name||'')} · ${fmtDate(d.article.created_at)} · 👁 ${d.article.views}</div>
+   <div style="margin-top:10px;white-space:pre-wrap">${esc(d.article.body)}</div></div>`;
+ }
+ }catch(e){
+  if(e.status===403)body=`<div class="card mut">הקהילה פתוחה לבעלי מכבסות מאומתים בלבד. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a></div>`;
+  else throw e;
+ }
+ return `<div class="hdr"><h2>קהילת המכבסות</h2></div>
+ <div class="body">${!['post','tender','article'].includes(sub)?`<div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/community/${t[0]}">${t[1]}</a>`).join('')}</div>`:''}${body}</div>`;
+}
+async function forumNewPost(){
+ const v=await xmodal({title:'פוסט חדש',okText:'פרסום',fields:[{id:'title',label:'כותרת'},{id:'body',label:'תוכן'}]});
+ if(!v)return;
+ const cat=await xmodal({title:'קטגוריה',body:'כתבו: operations / suppliers / group_purchase / pricing',okText:'פרסום',fields:[{id:'cat',label:'קטגוריה',value:'suppliers'}]});
+ if(!cat)return;
+ try{const r=await api('/community/forum/posts',{method:'POST',body:JSON.stringify({category:cat.cat,title:v.title,body:v.body})});toast('הפוסט פורסם');go('#/community/post/'+r.post.id);route()}catch(e){toast(e.message)}
+}
+async function forumComment(id){try{await api('/community/forum/posts/'+id+'/comments',{method:'POST',body:JSON.stringify({body:$('#fc-body').value})});route()}catch(e){toast(e.message)}}
+async function forumUseful(id){try{await api('/community/forum/posts/'+id+'/useful',{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
+async function tenderNew(){
+ const v=await xmodal({title:'פרסום מכרז',okText:'פרסום',fields:[{id:'title',label:'כותרת'},{id:'volume_kg',label:'נפח ק"ג',type:'number'},{id:'frequency',label:'תדירות (שבועי/חודשי)'},{id:'budget',label:'תקציב ₪',type:'number'},{id:'days',label:'ימים להגשה',value:'7',type:'number'}]});
+ if(!v)return;
+ try{await api('/community/tenders',{method:'POST',body:JSON.stringify({title:v.title,volume_kg:v.volume_kg||undefined,frequency:v.frequency||undefined,budget:v.budget||undefined,deadline:new Date(Date.now()+(Number(v.days)||7)*86400e3).toISOString()})});toast('המכרז פורסם');route()}catch(e){toast(e.message)}
+}
+async function tenderBid(id){try{await api('/community/tenders/'+id+'/bids',{method:'POST',body:JSON.stringify({price_per_kg:$('#tb-price').value,notes:$('#tb-notes').value||undefined})});toast('ההצעה הוגשה');route()}catch(e){toast(e.message)}}
+async function tenderAward(tid,bid){if(!await xconfirm('בחירת הזוכה תסגור את המכרז.',{title:'בחירת זוכה',okText:'בחירה'}))return;try{await api('/community/tenders/'+tid+'/award',{method:'POST',body:JSON.stringify({bid_id:bid})});toast('הזוכה נבחר');route()}catch(e){toast(e.message)}}
+async function groupNew(){
+ const v=await xmodal({title:'קבוצת רכש חדשה',okText:'פתיחה',fields:[{id:'product',label:'מוצר'},{id:'supplier',label:'ספק'},{id:'unit_price',label:'מחיר רגיל ₪',type:'number'},{id:'group_price',label:'מחיר קבוצה ₪',type:'number'},{id:'target',label:'יעד משתתפים',value:'3',type:'number'},{id:'days',label:'ימים לסגירה',value:'7',type:'number'}]});
+ if(!v)return;
+ try{await api('/community/groups',{method:'POST',body:JSON.stringify({product:v.product,supplier:v.supplier||undefined,unit_price:v.unit_price,group_price:v.group_price,target_participants:v.target||undefined,deadline:new Date(Date.now()+(Number(v.days)||7)*86400e3).toISOString()})});toast('הקבוצה נפתחה');route()}catch(e){toast(e.message)}
+}
+async function groupJoin(id){try{await api('/community/groups/'+id+'/join',{method:'POST',body:JSON.stringify({qty:$('#gq-'+id).value})});toast('הצטרפת לקבוצה');route()}catch(e){toast(e.message)}}
+async function groupLeave(id){try{await api('/community/groups/'+id+'/leave',{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
+async function capacityNew(){
+ const v=await xmodal({title:'מודעת קיבולת',body:'kind: request (מבוקש) / offer (מוצע)',okText:'פרסום',fields:[{id:'kind',label:'סוג',value:'request'},{id:'equipment',label:'ציוד (מכונה 18 ק"ג...)'},{id:'kg_per_day',label:'ק"ג ליום',type:'number'},{id:'days',label:'ימים',type:'number'},{id:'area',label:'אזור'},{id:'price',label:'מחיר ₪',type:'number'}]});
+ if(!v)return;
+ try{await api('/community/capacity',{method:'POST',body:JSON.stringify({kind:v.kind,equipment:v.equipment,kg_per_day:v.kg_per_day||undefined,days:v.days||undefined,area:v.area||undefined,price:v.price||undefined})});toast('המודעה פורסמה');route()}catch(e){toast(e.message)}
+}
+async function capacityEngage(id,kind){
+ const v=await xmodal({title:kind==='request'?'הצעת קיבולת':'בקשת קיבולת',okText:'התקשרות',fields:[{id:'price',label:'מחיר מוסכם ₪',type:'number'}]});
+ if(!v)return;
+ try{await api('/community/capacity/'+id+'/engage',{method:'POST',body:JSON.stringify({agreed_price:v.price||undefined})});toast('נוצרה התקשרות');route()}catch(e){toast(e.message)}
+}
+async function capacityDone(eid){
+ const v=await xmodal({title:'סיום התקשרות',body:'התשלום מתועד כדמו בלבד.',okText:'סיום',fields:[{id:'payment',label:'תשלום דמו ₪',type:'number'}]});
+ if(!v)return;
+ try{await api('/community/capacity/engagements/'+eid+'/done',{method:'POST',body:JSON.stringify({payment_demo:v.payment||undefined})});toast('ההתקשרות הושלמה');route()}catch(e){toast(e.message)}
+}
+async function contentNew(){
+ const v=await xmodal({title:'פרסום תוכן',body:'קטגוריה: article / guide / standard / news',okText:'פרסום',fields:[{id:'category',label:'קטגוריה',value:'article'},{id:'title',label:'כותרת'},{id:'body',label:'תוכן'}]});
+ if(!v)return;
+ try{await api('/community/content',{method:'POST',body:JSON.stringify({category:v.category,title:v.title,body:v.body})});toast('התוכן פורסם');route()}catch(e){toast(e.message)}
 }
 async function vManage(sub){
  if(!state.token)return needLogin();
@@ -1140,7 +1269,8 @@ async function route(){
   else if(parts[0]==='orders')html=await vOrders();
   else if(parts[0]==='club')html=await vClub();
   else if(parts[0]==='courier')html=await vCourier(parts[1]);
-  else if(parts[0]==='manage')html=await vManage(parts[1]);
+  else if(parts[0]==='community')html=await vCommunity(parts[1],parts[2]);
+ else if(parts[0]==='manage')html=await vManage(parts[1]);
   else if(parts[0]==='admin'&&parts[1]==='tenant')html=await vAdminTenant(parts[2]);
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);
   else if(parts[0]==='join')html=await vJoin();

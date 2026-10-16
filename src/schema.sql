@@ -425,6 +425,7 @@ CREATE TABLE IF NOT EXISTS courier_tenant_ratings (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(courier_id, order_id)
 );
+<<<<<<< HEAD
 -- E3: דף עסקי ממותג (White Label)
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slogan text;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp text;
@@ -436,3 +437,122 @@ ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check;
 ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('app','bot','admin','branded'));
 INSERT INTO platform_settings(key, value) VALUES ('branded_commission_pct','5'), ('marketplace_commission_pct','12')
 ON CONFLICT (key) DO NOTHING;
+=======
+
+-- E6.T1: פורום מנהלים
+CREATE TABLE IF NOT EXISTS forum_posts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category text NOT NULL CHECK (category IN ('operations','suppliers','group_purchase','pricing')),
+  title text NOT NULL,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS forum_posts_idx ON forum_posts(category, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS forum_comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id uuid NOT NULL REFERENCES forum_posts(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS forum_votes (
+  post_id uuid NOT NULL REFERENCES forum_posts(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (post_id, user_id)
+);
+
+-- E6.T2: מכרזים
+CREATE TABLE IF NOT EXISTS tenders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,  -- המפרסם (מכבסה; חשבון עסקי — בעתיד E4)
+  poster_type text NOT NULL DEFAULT 'laundry' CHECK (poster_type IN ('laundry','business')),
+  business_account_id uuid,          -- יקושר כש-E4.T1 יגיע
+  title text NOT NULL,
+  description text,
+  volume_kg numeric(9,1),
+  frequency text,                    -- שבועי/דו-שבועי/חודשי
+  sla_text text,
+  budget numeric(10,2),
+  deadline timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','awarded','closed','cancelled')),
+  winner_bid_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tender_bids (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tender_id uuid NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  price_per_kg numeric(8,2) NOT NULL,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(tender_id, tenant_id)
+);
+ALTER TABLE tenders DROP CONSTRAINT IF EXISTS tenders_winner_bid_id_fkey;
+ALTER TABLE tenders ADD CONSTRAINT tenders_winner_bid_id_fkey FOREIGN KEY (winner_bid_id) REFERENCES tender_bids(id);
+
+-- E6.T3: רכש משותף
+CREATE TABLE IF NOT EXISTS purchase_groups (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  product text NOT NULL,
+  supplier text,
+  unit_price numeric(8,2) NOT NULL,   -- מחיר רגיל
+  group_price numeric(8,2) NOT NULL,  -- מחיר קבוצה
+  target_participants int NOT NULL DEFAULT 3,
+  deadline timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed','cancelled')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS purchase_group_members (
+  group_id uuid NOT NULL REFERENCES purchase_groups(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  qty numeric(9,1) NOT NULL DEFAULT 1,
+  joined_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (group_id, tenant_id)
+);
+
+-- E6.T4: גלוס קיבולת
+CREATE TABLE IF NOT EXISTS capacity_posts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('request','offer')),
+  equipment text NOT NULL,           -- מכונה 18 ק"ג, מגהץ...
+  kg_per_day numeric(8,1),
+  days int,
+  area text,
+  price numeric(9,2),                -- מחיר מוצע/מבוקש
+  notes text,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','engaged','closed')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS capacity_engagements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id uuid NOT NULL REFERENCES capacity_posts(id) ON DELETE CASCADE,
+  counter_tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  agreed_price numeric(9,2),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','done','cancelled')),
+  payment_demo numeric(9,2),         -- תשלום דמו שתועד
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- E6.T5: תוכן ענפי
+CREATE TABLE IF NOT EXISTS content_articles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_id uuid NOT NULL REFERENCES users(id),
+  category text NOT NULL CHECK (category IN ('article','guide','standard','news')),
+  title text NOT NULL,
+  body text NOT NULL,
+  views int NOT NULL DEFAULT 0,
+  published boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+>>>>>>> 4eb9e4a (E6.T1-T5: B2B community layer — managers forum, tenders with bid comparison & deadline lock, group purchasing, capacity exchange with demo payment, industry content (admin-published, members-only))

@@ -20,6 +20,7 @@ app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/onboard', require('./routes/onboard'));
 app.use('/api/bot', require('./routes/bot'));
+app.use('/api/community', require('./routes/community'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
