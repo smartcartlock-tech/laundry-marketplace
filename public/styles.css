@@ -145,7 +145,7 @@ body.mode-demo{padding-top:29px}
 }
 
 /* הצעות חיפוש חכמות — תיבת השלמה מתחת לשורת החיפוש */
-.search-suggest{position:absolute;top:100%;right:0;left:0;margin-top:6px;background:#fff;border:1px solid #e2eaee;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;list-style:none;overflow:hidden;text-align:right}
+.search-suggest{position:absolute;top:100%;right:0;left:0;margin-top:6px;background:#fff;color:#17303a;border:1px solid #e2eaee;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:80;list-style:none;overflow:hidden;text-align:right}
 .search-suggest li{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;font-size:13.5px}
 .search-suggest li.active,.search-suggest li:hover{background:#eef6f7}
 .search-suggest .ss-type{font-size:10.5px;color:#fff;background:#5c6b76;border-radius:8px;padding:2px 8px;font-weight:700;margin-inline-start:auto}
