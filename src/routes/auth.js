@@ -53,8 +53,8 @@ r.post('/otp/verify', async (req, res) => {
         ? await q('INSERT INTO users(email, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null])
         : await q('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null]);
       u = ins.rows;
-    } else if (req.body.name && req.body.name.trim()) {
-      // עדכון שם גם למשתמש קיים (למשל אם נרשם בלי שם או עם שם דמו)
+    } else if (req.body.name && req.body.name.trim() && !u[0].name) {
+      // השלמת שם רק אם חסר — לא דורסים שם קיים של משתמש (QA2.T1)
       const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
       u = upd.rows;
     }

@@ -116,7 +116,7 @@ function buildReceiptPDF({ order, items, tenant, customer }) {
   for (const it of items) {
     const y = doc.y;
     doc.font('heb').text(money(Number(it.price) * Number(it.qty)), 50, y, { lineBreak: false });
-    doc.font('he').text(`x${it.qty}`, 130, y, { lineBreak: false });
+    const qn = Number(it.qty); doc.font('he').text(`x${qn % 1 ? qn : Math.round(qn)}`, 130, y, { lineBreak: false });
     const h = drawRtl(doc, it.name, PAGE_RIGHT, y);
     doc.y = Math.max(y + h, y + 16);
   }

@@ -32,6 +32,7 @@ async function api(path,opts={}){
  return data;
 }
 function go(h){location.hash=h}
+function fmtQ(q){const n=Number(q);return (n%1)?String(n):String(Math.round(n))}
 const HE={new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
 const FLOW=['new','confirmed','picked_up','in_work','ready','out_for_delivery','delivered'];
 const WD=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
@@ -65,7 +66,7 @@ function vLogin(){
   const items=state.cart.filter(c=>c.slug===m[1]);
   if(items.length){
    const sum=items.reduce((a,c)=>a+c.price*c.qty,0);
-   ctx=`<div class="note" style="margin-bottom:10px">הסל שלך שמור: ${items.map(c=>esc(c.name)+' ×'+c.qty).join(', ')} (₪${sum}). אחרי הכניסה נחזור ישר לסיכום ההזמנה. <a href="#/laundry/${m[1]}" style="color:#0e7a8a">חזרה לדף המכבסה</a></div>`;
+   ctx=`<div class="note" style="margin-bottom:10px">הסל שלך שמור: ${items.map(c=>esc(c.name)+' ×'+fmtQ(c.qty)).join(', ')} (₪${sum}). אחרי הכניסה נחזור ישר לסיכום ההזמנה. <a href="#/laundry/${m[1]}" style="color:#0e7a8a">חזרה לדף המכבסה</a></div>`;
   }
  }
  return `<div class="hdr" style="text-align:center;padding-top:34px">
@@ -196,11 +197,11 @@ async function vCheckout(slug){
  let points=0;
  try{const cl=await api('/orders/club/summary');const b=cl.balances.find(x=>x.slug===slug);points=b?b.balance:0}catch(e){}
  const maxRedeem=Math.min(points,Math.floor(subtotal*(l.points_redeem_max_pct??0.2)));
- const winOpts=kind=>d.windows.filter(w=>w.kind===kind&&w.weekday!==6).map(w=>{const dt=new Date(nextWindowDate(w.weekday,w.start_time));const dstr=dt.toLocaleDateString('he-IL',{day:'numeric',month:'numeric'});return `<option value="${w.weekday}|${w.start_time}">${WD[w.weekday]} ${dstr} · ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</option>`}).join('');
+ const winOpts=kind=>d.windows.filter(w=>w.kind===kind&&w.weekday!==6).map(w=>{const dt=new Date(nextWindowDate(w.weekday,w.start_time));const dstr=dt.toLocaleDateString('he-IL',{day:'numeric',month:'numeric'});return `<option value="${w.weekday}|${w.start_time}">${WD[w.weekday]} ${dstr} · \u2066${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}\u2069</option>`}).join('');
  return `<div class="hdr"><h2><a href="#/laundry/${slug}" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה — ${esc(l.name)}</h2></div>
  <div class="body">
   <div class="card">
-   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${c.qty}${c.unit==='kg'?' ק״ג':''} × ₪${c.price}</div></div>`).join('')}
+   ${items.map(c=>`<div class="row"><div>${esc(c.name)}</div><div>${fmtQ(c.qty)}${c.unit==='kg'?' ק״ג':''} × ₪${c.price}</div></div>`).join('')}
    <div class="row"><div class="mut">סכום ביניים</div><div>₪${subtotal}</div></div>
    <div class="row"><div class="mut">שליחות</div><div>₪${l.delivery_fee||0}</div></div>
    <div class="row" id="co-coupon-row" style="display:none"><div class="mut">הנחת קופון <b id="co-coupon-code"></b></div><div id="co-coupon-disc" style="color:#0a7">−₪0</div></div>
@@ -280,7 +281,7 @@ async function vOrders(){
   ${r.orders.map(o=>`<div class="card lcard" style="cursor:pointer" onclick="go('#/orders/${o.id}')">
     <span class="logo sm" style="background:${o.color||'#0e7a8a'}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
-    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+i.qty).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div></div>
+    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div></div>
     <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'}
  </div>`;
 }
@@ -389,7 +390,7 @@ async function vManage(sub){
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
      <div><b dir="ltr">#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
       <div class="mut">${fmtDT(o.created_at)} · ₪${o.total} · ${esc(o.address)}${o.source==='bot'?' · מהבוט':''}</div>
-      ${o.items&&o.items.length?`<div class="mut">${o.items.slice(0,3).map(i=>esc(i.name)+' ×'+i.qty).join(', ')}${o.items.length>3?' +'+(o.items.length-3):''}</div>`:''}
+      ${o.items&&o.items.length?`<div class="mut">${o.items.slice(0,3).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')}${o.items.length>3?' +'+(o.items.length-3):''}</div>`:''}
       ${o.pickup_at?`<div class="mut">איסוף: ${fmtDT(o.pickup_at)}</div>`:''}${o.delivery_at?`<div class="mut">החזרה: ${fmtDT(o.delivery_at)}</div>`:''}
       ${o.payment_method==='cash'&&o.payment_status==='pending'?'<div class="mut">💵 גבייה במזומן</div>':''}
      </div>
@@ -472,7 +473,7 @@ async function vManage(sub){
  }
  store.set('lastTenant',slug);
  const switcher=mems.length>1?`<select class="sel" style="margin-top:8px" onchange="store.set('lastTenant',this.value);route()">${mems.map(x=>`<option value="${x.slug}" ${x.slug===slug?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:'';
- return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}</div>
+ return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="javascript:logout()" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
  <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
 async function setStatus(slug,id,st){if(st==='cancelled'&&!await xconfirm('הלקוח יקבל עדכון על הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל'}))return;try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
@@ -720,7 +721,7 @@ async function route(){
   else if(parts[0]==='admin'&&parts[1]==='tenant')html=await vAdminTenant(parts[2]);
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);
   else if(parts[0]==='join')html=await vJoin();
-  else html=await vHome();
+  else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/');route()">חזרה לדף הבית</button></div></div>`;
  }catch(e){
   if(e.status===401){state.token=null;state.me=null;save();html=vLogin()}
   else html=`<div class="body"><div class="card warn">${esc(e.message)}</div></div>`;
