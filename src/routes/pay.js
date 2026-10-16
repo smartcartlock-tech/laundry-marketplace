@@ -29,7 +29,7 @@ r.get('/:orderId', async (req, res) => {
       id: order.id, short: order.id.slice(0, 8), tenant_name: order.tenant_name,
       status: order.status, payment_status: order.payment_status,
       subtotal: order.subtotal, delivery_fee: order.delivery_fee, discount: order.discount, total: order.total,
-      created_at: order.created_at, address: order.address,
+      created_at: order.created_at,
     },
     items,
     payable: !['cancelled'].includes(order.status) && order.payment_status === 'pending',
@@ -52,16 +52,38 @@ r.post('/:orderId/confirm', async (req, res) => {
   res.json({ ok: true, payment_status: 'paid_demo' });
 });
 
-// קבלה-סיכום PDF אחרי תשלום (פומבי — הקישור הוא ה-capability)
+// B5: אימות קצר (4 ספרות אחרונות של טלפון הלקוח) — רק אחריו נחשפים כתובת/טלפון.
+// מוגבל בקצב לכל הזמנה כדי למנוע ניחוש brute-force של הקוד.
+const { limiter } = require('../ratelimit');
+const last4Of = (phone) => String(phone || '').replace(/\D/g, '').slice(-4);
+async function verified(req, order) {
+  const code = String((req.body && req.body.phone_last4) || req.query.v || '').replace(/\D/g, '');
+  if (!code) return false;
+  const { rows } = await q('SELECT phone FROM users WHERE id=$1', [order.customer_id]);
+  return !!rows[0] && code.length === 4 && code === last4Of(rows[0].phone);
+}
+
+r.post('/:orderId/verify', limiter('pay-verify', 10, 10 * 60 * 1000, req => req.params.orderId), async (req, res) => {
+  const order = await loadOrder(req, res);
+  if (!order) return;
+  if (!(await verified(req, order))) return res.status(401).json({ error: 'קוד האימות שגוי' });
+  const { rows: cust } = await q('SELECT phone FROM users WHERE id=$1', [order.customer_id]);
+  res.json({ ok: true, address: order.address, phone: cust[0] ? cust[0].phone : null });
+});
+
+// קבלה-סיכום PDF אחרי תשלום (פומבי — הקישור הוא ה-capability).
+// B5: בלי קוד אימות תקין (?v=1234) הקבלה ממוסכת — סכומים ומספר הזמנה בלבד, בלי PII של הלקוח.
 r.get('/:orderId/receipt.pdf', async (req, res) => {
   const order = await loadOrder(req, res);
   if (!order) return;
+  const ok = await verified(req, order);
   const [items, cust] = await Promise.all([
     q('SELECT name, price, qty FROM order_items WHERE order_id=$1', [order.id]),
-    q('SELECT name, phone, email FROM users WHERE id=$1', [order.customer_id]),
+    ok ? q('SELECT name, phone, email FROM users WHERE id=$1', [order.customer_id]) : Promise.resolve({ rows: [{}] }),
   ]);
+  const safeOrder = ok ? order : { ...order, address: 'מוסתר — לצפייה יש לאמת עם 4 הספרות האחרונות של הטלפון' };
   const tenant = { name: order.tenant_name, color: order.color, address: order.tenant_address, city: order.tenant_city, phone: order.tenant_phone };
-  const doc = buildReceiptPDF({ order, items: items.rows, tenant, customer: cust[0] || {} });
+  const doc = buildReceiptPDF({ order: safeOrder, items: items.rows, tenant, customer: cust.rows[0] || {} });
   res.setHeader('content-type', 'application/pdf');
   res.setHeader('content-disposition', `inline; filename="receipt-${order.id.slice(0, 8)}.pdf"`);
   doc.pipe(res);
