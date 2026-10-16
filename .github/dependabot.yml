@@ -1,0 +1,13 @@
+# B6: עדכוני תלויות אוטומטיים (חינם ב-GitHub) — שבועי, PR נפרד לכל עדכון
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
