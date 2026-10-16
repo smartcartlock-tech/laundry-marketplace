@@ -377,7 +377,23 @@ async function delLogo(slug){try{await api(`/t/${slug}/logo`,{method:'DELETE'});
 async function addPlan(slug){try{await api(`/t/${slug}/plans`,{method:'POST',body:JSON.stringify({name:$('#pl-name').value,bags_per_month:$('#pl-bags').value,kg_per_bag:$('#pl-kg').value||8,price:$('#pl-price').value,extra_bag_price:$('#pl-extra').value,perks:$('#pl-perks').value})});toast('התוכנית נוצרה');route()}catch(e){toast(e.message)}}
 async function togglePlan(slug,id,active){try{await api(`/t/${slug}/plans/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function toggleItemSub(slug,id,on){try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({subscription_eligible:on})});route()}catch(e){toast(e.message)}}
-async function setStatus(slug,id,st){if(st==='cancelled'&&!await xconfirm('הלקוח יקבל עדכון על הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל'}))return;try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
+// N9: נעילת הזמנה בזמן מעבר סטטוס — לחיצה כפולה/מהירה לא שולחת POST נוסף על אותה הזמנה עד התגובה
+const _statusLocks=new Set();
+async function setStatus(slug,id,st,btn){
+ if(_statusLocks.has(id))return;
+ if(st==='cancelled'&&!await xconfirm('הלקוח יקבל עדכון על הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל'}))return;
+ _statusLocks.add(id);
+ if(btn){btn.disabled=true;btn.style.opacity='.6';}
+ try{
+  await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});
+  route();
+ }catch(e){
+  // 409 "ברצף" = הכפתור נבנה מסטטוס מיושן (re-render/לחיצה חוזרת) — רענון שקט במקום טוסט מבלבל
+  if(e.status===409&&e.message==='מעבר סטטוס חייב להיות לשלב הבא ברצף'){route();return}
+  if(btn){btn.disabled=false;btn.style.opacity='';}
+  toast(e.message);
+ }finally{_statusLocks.delete(id)}
+}
 async function assignCourier(slug,oid,el){
  try{
   const d=await api(`/t/${slug}/couriers/overview`);
@@ -551,7 +567,7 @@ onAct({
  editItem:t=>editItem(t.dataset.a,t.dataset.b,t), forumComment:t=>forumComment(t.dataset.a),
  forumNewPost:()=>forumNewPost(), forumUseful:t=>forumUseful(t.dataset.a),
  groupJoin:t=>groupJoin(t.dataset.a), groupLeave:t=>groupLeave(t.dataset.a), groupNew:()=>groupNew(),
- saveSettings:t=>saveSettings(t.dataset.a), setStatus:t=>setStatus(t.dataset.a,t.dataset.b,t.dataset.c),
+ saveSettings:t=>saveSettings(t.dataset.a), setStatus:t=>setStatus(t.dataset.a,t.dataset.b,t.dataset.c,t),
  tenantCluster:t=>tenantCluster(t.dataset.a,t.dataset.b,t.dataset.c), tenantIssueHandle:t=>tenantIssueHandle(t.dataset.a,t.dataset.b),
  tenantRateCourier:t=>tenantRateCourier(t.dataset.a,t.dataset.b,t.dataset.c),
  tenderAward:t=>tenderAward(t.dataset.a,t.dataset.b), tenderBid:t=>tenderBid(t.dataset.a), tenderNew:()=>tenderNew(),
