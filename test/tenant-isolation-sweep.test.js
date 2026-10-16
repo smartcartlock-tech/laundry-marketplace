@@ -19,6 +19,10 @@ const TENANT_GETS = [
   '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
   '/bookkeeping/accountant-export.csv',
 ];
+// מודול הנה"ח (K) — בדיקה שגם staff (חבר, לא בעלים) נדחה, לא רק זר
+const BOOKKEEPING_GETS = ['/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries', '/bookkeeping/trial-balance', '/bookkeeping/periods'];
+const BOOKKEEPING_WRITES = [['POST', '/bookkeeping/init'], ['POST', '/bookkeeping/accounts'], ['POST', '/bookkeeping/parties'], ['POST', '/bookkeeping/entries'], ['POST', '/bookkeeping/periods/close']];
+
 const TENANT_WRITES = [
   ['POST', '/items', {}], ['POST', '/windows', {}], ['POST', '/coupons', {}], ['PATCH', '/settings', {}],
   ['POST', '/orders/x/status', {}], ['POST', '/issues/x/handle', {}], ['PUT', '/financials', {}],
@@ -48,4 +52,40 @@ test('סריקת בידוד: זר לא מקבל דבר מאף נתיב טננט�
     }
   }
   assert.deepEqual(failures, [], 'נתיבים דולפים:\n' + failures.join('\n'));
+});
+
+test('הנה"ח: זר ו-staff שניהם נדחים (בעלים בלבד), בעלים עובד', async (t) => {
+  const { api, schema } = await startApp(t);
+  const { Client } = require('pg');
+  const db = new Client({ connectionString: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5433/laundry_test' });
+  await db.connect(); t.after(() => db.end());
+  await db.query(`SET search_path TO ${schema}, public`);
+
+  const owner = await api.login('+972500000931');
+  const staff = await api.login('+972500000932');
+  const stranger = await api.login('+972500000933');
+  const { rows: [ten] } = await db.query(`INSERT INTO tenants(slug, name) VALUES ('bkk', 'מכבסת הנהח') RETURNING id`);
+  await db.query(`INSERT INTO tenant_members(tenant_id, user_id, role)
+    SELECT $1, id, 'owner' FROM users WHERE phone='+972500000931'`, [ten.id]);
+  await db.query(`INSERT INTO tenant_members(tenant_id, user_id, role)
+    SELECT $1, id, 'staff' FROM users WHERE phone='+972500000932'`, [ten.id]);
+
+  for (const [label, token, expect] of [['stranger', stranger, 403], ['staff', staff, 403]]) {
+    for (const p of BOOKKEEPING_GETS) {
+      const r = await api(`/api/t/bkk${p}`, { token });
+      assert.equal(r.status, expect, `${label} GET ${p} → ${r.status}`);
+    }
+    for (const [m, p] of BOOKKEEPING_WRITES) {
+      const r = await api(`/api/t/bkk${p}`, { method: m, token, body: {} });
+      assert.equal(r.status, expect, `${label} ${m} ${p} → ${r.status}`);
+    }
+    // גם financials (נתוני בנק) — staff נדחה
+    assert.equal((await api('/api/t/bkk/financials', { token })).status, expect, label + ' financials');
+  }
+
+  // בעלים: init + קריאת חשבונות עובדים
+  const init = await api('/api/t/bkk/bookkeeping/init', { method: 'POST', token: owner, body: {} });
+  assert.ok([200, 201, 400].includes(init.status), 'owner init: ' + init.status);
+  const acc = await api('/api/t/bkk/bookkeeping/accounts', { token: owner });
+  assert.equal(acc.status, 200, 'owner accounts: ' + acc.status);
 });
