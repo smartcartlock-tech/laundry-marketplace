@@ -653,3 +653,42 @@ CREATE TABLE IF NOT EXISTS business_invoices (
   issued_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (account_id, year, month)
 );
+
+
+-- E9.T1: דיווחי תקלות לקוח עם תמונות — מול המכבסה + דגל גישור לאדמין
+CREATE TABLE IF NOT EXISTS issue_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  customer_id uuid NOT NULL REFERENCES users(id),
+  kind text NOT NULL CHECK (kind IN ('damage','missing','late','other')),
+  text text NOT NULL,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved')),
+  mediation boolean NOT NULL DEFAULT false,
+  resolution_note text,
+  handled_by uuid REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS issue_reports_tenant_idx ON issue_reports(tenant_id, status, created_at DESC);
+CREATE TABLE IF NOT EXISTS issue_report_photos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id uuid NOT NULL REFERENCES issue_reports(id) ON DELETE CASCADE,
+  content_type text NOT NULL DEFAULT 'image/jpeg',
+  data bytea NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS issue_photos_report_idx ON issue_report_photos(report_id);
+
+
+-- E9.T3: התראות דחיפה (PWA) — מנויי push עם מפתחות VAPID עצמיים
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint text UNIQUE NOT NULL,
+  keys jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS push_subs_user_idx ON push_subscriptions(user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS issue_reports_one_per_customer ON issue_reports(order_id, customer_id);

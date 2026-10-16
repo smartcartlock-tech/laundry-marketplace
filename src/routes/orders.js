@@ -235,15 +235,27 @@ r.post('/:id/cancel', async (req, res) => {
 
 // דירוג אחרי הזמנה
 r.post('/:id/review', async (req, res) => {
-  const { rating, text, courier_rating, courier_tags } = req.body || {};
+  const { rating, text, tags: laundry_tags, courier_rating, courier_tags } = req.body || {};
   const rt = Number(rating);
   if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
   const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
   const order = rows[0];
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
   if (order.status !== 'delivered') return res.status(409).json({ error: 'ניתן לדרג רק הזמנה שהושלמה' });
-  await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text) VALUES ($1,$2,$3,$4,$5)',
-    [order.tenant_id, order.id, req.user.id, rt, text || null]);
+  // E9.T4: תגיות ביקורת על המכבסה (עד 5)
+  const ltags = Array.isArray(laundry_tags) ? laundry_tags.map(String).slice(0, 5) : null;
+  await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text, tags) VALUES ($1,$2,$3,$4,$5,$6)',
+    [order.tenant_id, order.id, req.user.id, rt, text || null, ltags]);
+  // E9.T4: ‎+20 נקודות על ביקורת — פעם אחת להזמנה
+  const { rows: awarded } = await q(
+    `SELECT 1 FROM points_ledger WHERE tenant_id=$1 AND user_id=$2 AND order_id=$3 AND reason='review_bonus'`,
+    [order.tenant_id, req.user.id, order.id]);
+  let bonus = 0;
+  if (!awarded[0]) {
+    bonus = 20;
+    await q('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+      [order.tenant_id, req.user.id, 20, 'review_bonus', order.id]);
+  }
   // E5.T7: דירוג השליח (אופציונלי, רק אם שובץ שליח)
   const crt = Number(courier_rating);
   if (order.courier_id && crt >= 1 && crt <= 5) {
@@ -254,7 +266,7 @@ r.post('/:id/review', async (req, res) => {
   }
   const { rows: agg } = await q('SELECT avg(rating)::numeric(2,1) AS a, count(*)::int AS c FROM reviews WHERE tenant_id=$1 AND target_courier_id IS NULL', [order.tenant_id]);
   await q('UPDATE tenants SET rating=$1, rating_count=$2 WHERE id=$3', [agg[0].a, agg[0].c, order.tenant_id]);
-  res.json({ ok: true });
+  res.json({ ok: true, points_bonus: bonus });
 });
 
 module.exports = r;

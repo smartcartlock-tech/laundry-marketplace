@@ -136,4 +136,30 @@ r.post('/sla/:id/reopen', async (req, res) => {
   res.json({ alert: rows[0] });
 });
 
+// E9.T1: גישור אדמין — תקלות שהסלימה מכבסה (mediation) או כל התקלות
+r.get('/issues', async (req, res) => {
+  const onlyMed = req.query.mediation === '1';
+  const { rows } = await q(
+    `SELECT r.id, r.order_id, r.kind, r.text, r.status, r.mediation, r.resolution_note, r.created_at, r.updated_at,
+            t.name AS tenant_name, t.slug AS tenant_slug, u.name AS customer_name, u.phone AS customer_phone,
+            (SELECT count(*) FROM issue_report_photos p WHERE p.report_id=r.id)::int AS photos,
+            (SELECT json_agg(p.id) FROM issue_report_photos p WHERE p.report_id=r.id) AS photo_ids
+     FROM issue_reports r JOIN tenants t ON t.id=r.tenant_id JOIN users u ON u.id=r.customer_id
+     ${onlyMed ? 'WHERE r.mediation AND r.status<>$1' : ''}
+     ORDER BY r.mediation DESC, r.status='resolved', r.created_at DESC LIMIT 100`,
+    onlyMed ? ['resolved'] : []);
+  res.json({ issues: rows });
+});
+
+r.post('/issues/:id/handle', async (req, res) => {
+  const { status, note } = req.body || {};
+  if (!['in_progress','resolved'].includes(status)) return res.status(400).json({ error: 'סטטוס: in_progress | resolved' });
+  const { rows } = await q(
+    `UPDATE issue_reports SET status=$2, resolution_note=COALESCE($3, resolution_note), handled_by=$4, updated_at=now()
+     WHERE id=$1 RETURNING *`,
+    [req.params.id, status, note || null, req.user.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'דיווח לא נמצא' });
+  res.json({ issue: rows[0] });
+});
+
 module.exports = r;

@@ -13,11 +13,13 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/public'));
 app.use('/api/orders', require('./routes/orders'));
-app.use('/api/orders', require('./routes/order-reports')); // E7.T3: דיווחי תקלות לקוח
+app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: דיווחי תקלות לקוח
+app.use('/api', require('./routes/issue-photos')); // E9.T1: תמונות תקלה
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/verify', require('./routes/verify'));
 app.use('/api/t/:slug/business-accounts', require('./routes/business'));
 app.use('/api/t/:slug', require('./routes/tenant'));
+app.use('/api/t/:slug', require('./routes/issues')); // E9.T1: טיפול מכבסה בתקלות
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin', require('./routes/adminplus')); // E7: dashboard/onboarding/sla
@@ -27,6 +29,7 @@ app.use('/api/community', require('./routes/community'));
 app.use('/api/bot-central', require('./routes/botcentral'));
 app.use('/api/pay', require('./routes/pay'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
+app.use('/api', require('./routes/push')); // E9.T3: web push
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
 

@@ -1,5 +1,6 @@
 // שליחת הודעות וואטסאפ דרך Twilio (סנדבוקס/פרודקשן). נופל בשקט ל-log בלבד.
 const { q } = require('./db');
+const { sendPushToUser } = require('./push');
 
 let twilioClient = null;
 function twilio() {
@@ -25,6 +26,8 @@ async function sendWhatsApp(toE164, body) {
 
 async function notifyUser(userId, tenantId, body, phone) {
   let sent = false, channel = 'log';
+  // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג
+  try { const p = await sendPushToUser(userId, { title: 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
   if (phone) {
     const r = await sendWhatsApp(phone, body);
     sent = r.sent; channel = 'whatsapp';

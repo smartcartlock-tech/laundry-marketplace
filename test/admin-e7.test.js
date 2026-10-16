@@ -80,12 +80,12 @@ test('E7.T3: התראות SLA — סריקת איחורים, דיווח לקוח
   await db.query(`UPDATE orders SET pickup_at = now() - interval '5 hours' WHERE id=$1`, [oid]);
 
   // דיווח תקלה של לקוח על אותה הזמנה
-  const rep = await api(`/api/orders/${oid}/report`, { method: 'POST', token: customer, body: { text: 'הכביסה חזרה עם כתם' } });
+  const rep = await api(`/api/orders/${oid}/report`, { method: 'POST', token: customer, body: { kind: 'damage', text: 'הכביסה חזרה עם כתם' } });
   assert.equal(rep.status, 201, JSON.stringify(rep.json));
-  const repDup = await api(`/api/orders/${oid}/report`, { method: 'POST', token: customer, body: { text: 'שוב' } });
+  const repDup = await api(`/api/orders/${oid}/report`, { method: 'POST', token: customer, body: { kind: 'damage', text: 'שוב' } });
   assert.equal(repDup.status, 409); // דיווח כפול נחסם
   const stranger = await api.login('+972500000009');
-  const notMine = await api(`/api/orders/${oid}/report`, { method: 'POST', token: stranger, body: { text: 'לא שלי' } });
+  const notMine = await api(`/api/orders/${oid}/report`, { method: 'POST', token: stranger, body: { kind: 'other', text: 'לא שלי' } });
   assert.equal(notMine.status, 403);
 
   // סריקת SLA — יוצרת התראת איחור אחת בלבד (אידמפוטנטי)

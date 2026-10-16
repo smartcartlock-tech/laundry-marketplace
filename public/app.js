@@ -245,7 +245,7 @@ async function vLaundry(slug){
    ${l.terms?`תקנון: ${esc(l.terms)}`:''}
   </div>
   <div class="sec" id="revs">ביקורות</div>
-  <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div></div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
+  <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div>${(rv.tags&&rv.tags.length)?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${rv.tags.map(t=>`<span class="tag tg">${esc(t)}</span>`).join('')}</div>`:''}</div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
   ${state.brandSlug===slug?`<div style="text-align:center;font-size:11px;color:#8a99a3;padding:2px 0 10px">מופעל ע״י מכבסה בקליק</div>`:''}
  </div>`;
 }
@@ -376,6 +376,8 @@ async function vOrder(id){
  const isMine=o.customer_id===(state.me&&state.me.id);
  let docs=[];
  if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id||(x.covered_order_ids||[]).includes(id))}catch(e){}}
+ let myReports=[];
+ if(isMine){try{const rr=await api('/orders/'+id+'/reports');myReports=rr.reports||[]}catch(e){}}
  return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   <div class="card">
@@ -401,17 +403,26 @@ async function vOrder(id){
    ${docs.length?'<div class="mut" style="margin-top:4px">מסמכים חשבונאיים מסומנים ״מסמך דמו״ עד לרישום התוכנה ברשות המסים.</div>':''}
   </div>`:''}
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" onclick="cancelOrder('${o.id}')">ביטול הזמנה</button>`:''}
+  ${isMine?`<div class="card"><b>דיווח תקלה</b>
+   ${myReports.map(rp=>`<div class="row"><div><span class="tag tb">${({damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'})[rp.kind]||rp.kind}</span> ${esc(rp.text)}
+    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'פתוח',in_progress:'בטיפול',resolved:'טופל'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+rp.photos+' תמונות':''}</div></div></div>`).join('')}
+   ${myReports.length?'':'<div class="mut" style="margin:6px 0">משהו לא בסדר עם ההזמנה? דווחו ונפתח פנייה מול המכבסה</div>'}
+   <button class="btn2" onclick="openReportModal('${o.id}')">📷 דיווח על תקלה</button>
+  </div>`:''}
   ${isMine&&o.status==='delivered'?`<div class="card"><label class="lb">דרגו את ההזמנה</label>
     <select class="inp" id="rv-rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
     <input class="inp" id="rv-text" placeholder="איך היה?">
     ${o.courier_id?`<label class="lb" style="margin-top:8px">דרגו את השליח</label>
     <div style="display:flex;gap:6px;align-items:center"><select class="inp" id="rv-courier" style="width:90px"><option value="">—</option><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
     <div style="display:flex;gap:4px;flex-wrap:wrap">${['בזמן','אדיב','זהיר עם הכביסה','איחור','לא עדכן'].map(t=>`<label class="chip" style="cursor:pointer"><input type="checkbox" class="rv-ctag" value="${t}" style="margin-left:3px">${t}</label>`).join('')}</div></div>`:''}
+    <label class="lb" style="margin-top:8px">מה היה טוב? (תגיות למכבסה)</label>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">${['נקי','בזמן','מחיר הוגן','שירות','אריזה'].map(t=>`<label class="chip" style="cursor:pointer"><input type="checkbox" class="rv-ltag" value="${t}" style="margin-left:3px">${t}</label>`).join('')}</div>
+    <div class="mut" style="margin:4px 0">ביקורת מזכה ב־20 נקודות מועדון</div>
     <button class="btn2 on" onclick="sendReview('${o.id}')">שליחת דירוג</button></div>`:''}
  </div>`;
 }
 async function cancelOrder(id){if(!await xconfirm('לא ניתן לשחזר הזמנה לאחר הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל את ההזמנה'}))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
-async function sendReview(id){try{const ctags=[...document.querySelectorAll('.rv-ctag:checked')].map(x=>x.value);const cr=$('#rv-courier')?$('#rv-courier').value:'';await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value,courier_rating:cr||undefined,courier_tags:ctags.length?ctags:undefined})});toast('תודה על הדירוג!');route()}catch(e){toast(e.message)}}
+async function sendReview(id){try{const ctags=[...document.querySelectorAll('.rv-ctag:checked')].map(x=>x.value);const ltags=[...document.querySelectorAll('.rv-ltag:checked')].map(x=>x.value);const cr=$('#rv-courier')?$('#rv-courier').value:'';const r=await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value,courier_rating:cr||undefined,courier_tags:ctags.length?ctags:undefined,tags:ltags.length?ltags:undefined})});toast(r&&r.points_bonus?`תודה על הדירוג! צברת ${r.points_bonus} נקודות`:'תודה על הדירוג!');route()}catch(e){toast(e.message)}}
 
 /* ---- club ---- */
 async function vClub(){
@@ -438,6 +449,8 @@ async function vClub(){
     <button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="subCancel('${sb.id}')">ביטול מנוי</button>
    </div>
   </div>`).join(''):''}
+  <div class="card"><b>התראות דחיפה</b><div class="mut" style="margin:4px 0">עדכון מיידי בכל שינוי סטטוס בהזמנה — גם כשהאפליקציה סגורה</div>
+   <button class="btn2 on" id="push-btn" onclick="pushSubscribe()">🔔 הפעלת התראות</button></div>
   <div class="sec">נקודות</div>
   ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${b.color||'#0e7a8a'}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
@@ -713,7 +726,7 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['documents','מסמכים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
  if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
@@ -732,6 +745,23 @@ async function vManage(sub){
       ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" onclick="assignCourier('${slug}','${o.id}',this)">שיבוץ שליח</button>`):''}
      </div>
     </div></div>`).join('')||'<div class="card mut">אין הזמנות</div>';
+ } else if(sub==='issues'){
+  // E9.T1: פניות תקלות מלקוחות — טיפול מול המכבסה + הסלמה לגישור אדמין
+  const d=await api(`/t/${slug}/issues`);
+  const KIND={damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'};
+  const STI={open:'פתוח',in_progress:'בטיפול',resolved:'טופל'};
+  body=d.issues.map(i=>`<div class="card">
+   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+    <div><b>${KIND[i.kind]||i.kind}</b> <span class="st-pill ${i.status==='resolved'?'st-delivered':'st-new'}">${STI[i.status]||i.status}</span>${i.mediation?' <span class="tag ta">בגישור אדמין</span>':''}
+     <div>${esc(i.text)}</div>
+     <div class="mut">${esc(i.customer_name||'')} · הזמנה <span dir="ltr">#${(i.order_id||'').slice(0,8)}</span> · ${esc(i.order_address||'')} · ${fmtDT(i.created_at)}</div>
+     ${i.resolution_note?`<div class="mut">תיעוד: ${esc(i.resolution_note)}</div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" onclick="openIssuePhoto('${pid}')">📷</button>`).join('')}
+     ${i.status!=='resolved'?`<button class="btn2 on" onclick="tenantIssueHandle('${slug}','${i.id}')">עדכון טיפול</button>`:''}
+    </div>
+   </div></div>`).join('')||'<div class="card mut">אין פניות תקלות ✓</div>';
  } else if(sub==='items'){
   const d=await api(`/t/${slug}/items`);
   body=`<div class="card">
@@ -1040,6 +1070,19 @@ async function vAdmin(sub){
    +(done.length?`<div class="sec">טופלו (${done.length})</div>`+done.map(a=>`<div class="card" style="opacity:.7"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
     <div class="mut">${esc(a.details||'')}</div><div class="mut">טופלה ע"י ${esc(a.handled_by_name||'')} · ${fmtDT(a.handled_at)}${a.handle_note?' · '+esc(a.handle_note):''}</div>
     <div style="margin-top:6px"><button class="btn2" onclick="adminSlaReopen('${a.id}')">פתיחה מחדש</button></div></div>`).join(''):'');
+  // E9.T1: דיווחי תקלות שהוסלמו לגישור אדמין
+  const med=await api('/admin/issues?mediation=1').catch(()=>({issues:[]}));
+  if(med.issues&&med.issues.length){
+   const KIND2={damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'};
+   body+=`<div class="sec">גישור תקלות (${med.issues.length})</div>`+med.issues.map(i=>`<div class="card">
+    <b>${KIND2[i.kind]||i.kind}</b> — ${esc(i.tenant_name||'—')} <span class="st-pill ${i.status==='resolved'?'st-delivered':'st-new'}">${i.status}</span>
+    <div>${esc(i.text)}</div>
+    <div class="mut">לקוח: ${esc(i.customer_name||'')} <span dir="ltr">${esc(i.customer_phone||'')}</span> · ${fmtDT(i.created_at)}${i.resolution_note?' · תיעוד מכבסה: '+esc(i.resolution_note):''}</div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" onclick="openIssuePhoto('${pid}')">📷</button>`).join('')}
+     ${i.status!=='resolved'?`<button class="btn2 green" onclick="adminIssueHandle('${i.id}')">סיום גישור</button>`:''}
+    </div></div>`).join('');
+  }
  } else if(sub==='overview'){
   const d=await api('/admin/overview');
   body=`<div class="kpis"><div class="kpi"><b>${d.tenants.approved}</b>מכבסות</div><div class="kpi"><b>${d.orders.total}</b>הזמנות</div><div class="kpi"><b>₪${d.orders.gmv}</b>מחזור</div><div class="kpi"><b>${d.users.total}</b>משתמשים</div></div>
@@ -1417,3 +1460,83 @@ window.addEventListener('storage',e=>{
  if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){state.token=null;state.me=null;save()}}
  route();
 })();
+
+/* ---- E9.T1: דיווח תקלה עם תמונות ---- */
+function openReportModal(orderId){
+ const ov=document.createElement('div');ov.className='modal-ov';
+ ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>דיווח על תקלה</b>
+  <label class="lb">סוג התקלה</label>
+  <select class="inp" id="rp-kind"><option value="damage">נזק לכביסה</option><option value="missing">פריט חסר</option><option value="late">איחור</option><option value="other">אחר</option></select>
+  <label class="lb">תיאור</label>
+  <input class="inp" id="rp-text" placeholder="מה קרה?">
+  <label class="lb">תמונות (עד 3)</label>
+  <input class="inp" id="rp-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+  <div class="mut" id="rp-pmsg" style="margin:4px 0"></div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="rp-ok" style="flex:1">שליחת דיווח</button><button class="btn2" id="rp-cancel" style="flex:1">ביטול</button></div></div>`;
+ document.body.appendChild(ov);
+ ov.querySelector('#rp-cancel').onclick=()=>ov.remove();
+ ov.onclick=e=>{if(e.target===ov)ov.remove()};
+ ov.querySelector('#rp-ok').onclick=async()=>{
+  const btn=ov.querySelector('#rp-ok');btn.disabled=true;
+  try{
+   const files=[...ov.querySelector('#rp-photos').files].slice(0,3);
+   const photos=[];
+   for(const f of files)photos.push(await fileToB64(f));
+   await api('/orders/'+orderId+'/report',{method:'POST',body:JSON.stringify({kind:ov.querySelector('#rp-kind').value,text:ov.querySelector('#rp-text').value,photos:photos.length?photos:undefined})});
+   ov.remove();toast('הדיווח נשלח — המכבסה תטפל');route();
+  }catch(e){btn.disabled=false;ov.querySelector('#rp-pmsg').textContent=e.message}
+ };
+}
+function fileToB64(f){
+ return new Promise((res,rej)=>{
+  if(!/^image\/(jpeg|png|webp)$/.test(f.type))return rej(new Error('סוג קובץ לא נתמך'));
+  const img=new Image();
+  img.onload=()=>{
+   const MAX=1024,sc=Math.min(1,MAX/Math.max(img.width,img.height));
+   const cv=document.createElement('canvas');cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);
+   cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+   const url=cv.toDataURL('image/jpeg',0.8);
+   URL.revokeObjectURL(img.src);
+   res({content_type:'image/jpeg',data_b64:url.split(',')[1]});
+  };
+  img.onerror=()=>rej(new Error('לא ניתן לקרוא את התמונה'));
+  img.src=URL.createObjectURL(f);
+ });
+}
+async function openIssuePhoto(pid){
+ try{
+  const r=await fetch('/api/issue-photos/'+pid,{headers:state.token?{Authorization:'Bearer '+state.token}:{}});
+  if(!r.ok)throw new Error('אין הרשאה לתמונה');
+  const b=await r.blob();
+  const w=window.open(URL.createObjectURL(b),'_blank');
+  if(!w)toast('אפשרו חלונות קופצים לצפייה בתמונה');
+ }catch(e){toast(e.message)}
+}
+async function tenantIssueHandle(slug,id){
+ const v=await xmodal({title:'עדכון טיפול בתקלה',okText:'שמירה',fields:[{id:'status',label:'סטטוס: open | in_progress | resolved',value:'in_progress'},{id:'note',label:'תיעוד הטיפול'}]});
+ if(!v)return;
+ if(!['open','in_progress','resolved'].includes((v.status||'').trim())){toast('סטטוס חייב להיות open / in_progress / resolved');return}
+ const med=await xconfirm('להסלים את התקלה לגישור אדמין הפלטפורמה?',{title:'הסלמה לגישור',okText:'כן, להסלים'});
+ try{await api(`/t/${slug}/issues/${id}/handle`,{method:'POST',body:JSON.stringify({status:v.status.trim(),note:v.note||undefined,mediation:!!med})});toast('הטיפול עודכן');route()}catch(e){toast(e.message)}
+}
+async function adminIssueHandle(id){
+ const v=await xmodal({title:'סיום גישור אדמין',okText:'סגירת תקלה',fields:[{id:'note',label:'תיעוד הגישור'}]});
+ if(!v)return;
+ try{await api(`/admin/issues/${id}/handle`,{method:'POST',body:JSON.stringify({status:'resolved',note:v.note||''})});toast('התקלה נסגרה בגישור');route()}catch(e){toast(e.message)}
+}
+/* ---- E9.T3: התראות דחיפה ---- */
+function urlB64ToUint8(s){const p='='.repeat((4-s.length%4)%4);const b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));const o=new Uint8Array(b.length);for(let i=0;i<b.length;i++)o[i]=b.charCodeAt(i);return o}
+async function pushSubscribe(){
+ try{
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return toast('הדפדפן לא תומך בהתראות דחיפה');
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted')return toast('לא אושרו התראות בדפדפן');
+  const reg=await navigator.serviceWorker.ready;
+  const {key}=await api('/push/vapid-public-key');
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToUint8(key)});
+  await api('/push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
+  toast('התראות דחיפה הופעלו ✓');
+  const b=document.getElementById('push-btn');if(b){b.textContent='🔔 התראות פעילות';b.classList.add('green')}
+ }catch(e){toast('הפעלת התראות נכשלה: '+e.message)}
+}

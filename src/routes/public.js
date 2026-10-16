@@ -31,7 +31,7 @@ r.get('/laundries/:slug', async (req, res) => {
   const [items, windows, reviews, plans] = await Promise.all([
     q('SELECT id, name, category, price, unit, subscription_eligible FROM price_items WHERE tenant_id=$1 AND active ORDER BY sort, category, name', [t[0].id]),
     q('SELECT weekday, start_time, end_time, capacity, kind FROM pickup_windows WHERE tenant_id=$1 ORDER BY weekday, start_time', [t[0].id]),
-    q(`SELECT r.rating, r.text, r.created_at, u.name AS author FROM reviews r LEFT JOIN users u ON u.id=r.user_id
+    q(`SELECT r.rating, r.text, r.tags, r.created_at, u.name AS author FROM reviews r LEFT JOIN users u ON u.id=r.user_id
        WHERE r.tenant_id=$1 AND r.target_courier_id IS NULL ORDER BY r.created_at DESC LIMIT 20`, [t[0].id]),
     q('SELECT id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks FROM subscription_plans WHERE tenant_id=$1 AND active ORDER BY sort, price', [t[0].id]),
   ]);
