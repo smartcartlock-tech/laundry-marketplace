@@ -5,6 +5,14 @@ const store={
  set(k,v){localStorage.setItem('wlm_'+k,JSON.stringify(v))},
  del(k){localStorage.removeItem('wlm_'+k)}
 };
+/* בתוך אפליקציית האנדרויד (Capacitor): כפתור חזרה מקורי — חזרה בהיסטוריית ה-SPA, ובדף הבית מזעור */
+if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()){
+ const _capApp=window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
+ if(_capApp)_capApp.addListener('backButton',()=>{
+  const h=location.hash||'#/';
+  if(h!=='#/'&&h!=='#'){history.back()}else{_capApp.minimizeApp()}
+ });
+}
 let state={token:store.get('token',null),me:store.get('me',null),cfg:null,cart:store.get('cart',[]),memberships:store.get('memberships',[]),courier:store.get('courier',null)};
 /* E3: מצב מותג לבן — כניסה דרך /b/:slug מציגה רק את המכבסה הזאת, במיתוג שלה */
 const __bm=location.pathname.match(/^\/b\/([^\/]+)/);
