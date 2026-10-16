@@ -30,7 +30,9 @@
         ${d.complete
           ? `<div class="note" style="margin-top:8px;color:#178a4c">המכבסה מוכנה לפעילות 🎉</div>`
           : `<div class="mut" style="margin-top:6px">אלו הפריטים שחסרים לפני שהמכבסה מוכנה ומאושרת.</div>`}${agreementHtml}</div>`;
-      return html.replace('<div class="body"><div class="subtabs">', '<div class="body">' + card + '<div class="subtabs">');
+      // עיגון גמיש: הכרטיס מוכנס מיד אחרי <div class="body"> — עמיד גם אם מבנה הלוח משתנה (למשל הוספת לוח זמינות לפני ה-subtabs)
+      const anchor = '<div class="body">';
+      return html.includes(anchor) ? html.replace(anchor, anchor + card) : card + html;
     }catch(e){ return html; }
   };
   window.acceptAgreement = async function(slug, version, btn){
