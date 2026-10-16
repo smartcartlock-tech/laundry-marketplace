@@ -104,7 +104,7 @@ ${t.logo ? `<img src="/api/laundries/${req.params.slug}/logo" style="width:70px;
 <img src="/api/laundries/${req.params.slug}/qr.png" alt="QR">
 <div class="u">${escH(brandedUrl(req))}</div>
 <div class="s" style="margin-top:10px">סרקו להזמנת כביסה באפליקציה שלנו</div>
-<div class="pw">מופעל ע״י וולט למכבסות</div>
+<div class="pw">מופעל ע״י מכבסה בקליק</div>
 </div><div class="np" style="margin-top:16px"><button onclick="print()">הדפסה</button></div>
 </body></html>`);
 });

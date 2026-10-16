@@ -216,7 +216,7 @@ async function vLaundry(slug){
   </div>
   <div class="sec" id="revs">ביקורות</div>
   <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div></div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
-  ${state.brandSlug===slug?`<div style="text-align:center;font-size:11px;color:#8a99a3;padding:2px 0 10px">מופעל ע״י וולט למכבסות</div>`:''}
+  ${state.brandSlug===slug?`<div style="text-align:center;font-size:11px;color:#8a99a3;padding:2px 0 10px">מופעל ע״י מכבסה בקליק</div>`:''}
  </div>`;
 }
 function setQty(slug,itemId,delta){

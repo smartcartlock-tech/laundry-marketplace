@@ -49,7 +49,7 @@ test('branding: settings, logo, manifest, qr, card, attribution, commission spli
   const card = await fetch(base + '/api/laundries/achuza/card');
   assert.equal(card.status, 200);
   const cardHtml = await card.text();
-  assert.ok(cardHtml.includes('מכבסת האחוזה') && cardHtml.includes('/b/achuza') && cardHtml.includes('וולט למכבסות'));
+  assert.ok(cardHtml.includes('מכבסת האחוזה') && cardHtml.includes('/b/achuza') && cardHtml.includes('מכבסה בקליק'));
 
   // E3.T4: הרשמה מדף ממותג → לקוח שלה
   const req = await api('/api/auth/otp/request', { method: 'POST', body: { target: '+972507777777' } });
