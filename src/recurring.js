@@ -1,13 +1,20 @@
 // E4.T2: ייצור הזמנות אוטומטי מתבניות חזרתיות של חשבונות עסקיים.
 // רץ פעם בשעה בתוך התהליך (שרת יחיד ב-Render) + ניתן להרצה ידנית בבדיקות.
 // מייצר הזמנה רק ביום מתוזמן (לפי שעון ישראל), פעם אחת ליום לכל תבנית; תבנית מושהית לא מייצרת.
-async function generateDueOrders(q) {
+async function generateDueOrders(q, opts = {}) {
+  let { dow, date } = opts;
+  if (dow === undefined || date === undefined) {
+    const { rows: now } = await q(`SELECT EXTRACT(DOW FROM (now() AT TIME ZONE 'Asia/Jerusalem'))::int AS d,
+                                          (now() AT TIME ZONE 'Asia/Jerusalem')::date::text AS t`);
+    if (dow === undefined) dow = now[0].d;
+    if (date === undefined) date = now[0].t;
+  }
   const { rows: due } = await q(
     `SELECT rt.*, ba.tenant_id, ba.name AS account_name
      FROM recurring_templates rt JOIN business_accounts ba ON ba.id=rt.account_id
      WHERE rt.active AND ba.active
-       AND rt.days @> to_jsonb(EXTRACT(DOW FROM (now() AT TIME ZONE 'Asia/Jerusalem'))::int)
-       AND rt.last_run_on IS DISTINCT FROM (now() AT TIME ZONE 'Asia/Jerusalem')::date`);
+       AND rt.days @> to_jsonb($1::int)
+       AND rt.last_run_on IS DISTINCT FROM $2::date`, [dow, date]);
   let created = 0;
   for (const t of due) {
     const items = Array.isArray(t.items) ? t.items : [];
@@ -31,20 +38,20 @@ async function generateDueOrders(q) {
     const { rows: tn } = await q('SELECT delivery_fee FROM tenants WHERE id=$1', [t.tenant_id]);
     const deliveryFee = Number(tn[0]?.delivery_fee) || 0;
     const pickupAt = t.pickup_time
-      ? `(now() AT TIME ZONE 'Asia/Jerusalem')::date + interval '${String(t.pickup_time).replace(/[^0-9:]/g, '')}'`
+      ? `$9::date + interval '${String(t.pickup_time).replace(/[^0-9:]/g, '')}'`
       : null;
     const { rows: o } = await q(
       `INSERT INTO orders(tenant_id, customer_id, source, address, pickup_at, subtotal, delivery_fee, discount, total,
          payment_method, payment_status, notes, business_account_id)
        VALUES ($1,$2,'recurring',$3,${pickupAt || 'NULL'},$4,$5,0,$6,'cash','pending',$7,$8) RETURNING id`,
       [t.tenant_id, t.user_id, t.address, subtotal, deliveryFee, subtotal + deliveryFee,
-       `הזמנה חוזרת אוטומטית — ${t.account_name}`, t.account_id]);
+       `הזמנה חוזרת אוטומטית — ${t.account_name}`, t.account_id, ...(t.pickup_time ? [date] : [])]);
     for (const ln of lines) {
       await q('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
         [o[0].id, ln.item_id, ln.name, ln.price, ln.qty]);
     }
     await q(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'new',$2,'הזמנה חוזרת נוצרה אוטומטית')`, [o[0].id, t.user_id]);
-    await q(`UPDATE recurring_templates SET last_run_on=(now() AT TIME ZONE 'Asia/Jerusalem')::date WHERE id=$1`, [t.id]);
+    await q('UPDATE recurring_templates SET last_run_on=$2::date WHERE id=$1', [t.id, date]);
     created++;
   }
   return { due: due.length, created };

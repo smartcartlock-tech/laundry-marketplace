@@ -65,7 +65,10 @@ r.post('/', async (req, res) => {
       const { rows: sr } = await client.query(
         `SELECT s.*, p.bags_per_month, p.kg_per_bag, p.extra_bag_price, p.name AS plan_name
          FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id
-         WHERE s.tenant_id=$1 AND s.user_id=$2 AND s.status='active' FOR UPDATE OF s`, [tenant.id, req.user.id]);
+         WHERE s.tenant_id=$1 AND s.user_id=$2
+           AND (s.status='active' OR (s.status='cancelled' AND s.period_end >= CURRENT_DATE))
+         ORDER BY CASE WHEN s.status='active' THEN 0 ELSE 1 END
+         LIMIT 1 FOR UPDATE OF s`, [tenant.id, req.user.id]);
       if (!sr[0]) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'אין מנוי פעיל במכבסה זו' }); }
       subscription = await ensureCurrentPeriod(client, sr[0]);
       try {
