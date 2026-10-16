@@ -28,4 +28,10 @@ function limiter(scope, max, windowMs, keyFn) {
   };
 }
 
-module.exports = { limiter };
+// מגבלת כתיבה לראוטרים מאומתים: להציב אחרי r.use(requireAuth). GET/HEAD חופשיים, שאר השיטות מוגבלות פר-משתמש.
+function writeLimiter(scope, max = 60, windowMs = 10 * 60 * 1000) {
+  const lim = limiter(scope, max, windowMs, (req) => (req.user && req.user.id) || req.ip);
+  return (req, res, next) => (req.method === 'GET' || req.method === 'HEAD' ? next() : lim(req, res, next));
+}
+
+module.exports = { limiter, writeLimiter };

@@ -96,7 +96,8 @@ r.post('/otp/verify', normalizeBody, limiter('otp-verify', 10, 10 * 60 * 1000), 
       const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
       u = upd.rows;
     }
-    res.json({ token: sign(u[0]), user: publicUser(u[0]), is_new: isNew });
+    const jti = await require('../sessions').createSession(req, u[0].id);
+    res.json({ token: sign(u[0], jti), user: publicUser(u[0]), is_new: isNew });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -122,7 +123,8 @@ r.post('/google', async (req, res) => {
     } else if (!u[0].google_sub) {
       await q('UPDATE users SET google_sub=$1 WHERE id=$2', [info.sub, u[0].id]);
     }
-    res.json({ token: sign(u[0]), user: publicUser(u[0]), is_new: isNew });
+    const jti = await require('../sessions').createSession(req, u[0].id);
+    res.json({ token: sign(u[0], jti), user: publicUser(u[0]), is_new: isNew });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -138,6 +140,7 @@ function publicUser(u) { return { id: u.id, phone: u.phone, email: u.email, name
 // B1: התנתקות — מבטלת את כל הטוקנים הקיימים של המשתמש (העלאת token_version)
 r.post('/logout', requireAuth, async (req, res) => {
   await q('UPDATE users SET token_version=token_version+1 WHERE id=$1', [req.user.id]);
+  await q('UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL', [req.user.id]);
   res.json({ ok: true });
 });
 

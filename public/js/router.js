@@ -40,6 +40,7 @@ async function route(){
   else if(parts[0]==='orders'&&parts[1])html=await vOrder(parts[1]);
   else if(parts[0]==='orders')html=await vOrders();
   else if(parts[0]==='club')html=await vClub();
+  else if(parts[0]==='sessions')html=await vSessions(); // ביקורת סשנים
   else if(parts[0]==='courier'&&parts[1]==='day')html=await vCourierDay(q.get('date'));
   else if(parts[0]==='courier'&&parts[1]==='history')html=await vCourierHistory(q.get('period'));
   else if(parts[0]==='courier')html=await vCourier(parts[1]);

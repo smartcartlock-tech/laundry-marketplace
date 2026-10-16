@@ -14,7 +14,7 @@ onAct({ adminOnboardStage:t=>adminOnboardStage(t.dataset.a,t.dataset.b),
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
- const tabs=[['overview','תמונת מצב'],['dash','דשבורד מרכזי'],['onboarding','צינור קליטה'],['sla','התראות SLA'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי']];
+ const tabs=[['overview','תמונת מצב'],['dash','דשבורד מרכזי'],['onboarding','צינור קליטה'],['sla','התראות SLA'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי'],['audit','יומן ביקורת']];
  let body='';
  if(sub==='dash'){
   // E7.T1: דשבורד מנהל מרכזי (מוקאפ 30)
@@ -168,6 +168,8 @@ async function vAdmin(sub){
    <div class="card"><b>לפי מכבסה (7 ימים)</b><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th></tr>
     ${d.by_tenant.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.orders}</td><td>₪${t.gmv}</td></tr>`).join('')||'<tr><td colspan="3" class="mut">אין הזמנות השבוע</td></tr>'}</table></div>
    <button class="btn2" data-act="downloadCsv" data-a="/admin/weekly-report.csv" data-b="weekly-report.csv">ייצוא הדוח ל-CSV</button>`;
+ } else if(sub==='audit'){
+  body=await vAdminAudit();
  } else if(sub==='orders'){
   const d=await api('/admin/orders');
   body=`<div class="card"><table class="tbl"><tr><th>הזמנה</th><th>מכבסה</th><th>סטטוס</th><th>₪</th></tr>

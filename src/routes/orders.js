@@ -10,6 +10,7 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
+r.use(require('../ratelimit').writeLimiter('orders-write', 30));
 
 const STATUS_HE = { new:'התקבלה', confirmed:'אושרה', picked_up:'נאספה', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה', cancelled:'בוטלה' };
 

@@ -8,6 +8,7 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
+r.use(require('../ratelimit').writeLimiter('documents-write', 60));
 
 const KIND_TITLE = KIND_HE;
 

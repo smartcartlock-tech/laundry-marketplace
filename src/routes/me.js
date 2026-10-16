@@ -61,4 +61,26 @@ r.delete('/', requireAuth, async (req, res) => {
   } finally { client.release(); }
 });
 
+// ביקורת סשנים: רשימת מכשירים מחוברים, ניתוק מכשיר בודד, ניתוק מכל המכשירים האחרים
+r.get('/sessions', requireAuth, async (req, res) => {
+  const { rows } = await q(
+    `SELECT id, user_agent, ip, created_at, last_seen_at, expires_at, (jti=$2) AS current
+     FROM auth_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at > now()
+     ORDER BY last_seen_at DESC`, [req.user.id, req.sessionJti || '']);
+  res.json({ sessions: rows });
+});
+
+r.delete('/sessions/:id', requireAuth, async (req, res) => {
+  const { rowCount } = await q('UPDATE auth_sessions SET revoked_at=now() WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL',
+    [req.params.id, req.user.id]);
+  if (!rowCount) return res.status(404).json({ error: 'סשן לא נמצא' });
+  res.json({ ok: true });
+});
+
+r.post('/sessions/revoke-all', requireAuth, async (req, res) => {
+  const { rowCount } = await q('UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL AND jti<>$2',
+    [req.user.id, req.sessionJti || '']);
+  res.json({ ok: true, revoked: rowCount });
+});
+
 module.exports = r;

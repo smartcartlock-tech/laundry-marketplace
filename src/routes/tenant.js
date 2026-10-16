@@ -14,6 +14,7 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
+r.use(require('../ratelimit').writeLimiter('tenant-write', 90));
 
 const FLOW = ['new','confirmed','picked_up','in_work','ready','out_for_delivery','delivered'];
 

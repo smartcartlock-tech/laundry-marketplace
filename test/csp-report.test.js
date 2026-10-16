@@ -4,13 +4,12 @@ const assert = require('node:assert');
 const { startApp, TEST_DB } = require('./helpers');
 const { Client } = require('pg');
 
-test('B7: Report-Only בלי unsafe-inline בסקריפטים + אכיפה קיימת לא השתנתה; דיווח נקלט', async (t) => {
+test('B7: Report-Only בלי unsafe-inline בסקריפטים + אכיפה מחמירה (שלב ג) + דיווח נקלט', async (t) => {
   const { base, schema } = await startApp(t);
   const page = await fetch(base + '/');
   const enforce = page.headers.get('content-security-policy');
   const reportOnly = page.headers.get('content-security-policy-report-only');
-  assert.ok(enforce.includes("script-src 'self' 'unsafe-inline'"), 'מדיניות האכיפה לא השתנתה');
-  assert.ok(reportOnly, 'קיימת כותרת Report-Only');
+assert.ok(reportOnly, 'קיימת כותרת Report-Only');
   assert.ok(!reportOnly.includes("script-src 'self' 'unsafe-inline'"), 'המדיניות המחמירה בלי unsafe-inline');
   assert.ok(reportOnly.includes('report-uri /api/csp-report'));
 

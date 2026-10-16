@@ -7,6 +7,7 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
+r.use(require('../ratelimit').writeLimiter('subscriptions-write', 30));
 
 async function findTenant(slug) {
   const { rows } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);

@@ -10,8 +10,8 @@ const SECRET = () => {
 };
 
 // B1: תוקף 7 ימים + tv (token_version) לביטול גלובלי של כל הטוקנים של המשתמש
-function sign(user) {
-  return jwt.sign({ uid: user.id, tv: user.token_version || 0 }, SECRET(), { expiresIn: '7d' });
+function sign(user, jti) {
+  return jwt.sign({ uid: user.id, tv: user.token_version || 0, jti }, SECRET(), { expiresIn: '7d' });
 }
 
 async function requireAuth(req, res, next) {
@@ -23,7 +23,11 @@ async function requireAuth(req, res, next) {
     const { rows } = await q('SELECT * FROM users WHERE id=$1', [payload.uid]);
     if (!rows[0]) return res.status(401).json({ error: 'משתמש לא נמצא' });
     if ((payload.tv ?? -1) !== rows[0].token_version) return res.status(401).json({ error: 'ההתחברות בוטלה — יש להתחבר מחדש' });
+    // ביקורת סשנים: טוקן בלי סשן פעיל (נותק מרחוק / פג תוקף) נדחה
+    const sess = await require('./sessions').checkSession(payload.jti);
+    if (!sess) return res.status(401).json({ error: 'הסשן הסתיים — יש להתחבר מחדש' });
     req.user = rows[0];
+    req.sessionJti = payload.jti;
     next();
   } catch (e) { return res.status(401).json({ error: 'טוקן לא תקין' }); }
 }

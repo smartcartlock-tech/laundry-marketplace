@@ -6,6 +6,13 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
+r.use(require('../ratelimit').writeLimiter('adminplus-write', 120));
+// יומן ביקורת: כל כתיבה אדמיניסטרטיבית מוצלחת נרשמת עם מבצע, פעולה ויעד
+r.use((req,res,next)=>{
+  if(req.method==='GET'||req.method==='HEAD')return next();
+  res.on('finish',()=>{if(res.statusCode<300)require('../audit').audit(req,req.method+' '+req.baseUrl+req.path,null,req.params&&(req.params.id||req.params.slug||null),{params:req.params,status:res.statusCode})});
+  next();
+});
 
 const STAGES = ['agreement','pricing','bot','training','active'];
 
@@ -162,6 +169,13 @@ r.post('/issues/:id/handle', uuidParams('id'), async (req, res) => {
     [req.params.id, status, note || null, req.user.id]);
   if (!rows[0]) return res.status(404).json({ error: 'דיווח לא נמצא' });
   res.json({ issue: rows[0] });
+});
+
+// יומן ביקורת: צפייה אדמין ברישומי פעולות מנהל אחרונות
+r.get('/audit-log', async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 200, 500);
+  const { rows } = await q('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1', [limit]);
+  res.json({ entries: rows });
 });
 
 module.exports = r;

@@ -3,6 +3,7 @@
 //   otp_codes שפגו (סיסמאות חד-פעמיות — אין שום ערך בשמירתן)
 //   bot_sessions שפגו (טוקני שיחה מתים)
 //   notifications מעל 90 יום (לוג שליחות תפעולי; אינו מסמך חשבונאי)
+//   auth_sessions שפגו/נותקו (רשומת מכשיר מתה — הטוקן עצמו כבר לא בתוקף)
 // push_subscriptions מתות כבר נמחקות בעת שליחה (410/404 ב-src/push.js).
 const { q } = require('./db');
 
@@ -10,6 +11,7 @@ const RULES = [
   { name: 'otp_codes', sql: `DELETE FROM otp_codes WHERE expires_at < now() - interval '1 day'` },
   { name: 'bot_sessions', sql: `DELETE FROM bot_sessions WHERE expires_at < now() - interval '1 day'` },
   { name: 'notifications', sql: `DELETE FROM notifications WHERE created_at < now() - interval '90 days'` },
+  { name: 'auth_sessions', sql: `DELETE FROM auth_sessions WHERE expires_at < now() - interval '1 day' OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days')` },
 ];
 
 async function runRetention() {

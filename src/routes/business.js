@@ -5,6 +5,7 @@ const { requireAuth, requireTenantMember } = require('../auth');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
+r.use(require('../ratelimit').writeLimiter('business-write', 60));
 
 async function getAccount(req, res) {
   const { rows } = await q('SELECT * FROM business_accounts WHERE id=$1 AND tenant_id=$2', [req.params.bid, req.tenant.id]);

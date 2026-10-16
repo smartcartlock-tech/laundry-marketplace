@@ -28,10 +28,19 @@ test('C3: runRetention מוחק otp/סשנים שפגו והתראות ישנו�
     ($1, 'log', 'ישנה', now() - interval '100 days'),
     ($1, 'log', 'חדשה', now())`, [tid]);
 
+  // auth_sessions: סשן שפג אתמול (ימחק), סשן פעיל (יישאר), סשן שבוטל לפני שעה (יישאר — חלון 7 ימים)
+  const { rows: usr } = await q(`INSERT INTO users(phone) VALUES ('+972500000099') RETURNING id`);
+  await q(`INSERT INTO auth_sessions(user_id, jti, expires_at) VALUES
+    ($1, 'ret-old', now() - interval '2 days'),
+    ($1, 'ret-live', now() + interval '1 day')`, [usr[0].id]);
+  await q(`INSERT INTO auth_sessions(user_id, jti, expires_at, revoked_at) VALUES
+    ($1, 'ret-rev', now() + interval '1 day', now() - interval '1 hour')`, [usr[0].id]);
+
   const counts = await runRetention();
   assert.equal(counts.otp_codes, 1);
   assert.equal(counts.bot_sessions, 1);
   assert.equal(counts.notifications, 1);
+  assert.equal(counts.auth_sessions, 1, 'רק הסשן שפג נמחק');
 
   const left = await q(`SELECT
     (SELECT count(*)::int FROM otp_codes) AS otp,
@@ -40,6 +49,9 @@ test('C3: runRetention מוחק otp/סשנים שפגו והתראות ישנו�
   assert.deepEqual(left.rows[0], { otp: 1, sess: 1, notif: 1 });
 
   // הרצה כפולה — אין מה למחוק, לא נשבר
+  const left2 = await q(`SELECT count(*)::int AS n FROM auth_sessions`);
+  assert.equal(left2.rows[0].n, 2, 'סשן פעיל + סשן שבוטל בתוך 7 ימים נשמרים');
+
   const again = await runRetention();
-  assert.deepEqual(again, { otp_codes: 0, bot_sessions: 0, notifications: 0 });
+  assert.deepEqual(again, { otp_codes: 0, bot_sessions: 0, notifications: 0, auth_sessions: 0 });
 });

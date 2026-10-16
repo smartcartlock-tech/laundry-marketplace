@@ -7,6 +7,7 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireCommunityMember);
+r.use(require('../ratelimit').writeLimiter('community-write', 60));
 
 const authorInfo = `u.name AS author_name, t.name AS tenant_name, t.slug AS tenant_slug`;
 

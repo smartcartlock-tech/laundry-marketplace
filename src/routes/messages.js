@@ -5,6 +5,7 @@ const { requireAuth } = require('../auth');
 
 const r = express.Router();
 r.use(requireAuth);
+r.use(require('../ratelimit').writeLimiter('messages-write', 60));
 
 r.get('/', async (req, res) => {
   try {

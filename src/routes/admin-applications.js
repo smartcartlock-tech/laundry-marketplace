@@ -6,6 +6,13 @@ const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
+r.use(require('../ratelimit').writeLimiter('admin-applications-write', 60));
+// יומן ביקורת: כל כתיבה אדמיניסטרטיבית מוצלחת נרשמת
+r.use((req,res,next)=>{
+  if(req.method==='GET'||req.method==='HEAD')return next();
+  res.on('finish',()=>{if(res.statusCode<300)require('../audit').audit(req,req.method+' '+req.baseUrl+req.path,null,req.params&&(req.params.id||req.params.slug||null),{params:req.params,status:res.statusCode})});
+  next();
+});
 
 r.get('/applications', async (req, res) => {
   const { status } = req.query;

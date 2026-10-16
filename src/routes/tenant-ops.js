@@ -5,6 +5,7 @@ const { requireAuth, requireTenantMember } = require('../auth');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
+r.use(require('../ratelimit').writeLimiter('tenant-ops-write', 60));
 
 const DAY = `(now() AT TIME ZONE 'Asia/Jerusalem')::date`;
 

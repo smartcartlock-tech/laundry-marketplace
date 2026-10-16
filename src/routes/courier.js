@@ -7,6 +7,7 @@ const { accrueStop, getSetting, weekStart } = require('../routes-engine');
 
 const r = express.Router();
 r.use(requireAuth);
+r.use(require('../ratelimit').writeLimiter('courier-write', 40));
 
 const { fileFilter, verifyFile, IMAGES } = require('../uploads');
 const { uuidParams } = require('../validate');
