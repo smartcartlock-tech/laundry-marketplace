@@ -44,6 +44,7 @@ async function route(){
   else if(parts[0]==='addresses')html=await vAddresses(); // CX-B1
   else if(parts[0]==='prefs')html=await vPrefs(); // CX-B2
   else if(parts[0]==='family')html=await vFamily(); // CX-B3
+  else if(parts[0]==='account')html=await vAccountHub(); // CX-D2
   else if(parts[0]==='join-family')html=vJoinFamily(parts[1]); // CX-B3
   else if(parts[0]==='courier'&&parts[1]==='day')html=await vCourierDay(q.get('date'));
   else if(parts[0]==='courier'&&parts[1]==='history')html=await vCourierHistory(q.get('period'));

@@ -155,6 +155,7 @@
       const html = await origC2();
       const card = `<div class="card"><b>החשבון שלי</b>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <a class="btn2" href="#/account">👤 החשבון שלי</a>
           <a class="btn2" href="#/addresses">📍 הכתובות שלי</a>
           <a class="btn2" href="#/prefs">🧺 העדפות כביסה</a>
           <a class="btn2" href="#/family">👨‍👩‍👧 מנוי משפחתי</a>
