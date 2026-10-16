@@ -5,6 +5,7 @@
   function mode(){ return (window.state && state.cfg && state.cfg.mode) || 'demo'; }
   function banner(){
     let b = document.getElementById('mode-banner');
+    document.body.classList.toggle('mode-demo', mode() === 'demo');
     if (mode() === 'demo'){
       if (!b){
         b = document.createElement('div');
