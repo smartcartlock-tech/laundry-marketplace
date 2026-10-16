@@ -105,6 +105,10 @@ r.post('/', async (req, res) => {
     }
     const total = Math.max(0, subtotal + deliveryFee - discount);
     const pointsEarned = Math.floor(total * Number(tenant.points_earn_rate || 0));
+    // A2: ב-pilot אין תשלום דמו שמסמן "שולם"
+    if (payment_method === 'demo_online' && require('../config').isPilot) {
+      await client.query('ROLLBACK'); return res.status(400).json({ error: 'תשלום מקוון (דמו) לא זמין במצב פיילוט' });
+    }
     const payMethod = payment_method === 'demo_online' ? 'demo_online' : 'cash';
     const payStatus = payMethod === 'demo_online' ? 'paid_demo' : 'pending';
 

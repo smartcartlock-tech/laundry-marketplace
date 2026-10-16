@@ -6,6 +6,12 @@ const { notifyUser } = require('../notify');
 
 const r = express.Router();
 
+// A2: תשלום דמו כבוי במצב pilot — לא מסמנים "שולם" על כסף שלא שולם
+r.use((req, res, next) => {
+  if (require('../config').isPilot) return res.status(403).json({ error: 'תשלום מקוון (דמו) כבוי במצב פיילוט' });
+  next();
+});
+
 async function loadOrder(req, res) {
   const { rows: o } = await q(
     `SELECT o.*, t.name AS tenant_name, t.color, t.address AS tenant_address, t.city AS tenant_city, t.phone AS tenant_phone

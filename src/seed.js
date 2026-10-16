@@ -13,6 +13,8 @@ const LAUNDRIES = [
 ];
 
 async function run() {
+  // A2: במצב pilot לא מוזרעים נתוני דמו לעולם
+  if (require('./config').isPilot) { console.log('[seed] skipped (pilot mode)'); return; }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

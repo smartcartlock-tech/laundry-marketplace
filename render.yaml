@@ -10,6 +10,8 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: APP_MODE   # A2: demo|pilot — ברירת מחדל demo; לעבור ל-pilot רק ב-go-live (ראה docs/GO-LIVE.md)
+        value: "demo"
       - key: PGSCHEMA
         value: marketplace
       - key: SEED_DEMO

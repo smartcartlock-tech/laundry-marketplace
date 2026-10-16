@@ -6,7 +6,9 @@ const { sendWhatsApp } = require('../notify');
 
 const r = express.Router();
 const { limiter } = require('../ratelimit');
-const DEMO_OTP = () => process.env.DEMO_OTP !== 'false'; // ברירת מחדל: מצב דמו פעיל
+const { isDemo } = require('../config');
+// A2: קוד דמו מוצג רק במצב demo — ב-pilot לעולם לא (גם אם DEMO_OTP=true ב-env)
+const DEMO_OTP = () => isDemo && process.env.DEMO_OTP !== 'false';
 
 function normalizeTarget(raw) {
   const t = String(raw || '').trim();

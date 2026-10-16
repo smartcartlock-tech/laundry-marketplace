@@ -163,9 +163,11 @@ ${t.logo ? `<img src="/api/laundries/${req.params.slug}/logo" style="width:70px;
 
 // קונפיגורציה ציבורית ל-PWA
 r.get('/config', (req, res) => {
+  const { MODE, isDemo } = require('../config');
   res.json({
+    mode: MODE,
     googleClientId: process.env.GOOGLE_CLIENT_ID || null,
-    demoOtp: process.env.DEMO_OTP !== 'false',
+    demoOtp: isDemo && process.env.DEMO_OTP !== 'false',
     whatsappOtp: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_WHATSAPP_FROM),
   });
 });
