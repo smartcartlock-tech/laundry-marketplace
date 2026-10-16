@@ -1,5 +1,5 @@
 const express = require('express');
-const { q } = require('../db');
+const { q, pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 
 const r = express.Router();
@@ -108,6 +108,68 @@ r.post('/couriers/register', async (req, res) => {
     'INSERT INTO couriers(user_id, tenant_id, model, vehicle, areas, approved) VALUES ($1,$2,$3,$4,$5,true) RETURNING *',
     [u[0].id, tenantId, mdl, vehicle || null, areas || []]);
   res.status(201).json({ courier: c[0] });
+});
+
+
+// QA2.T9: מחיקת משתמש בדיקה יתום (כולל ההזמנות שלו) — לא חסימת מכבסות מאושרות בבעלותו
+r.delete('/users/:phone', async (req, res) => {
+  const phone = String(req.params.phone || '').trim();
+  if (!phone) return res.status(400).json({ error: 'חסר טלפון' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: u } = await client.query('SELECT * FROM users WHERE phone=$1', [phone]);
+    if (!u[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'משתמש לא נמצא' }); }
+    const uid = u[0].id;
+    const { rows: owned } = await client.query(
+      `SELECT t.slug FROM tenant_members m JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=$1 AND m.role='owner' AND t.approved`, [uid]);
+    if (owned.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'המשתמש בעלים של מכבסה מאושרת (' + owned.map(x => x.slug).join(', ') + ') — לא נמחק' }); }
+    const { rows: orderIds } = await client.query('SELECT id FROM orders WHERE customer_id=$1', [uid]);
+    const ids = orderIds.map(x => x.id);
+    if (ids.length) {
+      await client.query('DELETE FROM order_items WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM order_events WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM courier_offers WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM points_ledger WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM notifications WHERE order_id = ANY($1)', [ids]).catch(() => {});
+      await client.query('DELETE FROM orders WHERE id = ANY($1)', [ids]);
+    }
+    await client.query('DELETE FROM points_ledger WHERE user_id=$1', [uid]);
+    await client.query('DELETE FROM reviews WHERE user_id=$1', [uid]).catch(() => {});
+    await client.query('DELETE FROM notifications WHERE user_id=$1', [uid]).catch(() => {});
+    await client.query('DELETE FROM tenant_members WHERE user_id=$1', [uid]);
+    await client.query('DELETE FROM otp_codes WHERE target=$1', [phone]).catch(() => {});
+    await client.query('DELETE FROM users WHERE id=$1', [uid]);
+    await client.query('COMMIT');
+    res.json({ ok: true, deleted_orders: ids.length });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+});
+
+// QA2.T9: ניקוי הזמנות בדיקה מבוטלות (כתובת מכילה "בדיק"/"דמו") לפי מכבסה
+r.post('/orders/purge-test', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: idsRows } = await client.query(
+      `SELECT id FROM orders WHERE status='cancelled' AND (address ILIKE '%בדיק%' OR address ILIKE '%דמו%' OR notes ILIKE '%בדיק%')`);
+    const ids = idsRows.map(x => x.id);
+    if (ids.length) {
+      await client.query('DELETE FROM order_items WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM order_events WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM courier_offers WHERE order_id = ANY($1)', [ids]);
+      await client.query('UPDATE points_ledger SET order_id=NULL WHERE order_id = ANY($1)', [ids]);
+      await client.query('UPDATE reviews SET order_id=NULL WHERE order_id = ANY($1)', [ids]);
+      await client.query('DELETE FROM orders WHERE id = ANY($1)', [ids]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, purged: ids.length });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
 });
 
 module.exports = r;
