@@ -49,3 +49,13 @@ test('sw.js precache מכסה את סקריפטי מסך השליח (courier*, �
   for (const f of ['./js/courier.js', './js/courier-day.js', './js/courier-offline.js'])
     assert.ok(src.includes(`'${f}'`), 'חסר ב-precache: ' + f);
 });
+
+test('אחידות precache: כל סקריפט ב-index.html נכלל ב-precache של sw.js (מדיניות אחידה, אכיפה אוטומטית)', () => {
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const sw = fs.readFileSync(SW, 'utf8');
+  const m = sw.match(/const A=\[([^\]]*)\]/);
+  assert.ok(m, 'רשימת precache קיימת');
+  const precached = new Set([...m[1].matchAll(/'\.\/js\/([^']+)'/g)].map(x => x[1]));
+  const missing = [...idx.matchAll(/src="\/js\/([^"]+)"/g)].map(x => x[1]).filter(f => !precached.has(f));
+  assert.deepStrictEqual(missing, [], 'סקריפטים חסרים ב-precache: ' + missing.join(', '));
+});
