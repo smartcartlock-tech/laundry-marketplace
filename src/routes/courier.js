@@ -208,9 +208,31 @@ r.post('/orders/:id/mark', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'הזמנה לא משובצת אליך' });
   const allowed = { picked_up: ['confirmed'], out_for_delivery: ['ready'], delivered: ['out_for_delivery', 'ready'] };
   if (!allowed[newStatus].includes(order.status)) return res.status(409).json({ error: `לא ניתן לסמן מתוך סטטוס ${order.status}` });
+
+  // QA2.T4: חלון איסוף — לא חוסמים עבודת שטח, אבל סימון מחוץ לחלון מתועד כחריגה באירועי ההזמנה
+  let windowViolation = false;
+  if (newStatus === 'picked_up' && order.pickup_at) {
+    const { rows: w } = await q(
+      `SELECT start_time, end_time FROM pickup_windows
+       WHERE tenant_id=$1 AND kind='pickup'
+         AND weekday = EXTRACT(ISODOW FROM ($2::timestamptz AT TIME ZONE 'Asia/Jerusalem'))::int % 7
+         AND start_time = ($2::timestamptz AT TIME ZONE 'Asia/Jerusalem')::time
+       LIMIT 1`, [order.tenant_id, order.pickup_at]);
+    if (w[0]) {
+      const [sh, sm] = String(w[0].start_time).split(':').map(Number);
+      const [eh, em] = String(w[0].end_time).split(':').map(Number);
+      const winStart = new Date(order.pickup_at).getTime();
+      const winEnd = winStart + (((eh * 60 + em) - (sh * 60 + sm)) * 60000);
+      const nowMs = Date.now();
+      const GRACE_BEFORE = 60 * 60000, GRACE_AFTER = 120 * 60000; // שעה מוקדם / שעתיים איחור ללא חריגה
+      if (nowMs < winStart - GRACE_BEFORE || nowMs > winEnd + GRACE_AFTER) windowViolation = true;
+    }
+  }
+
   await q('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
+  const evNote = [note || null, windowViolation ? 'חריגה: האיסוף סומן מחוץ לחלון שנקבע' : null].filter(Boolean).join(' · ') || null;
   await q('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
-    [order.id, newStatus, req.user.id, note || null, photo_url || null]);
+    [order.id, newStatus, req.user.id, evNote, photo_url || null]);
   // E5.T4: צבירת נקודה לזכות השליח על איסוף/מסירה
   if (newStatus === 'picked_up') await accrueStop(req.courier.id, order, 'pickup').catch(e => console.error('[earnings]', e.message));
   if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
@@ -234,7 +256,7 @@ r.post('/orders/:id/mark', async (req, res) => {
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
   const HE = { picked_up: 'נאספה על ידי השליח', out_for_delivery: 'בדרך אליך', delivered: 'סומנה כהוחזרה. תודה!' };
   if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.`, cust[0].phone).catch(() => {});
-  res.json({ ok: true });
+  res.json({ ok: true, ...(windowViolation ? { window_violation: true } : {}) });
 });
 
 // פרופיל שליח + סטטיסטיקה
