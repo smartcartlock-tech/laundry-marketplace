@@ -33,22 +33,28 @@ function vHelp(){
  </div>`;
 }
 
-/* הזרקת קישור "עזרה" לניווט התחתון — עצמאי, בלי עריכת קבצים משותפים */
+/* הזרקת קישור "עזרה" לניווט התחתון — עצמאי, בלי עריכת קבצים משותפים.
+   MutationObserver כי ה-nav נבנה מחדש בכל ניווט (hashchange קורא ל-route המקורי ישירות) */
 (function(){
-  if (typeof window.route !== 'function') return;
-  const orig = window.route;
-  window.route = async function(){
-    const out = await orig();
+  function inject(){
     try{
       const nav = document.querySelector('nav');
-      if (nav && !nav.querySelector('a[href$="#/help"]')){
-        const a = document.createElement('a');
-        a.href = '#/help';
-        a.style.cssText = 'color:#fff;text-decoration:none;text-align:center;font-size:11px';
-        a.innerHTML = '<div style="font-size:18px">?</div>עזרה';
-        nav.appendChild(a);
-      }
+      if (!nav || nav.querySelector('a[href$="#/help"]')) return;
+      const a = document.createElement('a');
+      a.href = '#/help';
+      a.style.cssText = 'color:#fff;text-decoration:none;text-align:center;font-size:11px';
+      a.innerHTML = '<div style="font-size:18px">?</div>עזרה';
+      (nav.querySelector('.in') || nav).appendChild(a);
     }catch(e){}
-    return out;
-  };
+  }
+  function watch(){
+    const nav = document.querySelector('nav');
+    if (!nav) return;
+    inject();
+    new MutationObserver(inject).observe(nav, {childList:true, subtree:true});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
+  else watch();
+  /* ה-nav עלול להיווצר מאוחר יותר ע"י רינדור ראשוני */
+  setTimeout(watch, 500); setTimeout(watch, 2000);
 })();
