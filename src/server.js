@@ -10,6 +10,8 @@ app.use((req, res, next) => {
   res.set('X-Frame-Options', 'DENY');
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'");
+  // B7 שלב א: מדיניות מחמירה (בלי unsafe-inline בסקריפטים) במצב Report-Only — אוספת הפרות בלי לשבור
+  res.set('Content-Security-Policy-Report-Only', "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'; report-uri /api/csp-report");
   next();
 });
 // ביצועים: דחיסת gzip/deflate לכל התגובות (app.js לבדו ~165KB → ~35KB)
@@ -22,6 +24,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api', require('./routes/csp-report')); // B7: דיווחי CSP
 app.use('/api/me', require('./routes/me')); // C2: זכויות נושא מידע
 app.use('/api', require('./routes/public'));
 app.use('/api/orders', require('./routes/orders'));
