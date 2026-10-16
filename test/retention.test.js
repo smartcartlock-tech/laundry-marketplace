@@ -20,9 +20,9 @@ test('C3: runRetention מוחק otp/סשנים שפגו והתראות ישנו�
     ('demo', '+972500000001', '111111', now() - interval '2 days'),
     ('demo', '+972500000001', '222222', now() + interval '10 minutes')`);
   // bot_sessions: אחד שפג (ימחק), אחד פעיל (יישאר)
-  await q(`INSERT INTO bot_sessions(phone, tenant_id, expires_at) VALUES
-    ('+972500000001', $1, now() - interval '2 days'),
-    ('+972500000001', $1, now() + interval '1 day')`, [tid]);
+  await q(`INSERT INTO bot_sessions(phone, tenant_id, token, token_hash, expires_at) VALUES
+    ('+972500000001', $1, NULL, encode(gen_random_bytes(24),'hex'), now() - interval '2 days'),
+    ('+972500000001', $1, NULL, encode(gen_random_bytes(24),'hex'), now() + interval '1 day')`, [tid]);
   // notifications: אחת בת 100 יום (תמחק), אחת חדשה (תישאר)
   await q(`INSERT INTO notifications(tenant_id, channel, body, created_at) VALUES
     ($1, 'log', 'ישנה', now() - interval '100 days'),
