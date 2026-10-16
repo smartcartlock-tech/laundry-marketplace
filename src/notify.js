@@ -46,8 +46,15 @@ async function sendWhatsApp(toE164, body) {
   }
 }
 
+const { statusMuted } = require('./notification-prefs'); // CX5
+
 async function notifyUser(userId, tenantId, body, phone) {
   let sent = false, channel = 'log';
+  // CX5: הלקוח השתיק עדכוני סטטוס — נרשם כ-muted, לא נשלח דבר
+  if (await statusMuted(userId)) {
+    await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [userId, tenantId, 'muted', body, false]).catch(() => {});
+    return;
+  }
   // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג
   try { const p = await sendPushToUser(userId, { title: 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
   if (phone) {

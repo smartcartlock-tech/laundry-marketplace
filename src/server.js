@@ -29,6 +29,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api', require('./routes/csp-report')); // B7: דיווחי CSP
 app.use('/api/me', require('./routes/me')); // C2: זכויות נושא מידע
+app.use('/api/me/notification-prefs', require('./routes/me-prefs')); // CX5: העדפות התראות
 app.use('/api', require('./routes/public'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: דיווחי תקלות לקוח
