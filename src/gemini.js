@@ -1,9 +1,10 @@
 // חילוץ מחירון/שעות/תקנון מתמונות דרך Gemini (vision). מחזיר JSON מובנה.
+const BASE = () => process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/models/'; // B3: נקודת החלפה לסימולציה בבדיקות
 const MODELS = () => [process.env.GEMINI_MODEL, 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'].filter((v,i,a)=>v&&a.indexOf(v)===i);
 
 async function extractFromImages(apiKey, images) {
   // images: [{mimeType, base64}]
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite') + ':generateContent?key=' + apiKey;
+  const url = BASE() + (process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite') + ':generateContent?key=' + apiKey;
   const prompt = `אתה ממיר מסמכי מכבסה ל-JSON. קיבלת תמונות של מחירון מכבסה, שעות פעילות ו/או תקנון.
 החזר אך ורק JSON תקין במבנה:
 {
@@ -27,7 +28,7 @@ async function extractFromImages(apiKey, images) {
   const parts = [{ text: prompt }, ...images.map(im => ({ inline_data: { mime_type: im.mimeType, data: im.base64 } }))];
   let r = null, lastErr = '';
   for (const m of MODELS()) {
-    const u = 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + apiKey;
+    const u = BASE() + m + ':generateContent?key=' + apiKey;
     r = await fetch(u, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json' } })

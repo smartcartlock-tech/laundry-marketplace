@@ -71,4 +71,27 @@ r.post('/tenants', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
+// B3: שמירת טיוטת ההקמה (למשתמש מחובר בלבד) — שחזור אחרי רענון, נמחקת אחרי יצירה מוצלחת
+r.post('/draft', async (req, res) => {
+  try {
+    const draft = req.body && typeof req.body === 'object' && req.body.draft && typeof req.body.draft === 'object' ? req.body.draft : null;
+    if (!draft) return res.status(400).json({ error: 'טיוטה לא תקינה' });
+    const json = JSON.stringify(draft);
+    if (json.length > 200000) return res.status(413).json({ error: 'הטיוטה גדולה מדי' });
+    await q(`INSERT INTO onboarding_drafts(user_id, draft, updated_at) VALUES ($1,$2,now())
+             ON CONFLICT (user_id) DO UPDATE SET draft=$2, updated_at=now()`, [req.user.id, json]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
+});
+
+r.get('/draft', async (req, res) => {
+  const { rows } = await q('SELECT draft, updated_at FROM onboarding_drafts WHERE user_id=$1', [req.user.id]);
+  res.json({ draft: rows[0] ? rows[0].draft : null, updated_at: rows[0] ? rows[0].updated_at : null });
+});
+
+r.delete('/draft', async (req, res) => {
+  await q('DELETE FROM onboarding_drafts WHERE user_id=$1', [req.user.id]);
+  res.json({ ok: true });
+});
+
 module.exports = r;
