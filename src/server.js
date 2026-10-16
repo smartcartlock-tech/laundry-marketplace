@@ -32,6 +32,7 @@ app.use('/api/t/:slug/business-accounts', require('./routes/business'));
 app.use('/api/t/:slug', require('./routes/tenant'));
 app.use('/api/t/:slug', require('./routes/issues')); // E9.T1: טיפול מכבסה בתקלות
 app.use('/api/t/:slug', require('./routes/tenant-label')); // C4: תווית/דף איסוף PDF
+app.use('/api/t/:slug', require('./routes/tenant-ops')); // C5: סיכום יום תפעולי
 app.use('/api/t/:slug', require('./routes/tenant-checklist')); // B1: צ'ק-ליסט מוכנות
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
