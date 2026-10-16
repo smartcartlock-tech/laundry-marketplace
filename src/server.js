@@ -51,6 +51,7 @@ app.use('/api/t/:slug', require('./routes/tenant-checklist')); // B1: צ'ק-לי
 app.use('/api/t/:slug', require('./routes/tenant-agreement')); // B4: הסכם שירות דיגיטלי
 app.use('/api/t/:slug', require('./routes/settlement'));
 app.use('/api/t/:slug', require('./routes/financials')); // נתונים פיננסיים מוצפנים — בעלים בלבד // התחשבנות (דמו): דוח תשלומים, עמלה, ייצוא רו"ח, בדיקת רצף
+app.use('/api/t/:slug', require('./routes/bookkeeping')); // הנה"ח אמיתית: ספר כפול, כרטיסים, מאזן, סגירת תקופה (בעלים בלבד)
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/courier', require('./routes/courier-day')); // מסך שליח: משימות/מסלול יום/אישור מסירה
 app.use('/api/delivery-confirmations', require('./routes/delivery-confirmations')); // צילומי אישור מסירה
