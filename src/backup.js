@@ -2,9 +2,14 @@
 // משמש גם את scripts/backup.js (CLI) וגם את GET /api/admin/export.
 const { q } = require('./db');
 
+// טבלאות מערכת שאינן חלק מהייצוא: encrypted_backups (מכילה גיבויים קודמים — גידול ריבועי)
+// ו-schema_migrations (מצב פנימי של רץ המיגרציות, משוחזר מהקבצים).
+const EXCLUDED = ['encrypted_backups', 'schema_migrations'];
+
 async function listTables() {
   const { rows } = await q(
-    `SELECT tablename FROM pg_tables WHERE schemaname = current_schema() ORDER BY tablename`);
+    `SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> ALL($1) ORDER BY tablename`,
+    [EXCLUDED]);
   return rows.map(r => r.tablename);
 }
 

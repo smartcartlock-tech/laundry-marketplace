@@ -10,6 +10,10 @@ function newVerifyCode() { const b = crypto.randomBytes(24); let c = ''; for (le
 
 // חתימת מסמך: HMAC-SHA256 של (מזהה, סוג/מספר/שנה, סכום, תאריך) במפתח השרת — אימות בשרת בלבד
 const SIGN_SECRET = process.env.DOC_SIGNING_SECRET || 'demo-doc-signing-secret';
+// בפרוד חובה סוד אמיתי — ברירת המחדל היא לפיתוח/טסטים בלבד (נכשלים ב-boot, לא בחתימה)
+if (process.env.NODE_ENV === 'production' && (!process.env.DOC_SIGNING_SECRET || process.env.DOC_SIGNING_SECRET === 'demo-doc-signing-secret')) {
+  throw new Error('DOC_SIGNING_SECRET must be set to a real secret in production');
+}
 function signDocument(d) {
   const date = new Date(d.issued_at).toISOString().slice(0, 10);
   return crypto.createHmac('sha256', SIGN_SECRET)
@@ -142,30 +146,29 @@ async function setAllocationNumber(client, docId, tenantId, allocationNumber, ac
   return rows[0];
 }
 
-// מיגרציית שלמות למסמכים קיימים: חתימה מחדש למי שהאלגוריתם/הסוד השתנה לגביו,
-// ו-sha256 מחדש מבייטי ה-PDF כשחסר/שגוי (מחזיר "מקור" אמיתי בלי חותמת "העתק"). כל שינוי מתועד.
+// בדיקת שלמות מסמכים ב-boot — דוח/התראה בלבד, בלי תיקון אוטומטי.
+// מסמך ששויכה לו חתימה/sha256 שגויים נשאר כפי שהוא; הטריגר documents_immutable (001+091)
+// מקפיא signature/sha256 כ-write-once, ולכן כל סטייה מצריכה טיפול מודע (זיכוי/מסמך חדש), לא דריסה.
 async function migrateDocumentIntegrity() {
   const { pool } = require('./db');
   const { rows } = await pool.query('SELECT * FROM documents ORDER BY issued_at');
-  let fixedSig = 0, fixedHash = 0;
+  const badSig = [], badHash = [], noPdf = [];
   for (const d of rows) {
-    if (!verifySignature(d)) {
-      await pool.query('UPDATE documents SET signature=$2 WHERE id=$1', [d.id, signDocument(d)]);
-      await pool.query(`INSERT INTO document_events(document_id, action, details) VALUES ($1,'signature_migrated',$2)`,
-        [d.id, JSON.stringify({ reason: 'algorithm drift', demo: true })]);
-      fixedSig++;
-    }
+    if (!verifySignature(d)) badSig.push({ id: d.id, kind: d.kind, doc_number: d.doc_number, old_signature: d.signature });
     if (d.pdf) {
       const real = crypto.createHash('sha256').update(d.pdf).digest('hex');
-      if (d.sha256 !== real) {
-        await pool.query('UPDATE documents SET sha256=$2 WHERE id=$1', [d.id, real]);
-        await pool.query(`INSERT INTO document_events(document_id, action, details) VALUES ($1,'sha256_migrated',$2)`,
-          [d.id, JSON.stringify({ demo: true })]);
-        fixedHash++;
-      }
+      if (d.sha256 !== real) badHash.push({ id: d.id, kind: d.kind, doc_number: d.doc_number, old_sha256: d.sha256, expected: real });
+    } else {
+      noPdf.push({ id: d.id, kind: d.kind, doc_number: d.doc_number });
     }
   }
-  if (fixedSig || fixedHash) console.log(`[documents] integrity migration: ${fixedSig} signatures, ${fixedHash} sha256 fixed`);
+  if (badSig.length || badHash.length || noPdf.length) {
+    console.warn(`[documents] integrity report (no auto-fix): ${badSig.length} bad signatures, ${badHash.length} bad sha256, ${noPdf.length} without pdf`);
+    for (const b of badSig.slice(0, 20)) console.warn('[documents] bad signature:', JSON.stringify(b));
+    for (const b of badHash.slice(0, 20)) console.warn('[documents] bad sha256:', JSON.stringify(b));
+    for (const b of noPdf.slice(0, 20)) console.warn('[documents] missing pdf:', JSON.stringify(b));
+  }
+  return { badSig, badHash, noPdf };
 }
 
 module.exports = { issueDocument, creditDocument, creditSplit, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };

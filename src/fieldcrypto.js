@@ -28,12 +28,22 @@ function decryptField(stored) {
   return Buffer.concat([d.update(Buffer.from(ctB, 'base64url')), d.final()]).toString('utf8');
 }
 
+// פענוח בטוח לקריאה: מידע פגום או מפתח שהוחלף לא מפיל את הבקשה — null + לוג (פר שדה)
+function safeDecryptField(stored, label) {
+  try {
+    return decryptField(stored);
+  } catch (e) {
+    console.error('[fieldcrypto] decrypt failed for ' + (label || 'field') + ': ' + e.message);
+    return null;
+  }
+}
+
 // הצגה מוסתרת: 4 ספרות אחרונות בלבד
 function maskField(stored) {
-  const v = decryptField(stored);
+  const v = safeDecryptField(stored, 'mask');
   if (!v) return v;
   const s = String(v);
   return s.length <= 4 ? '••••' : '••••' + s.slice(-4);
 }
 
-module.exports = { encryptField, decryptField, maskField };
+module.exports = { encryptField, decryptField, safeDecryptField, maskField };
