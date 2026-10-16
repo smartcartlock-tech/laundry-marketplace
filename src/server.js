@@ -38,6 +38,7 @@ app.use('/api/community', require('./routes/community'));
 app.use('/api/bot-central', require('./routes/botcentral'));
 app.use('/api/pay', require('./routes/pay'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
+app.use('/api/addresses', require('./routes/addresses')); // E13.T2: כתובות שמורות
 app.use('/api', require('./routes/push')); // E9.T3: web push
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));

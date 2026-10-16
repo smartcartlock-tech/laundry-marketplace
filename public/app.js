@@ -360,6 +360,8 @@ async function vCheckout(slug){
  if(!items.length){go('#/laundry/'+slug);return ''}
  const subtotal=items.reduce((s,c)=>s+c.price*c.qty,0);
  let mySub=null;
+ // E13.T2: כתובות שמורות
+ try{const ar=await api('/addresses');__coAddrs=ar.addresses||[]}catch(e){__coAddrs=[]}
  try{const sm=await api('/subscriptions/mine');mySub=sm.subscriptions.find(x=>x.slug===slug&&x.status==='active'&&Number(x.bags_remaining)>0)}catch(e){}
  const eligQty=items.filter(c=>{const it=d.items.find(i=>i.id===c.item_id);return it&&it.subscription_eligible}).reduce((s2,c)=>s2+c.qty,0);
  let points=0;
@@ -381,8 +383,20 @@ async function vCheckout(slug){
    <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"><span id="co-redeem-lbl"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</span></label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
   </div>
   <div class="card">
+   ${__coAddrs.length?`<label class="lb">כתובות שמורות</label>
+   <div style="display:flex;gap:6px">
+    <select class="inp" id="co-saved-addr" style="margin-bottom:6px;flex:1" onchange="pickAddr(this)">
+     <option value="">כתובת חדשה…</option>
+     ${__coAddrs.map(a=>`<option value="${a.id}">${esc(a.label)} — ${esc(a.address)}</option>`).join('')}
+    </select>
+    <button class="btn2" id="co-del-addr" style="display:none;margin-bottom:6px" onclick="delAddr()">מחיקה</button>
+   </div>`:''}
    <label class="lb">כתובת לאיסוף והחזרה</label>
    <input class="inp" id="co-address" placeholder="רחוב, מספר, עיר" oninput="this.style.borderColor='';const e=document.getElementById('co-address-err');if(e)e.remove()">
+   <div id="co-save-wrap">
+    <label style="font-size:12.5px"><input type="checkbox" id="co-save-addr"> שמירת הכתובת לפעם הבאה</label>
+    <input class="inp" id="co-addr-label" placeholder="תווית לכתובת (בית, עבודה…)" style="margin-top:6px">
+   </div>
    <label class="lb">חלון איסוף</label>
    <select class="inp" id="co-pickup"><option value="">ללא העדפה</option>${winOpts('pickup')}</select>
    <label class="lb">חלון החזרה (אופציונלי)</label>
@@ -428,6 +442,23 @@ async function applyCoupon(slug){
   updTotal();
  }
 }
+let __coAddrs=[];
+function pickAddr(sel){
+ const a=__coAddrs.find(x=>x.id===sel.value);
+ const inp=$('#co-address'),wrap=$('#co-save-wrap'),del=$('#co-del-addr');
+ if(a){if(inp)inp.value=a.address;if(wrap)wrap.style.display='none';if(del)del.style.display=''}
+ else{if(wrap)wrap.style.display='block';if(del)del.style.display='none'}
+}
+async function delAddr(){
+ const sel=$('#co-saved-addr');if(!sel||!sel.value)return;
+ if(!await xconfirm('למחוק את הכתובת השמורה?',{okText:'מחיקה'}))return;
+ try{
+  await api('/addresses/'+sel.value,{method:'DELETE'});
+  __coAddrs=__coAddrs.filter(x=>x.id!==sel.value);
+  const op=sel.querySelector('option[value="'+sel.value+'"]');if(op)op.remove();
+  sel.value='';pickAddr(sel);toast('הכתובת נמחקה');
+ }catch(e){toast(e.message)}
+}
 let __submitting=false;
 async function submitOrder(slug){
  if(!state.token)return needLogin();
@@ -447,6 +478,9 @@ async function submitOrder(slug){
   const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
   const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim(),use_subscription:!!($('#co-sub')&&$('#co-sub').checked),source:state.brandSlug===slug?'branded':undefined};
   const r=await Promise.race([api('/orders',{method:'POST',body:JSON.stringify(body)}),new Promise((_,rej)=>setTimeout(()=>rej(new Error('פג הזמן — בדקו חיבור ונסו שוב')),25000))]);
+  try{const sv=$('#co-save-addr');
+   if(sv&&sv.checked)await api('/addresses',{method:'POST',body:JSON.stringify({address,label:($('#co-addr-label')?$('#co-addr-label').value.trim():'')||'בית'})});
+  }catch(e){/* שמירת כתובת לא מפילה הזמנה שכבר נקלטה */}
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);
  }catch(e){toast(e.message)}
@@ -1644,6 +1678,7 @@ async function route(){
  if(parts[0]==='login')initGoogle();
  if(state.brandSlug)applyBrandTheme(state.brandSlug);
  const jf=$('#join-files');if(jf)jf.onchange=()=>joinExtract(jf.files);
+ if(parts[0]==='checkout'&&__coAddrs.length===1){const sa=$('#co-saved-addr');if(sa){sa.value=__coAddrs[0].id;pickAddr(sa)}} // E13.T2: כתובת שמורה יחידה נבחרת אוטומטית
  window.scrollTo(0,0);
 }
 window.addEventListener('hashchange',route);

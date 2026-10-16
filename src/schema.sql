@@ -708,3 +708,13 @@ DELETE FROM reviews a USING reviews b
     AND a.target_courier_id IS NOT DISTINCT FROM b.target_courier_id;
 CREATE UNIQUE INDEX IF NOT EXISTS reviews_order_user_uniq ON reviews(order_id, user_id) WHERE target_courier_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS reviews_order_user_courier_uniq ON reviews(order_id, user_id, target_courier_id) WHERE target_courier_id IS NOT NULL;
+
+-- E13.T2: כתובות שמורות של לקוח (בחירה מהירה בצ׳ק-אאוט)
+CREATE TABLE IF NOT EXISTS user_addresses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label text NOT NULL DEFAULT 'בית',
+  address text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_addresses_user_idx ON user_addresses(user_id);
