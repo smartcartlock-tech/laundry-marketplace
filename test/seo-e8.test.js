@@ -46,7 +46,7 @@ test('E8.T1: גרסת דסקטופ — פריסה רחבה ב-1280px+ ללא ש�
   assert.ok(css.includes('.home-side'), 'סרגל סינון');
   assert.ok(css.includes('@media(min-width:900px)'), 'breakpoint ביניים נשמר');
   assert.ok(css.includes('@media (max-width:640px)'), 'מובייל לא נשבר');
-  const app = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const app = fs.readdirSync(path.join(__dirname, '..', 'public', 'js')).map(f => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', f), 'utf8')).join('\n'); // app.js פוצל למודולים (F1)
   assert.ok(app.includes('class="home-wrap"'), 'מבנה דסקטופ בעמוד הבית');
   assert.ok(app.includes('function homeFilter()'), 'סינון שירות/דירוג/זמינות');
 });
