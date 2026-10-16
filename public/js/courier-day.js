@@ -24,7 +24,7 @@ window.addEventListener('online',async()=>{
 function cqBadge(){const n=cqGet().length;return n?`<span class="tag" style="background:#fff3cd;color:#7a5c00">⏳ ${n} ${n===1?'פעולה ממתינה':'פעולות ממתינות'} לסנכרון</span>`:''}
 
 function courierSubtabs(on){
- return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a></div>`;
+ return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a></div>`;
 }
 
 async function vCourierDay(dayDate){
@@ -280,6 +280,20 @@ async function courierSaveProfile(){
   await api('/courier/profile',{method:'PUT',body:JSON.stringify(body)});
   toast('הפרופיל נשמר ✓');route();
  }catch(e){toast(e.message)}
+}
+
+/* מדריך שימוש למסך השליח */
+function vCourierHelp(){
+ return `<div class="hdr"><h2>עזרה — מדריך לשליח</h2><p>איך עובדים עם מסך השליח</p></div>
+ <div class="body">
+ ${courierSubtabs('help')}
+ <div class="card"><b>מתחילים את היום</b><div class="mut" style="margin-top:4px">1. סמנו <b>🟢 זמין לשיבוץ</b> במסך מסלול יום — רק שליחים זמינים מקבלים שיבוץ אוטומטי. 2. הצעות שיבוץ חדשות מופיעות בכרטיס 🔔 בראש המסך — אשרו או דחו עם סיבה. 3. כרטיס "מפת מסלול" נותן קישור ניווט לכל נקודה.</div></div>
+ <div class="card"><b>איסוף ומסירה</b><div class="mut" style="margin-top:4px">בנקודת איסוף מהלקוח לחצו "סימון נאסף". כשהכביסה מוכנה אצל המכבסה יופיע "אספתי — יציאה ללקוח". אצל הלקוח: "מסירה עם אישור לקוח" (4 ספרות אחרונות של הטלפון שלו) או "אישור בצילום". אם ההזמנה במזומן — תראו את הסכום לגבייה על הכרטיס.</div></div>
+ <div class="card"><b>מסלול היום</b><div class="mut" style="margin-top:4px">המסלול מסודר אוטומטית לפי המערכת. "📍 סדר לפי קרבה" מסדר מחדש לפי המיקום שלכם. בורר התאריך מציג מסלולים של ימים קודמים ומה שהושלם בהם.</div></div>
+ <div class="card"><b>רווחים והיסטוריה</b><div class="mut" style="margin-top:4px">במסך "היסטוריה" רואים דירוג ממוצע, רווחים יומיים/שבועיים לפי משימה (נתוני דמו — אין תשלום אמיתי), זמן תגובה ממוצע להצעות, וכל המשימות שהושלמו עם הדירוג שקיבלתם.</div></div>
+ <div class="card"><b>בלי חיבור לאינטרנט</b><div class="mut" style="margin-top:4px">אישור מסירה בקוד נשמר במכשיר ויישלח אוטומטית כשהחיבור חוזר — תראו באדג' "פעולות ממתינות לסנכרון". אישור בצילום דורש חיבור פעיל.</div></div>
+ <div class="card"><b>פרופיל</b><div class="mut" style="margin-top:4px">עדכנו כלי רכב, אזורי פעילות ושעות פעילות לפי יום — השיבוץ האוטומטי מתחשב בהם.</div></div>
+ </div>`;
 }
 
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
