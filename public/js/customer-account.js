@@ -278,7 +278,7 @@
       }
       else if (id === 'fam-login'){
         try{ sessionStorage.setItem('wlm_family_join', t.dataset.token || ''); }catch(e){}
-        go('#/');
+        go('#/login');
       }
       else if (id === 'fam-join'){
         const d = await api('/family/join', {method:'POST', body:JSON.stringify({token: t.dataset.token})});
