@@ -16,6 +16,7 @@ test('אפס inline event handlers ב-public/js וב-index.html', () => {
     src.split('\n').forEach((line, i) => {
       let m;
       while ((m = re.exec(line))) offenders.push(`${path.basename(f)}:${i + 1} ${m[0].trim()}…`);
+      if (/href="javascript:/i.test(line)) offenders.push(`${path.basename(f)}:${i + 1} href="javascript:…"`);
     });
   }
   assert.deepEqual(offenders, [], 'inline handlers נותרו:\n' + offenders.join('\n'));

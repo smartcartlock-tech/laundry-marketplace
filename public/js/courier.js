@@ -37,7 +37,7 @@ async function vCourier(sub){
      ${o.status==='picked_up'||o.status==='in_work'?`<div class="mut">הכביסה אצל המכבסה — החזרה תתאפשר כשההזמנה תסומנה ״מוכנה״</div>`:''}
      ${o.status==='out_for_delivery'?`<button class="btn2 green" data-act="markOrder" data-a="${o.id}" data-b="delivered">מסרתי ללקוח</button>`:''}
     </div>
-   </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="javascript:route()" style="color:#0e7a8a">רענון</a></div>'}
+   </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="#" data-act="routeRefresh" style="color:#0e7a8a">רענון</a></div>'}
  </div>`;
 }
 /* E5.T4: דוח רווחים שבועי לשליח — פירוט לפי מכבסה, ברוטו/עמלה/נטו, תשלום דמו */
@@ -80,5 +80,6 @@ async function markOrder(id,a){try{const r=await api(`/courier/orders/${id}/mark
 onAct({
  courierDispute:t=>courierDispute(t.dataset.a), courierPayout:()=>courierPayout(),
  courierRateTenant:t=>courierRateTenant(t.dataset.a,t.dataset.b),
- markOrder:t=>markOrder(t.dataset.a,t.dataset.b), offerAction:t=>offerAction(t.dataset.a,t.dataset.b)
+ markOrder:t=>markOrder(t.dataset.a,t.dataset.b), offerAction:t=>offerAction(t.dataset.a,t.dataset.b),
+ routeRefresh:(t,e)=>{e.preventDefault();route()}
 });

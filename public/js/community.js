@@ -329,7 +329,7 @@ async function vManage(sub){
  }
  store.set('lastTenant',slug);
  const switcher=mems.length>1?`<select class="sel" style="margin-top:8px" data-actc="commTenantSwitch">${mems.map(x=>`<option value="${x.slug}" ${x.slug===slug?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:'';
- return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="javascript:logout()" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
+ return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="#" data-act="logout" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
  <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
 async function joinPlan(slug,planId){
@@ -556,5 +556,6 @@ onAct({
  tenantRateCourier:t=>tenantRateCourier(t.dataset.a,t.dataset.b,t.dataset.c),
  tenderAward:t=>tenderAward(t.dataset.a,t.dataset.b), tenderBid:t=>tenderBid(t.dataset.a), tenderNew:()=>tenderNew(),
  toggleItemSub:t=>toggleItemSub(t.dataset.a,t.dataset.b,t.dataset.c==='true'),
- togglePlan:t=>togglePlan(t.dataset.a,t.dataset.b,t.dataset.c==='true'), uploadLogo:t=>uploadLogo(t.dataset.a)
+ togglePlan:t=>togglePlan(t.dataset.a,t.dataset.b,t.dataset.c==='true'), uploadLogo:t=>uploadLogo(t.dataset.a),
+ logout:(t,e)=>{e.preventDefault();logout()}
 });
