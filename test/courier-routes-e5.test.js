@@ -103,3 +103,43 @@ test('E5.T3+T4: מסלול משולב רב-מכבסתי, פיצול תשלום �
   assert.equal(Number(earn.json.totals.accrued_net), 0);
   assert.equal(Number(earn.json.totals.paid_net), 38.4);
 });
+
+test('E5.T5: מסך ניהול שליחים למכבסה — ביצועים, עלות, תשלומים', async (t) => {
+  const { api } = await startApp(t);
+  const admin = await api.login('+972500000001');
+  const customer = await api.login('+972500000002');
+  const owner = await api.login('+972500000003');
+  const platformCourier = await api.login('+972500000005');
+
+  const ov0 = await api('/api/t/achuza/couriers/overview', { token: owner });
+  assert.equal(ov0.status, 200, JSON.stringify(ov0.json));
+  assert.ok(ov0.json.estimate.rate_per_stop > 0);
+  assert.equal(ov0.json.estimate.per_order, ov0.json.estimate.rate_per_stop * ov0.json.estimate.stops_per_order);
+  assert.ok(ov0.json.couriers.find(c => c.model === 'platform'));
+  assert.ok(ov0.json.couriers.find(c => c.model === 'private'));
+
+  // הרשאות: לקוח רגיל לא ניגש
+  const forbidden = await api('/api/t/achuza/couriers/overview', { token: customer });
+  assert.equal(forbidden.status, 403);
+
+  // זרימה מלאה: הזמנה → אישור → שיבוץ אוטומטי → איסוף+מסירה → תשלומים וביצועים
+  const l = await api('/api/laundries/achuza');
+  const item = l.json.items[0];
+  const o = await api('/api/orders', { method: 'POST', token: customer, body: { slug: 'achuza', items: [{ item_id: item.id, qty: 1 }], address: 'רחוב הבדיקה 5, תל אביב' } });
+  const oid = o.json.order.id;
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'confirmed' } });
+  await api('/api/admin/routes/auto-build', { method: 'POST', token: admin, body: {} });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'picked_up' } });
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
+  await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'out_for_delivery' } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered' } });
+
+  const ov = await api('/api/t/achuza/couriers/overview', { token: owner });
+  const pc = ov.json.couriers.find(c => c.model === 'platform');
+  assert.ok(pc.delivered_30d >= 1, 'delivered_30d counted');
+  assert.ok(ov.json.payments.length >= 1, 'payment history exists');
+  const wk = ov.json.payments[0];
+  assert.ok(Number(wk.gross) >= 24, 'gross includes pickup+delivery'); // 2 נקודות × ₪12
+  assert.ok(Number(wk.commission) > 0);
+});

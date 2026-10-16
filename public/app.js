@@ -353,14 +353,17 @@ async function vClub(){
 }
 
 /* ---- courier ---- */
-async function vCourier(){
+async function vCourier(sub){
  if(!state.token)return needLogin();
  let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
  if(!me.courier||me.courier.rejected_reason)return vCourierRegister(me.user,me.courier);
  if(!me.courier.approved)return `<div class="hdr"><h2>אפליקציית שליח</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:34px">⏳</div><b>הבקשה שלך ממתינה לאישור</b><div class="mut" style="margin-top:6px">מנהל הפלטפורמה סוקר את הפרטים והמסמכים. נעדכן אותך כשהבקשה תאושר.</div></div></div>`;
+ if(sub==='earnings')return vCourierEarnings(me);
  const [offers,route,profile]=await Promise.all([api('/courier/offers'),api('/courier/route'),api('/courier/profile')]);
  return `<div class="hdr"><h2>שלום ${esc(me.user.name||'')}</h2><p>${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'} · ${profile.stats.delivered} מסירות בוצעו</p></div>
  <div class="body">
+ <div class="subtabs"><a class="chip on" href="#/courier">משימות</a><a class="chip" href="#/courier/earnings">רווחים</a></div>
+ ${route.combined?`<div class="warn">🧭 מסלול משולב — איסופים/החזרות מכמה מכבסות ברצף אחד, בסדר הנקודות המומלץ</div>`:''}
   ${offers.offers.length?`<div class="sec">הצעות שיבוץ חדשות</div>${offers.offers.map(o=>`
    <div class="card"><b>${esc(o.tenant_name)}</b> — הזמנה <span dir="ltr">#${o.order_id.slice(0,8)}</span>
     <div class="mut">${esc(o.address)} · ${o.kind==='pickup'?'איסוף':'החזרה'} · ₪${o.total}</div>
@@ -374,7 +377,7 @@ async function vCourier(){
   <div class="sec">מסלול פעיל</div>
   ${route.route.map(o=>`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
-     <div><b>${esc(o.customer_name||'לקוח')}</b>${o.customer_phone?` · <a href="tel:${o.customer_phone}" style="color:#0e7a8a">${o.customer_phone}</a>`:''} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+     <div>${o.route_seq?`<span class="tag tb">${o.route_seq}</span> `:''}<b>${esc(o.customer_name||'לקוח')}</b>${o.customer_phone?` · <a href="tel:${o.customer_phone}" style="color:#0e7a8a">${o.customer_phone}</a>`:''} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
       <div class="mut">${esc(o.address)}</div>
       <div class="mut">${esc(o.tenant_name)} · ${esc(o.tenant_address||'')}</div>
       ${o.items&&o.items.length?`<div class="mut">פריטים: ${o.items.map(x=>esc(x.name)+' ×'+x.qty).join(', ')}</div>`:''}
@@ -391,6 +394,35 @@ async function vCourier(){
    </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="javascript:route()" style="color:#0e7a8a">רענון</a></div>'}
  </div>`;
 }
+/* E5.T4: דוח רווחים שבועי לשליח — פירוט לפי מכבסה, ברוטו/עמלה/נטו, תשלום דמו */
+async function vCourierEarnings(me){
+ const d=await api('/courier/earnings');
+ const t=d.totals;
+ return `<div class="hdr"><h2>הרווחים שלי</h2><p>תעריף ₪${d.rate_per_stop} לנקודה · עמלת פלטפורמה ${d.commission_pct}%</p></div>
+ <div class="body">
+ <div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip on" href="#/courier/earnings">רווחים</a></div>
+ <div class="kpis">
+  <div class="kpi"><b>${t.stops}</b>נקודות</div>
+  <div class="kpi"><b>₪${t.gross}</b>ברוטו</div>
+  <div class="kpi"><b>₪${t.commission}</b>עמלה</div>
+  <div class="kpi"><b>₪${t.net}</b>נטו</div>
+ </div>
+ <div class="card">
+  <div class="sec">פירוט לפי מכבסה</div>
+  ${d.by_tenant.length?`<table class="tbl"><tr><th>מכבסה</th><th>נקודות</th><th>ברוטו</th><th>עמלה</th><th>נטו</th></tr>
+   ${d.by_tenant.map(x=>`<tr><td>${esc(x.tenant_name)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>₪${x.net}</td></tr>`).join('')}</table>`:'<div class="mut">עוד אין רווחים השבוע — נקודות נצברות על כל איסוף ומסירה</div>'}
+ </div>
+ ${Number(t.accrued_net)>0?`<button class="btn" onclick="courierPayout()">משיכת ₪${t.accrued_net} (תשלום דמו)</button>`:Number(t.paid_net)>0?`<div class="card mut">✓ שולם (דמו): ₪${t.paid_net}</div>`:''}
+ <div class="card">
+  <div class="sec">רשומות אחרונות</div>
+  ${d.rows.slice(0,20).map(x=>`<div class="row"><div>${x.kind==='pickup'?'איסוף':x.kind==='delivery'?'מסירה':'התאמה'} · ${esc(x.tenant_name||'—')}
+    <div class="mut">${fmtDate(x.created_at)} · ₪${x.net} נטו</div></div>
+    <div>${x.status==='paid_demo'?'<span class="tag tg">שולם</span>':x.status==='disputed'?'<span class="tag ta">במחלוקת</span>':`<button class="btn2" onclick="courierDispute('${x.id}')">מחלוקת</button>`}</div></div>`).join('')||'<div class="mut">אין רשומות</div>'}
+ </div>
+ </div>`;
+}
+async function courierPayout(){try{const r=await api('/courier/earnings/payout',{method:'POST',body:'{}'});toast('שולמו '+r.paid+' רשומות (דמו)');route()}catch(e){toast(e.message)}}
+async function courierDispute(id){if(!await xconfirm('הרשומה תסומן כמחלוקת ותטופל מול מנהל הפלטפורמה.',{title:'פתיחת מחלוקת',okText:'פתיחת מחלוקת'}))return;try{await api('/courier/earnings/'+id+'/dispute',{method:'POST',body:'{}'});toast('המחלוקת נפתחה');route()}catch(e){toast(e.message)}}
 async function offerAction(id,a){try{await api(`/courier/offers/${id}/${a}`,{method:'POST',body:'{}'});toast(a==='accept'?'שובצת!':'נדחה');route()}catch(e){toast(e.message)}}
 async function markOrder(id,a){try{await api(`/courier/orders/${id}/mark`,{method:'POST',body:JSON.stringify({action:a})});toast(a==='picked_up'?'סומן כנאסף':'סומן כהוחזר');route()}catch(e){toast(e.message)}}
 
@@ -518,10 +550,17 @@ async function vManage(sub){
     </div></div>`).join('')}</div>`
    :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
  } else if(sub==='couriers'){
-  const d=await api(`/t/${slug}/couriers`);
-  body=`<div class="card">${d.couriers.map(c=>`<div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
-    <div class="mut">${esc(c.phone||'')} · ${esc(c.vehicle||'')} · ${c.active_orders} פעילות · ★${c.rating||'—'}</div></div></div>`).join('')||'<div class="mut">אין שליחים — מנהל הפלטפורמה יכול לרשום שליח פרטי או שתוכלו לשבץ שליח פלטפורמה</div>'}</div>
-   <div class="note">לרישום שליח מכבסה חדש פנו כרגע למנהל הפלטפורמה (בקרוב: רישום עצמי מהלוח).</div>`;
+  const d=await api(`/t/${slug}/couriers/overview`);
+  const est=d.estimate;
+  body=`<div class="card"><b>עלות משוערת לשיבוץ</b><div class="mut">₪${est.rate_per_stop} לנקודה × ${est.stops_per_order} נקודות (איסוף+מסירה) = <b>₪${est.per_order}</b> להזמנה · עמלת הפלטפורמה ${est.platform_commission_pct}% מחושבת לשליח, לא למכבסה</div></div>
+  ${d.today.length?`<div class="sec">שיבוץ פעיל (${d.today.length})</div>`+d.today.map(o=>`<div class="card"><b>${esc(o.courier_name)}</b> ← הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+    <div class="mut">${esc(o.customer_name||'')} · ${esc(o.address)}${o.pickup_at?' · איסוף '+fmtDT(o.pickup_at):''}</div></div>`).join(''):''}
+  <div class="sec">שליחים (${d.couriers.length})</div>
+  ${d.couriers.map(c=>{const onPct=c.pickups_30d?Math.round(100*c.ontime_30d/c.pickups_30d):null;return `<div class="card"><div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
+    <div class="mut">${esc(c.phone||'')} · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
+    <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
+  ${d.payments.length?`<div class="card"><div class="sec">היסטוריית תשלומים לשליחים (דרך הפלטפורמה)</div><table class="tbl"><tr><th>שבוע</th><th>נקודות</th><th>ברוטו</th><th>עמלת פלטפורמה</th><th>סטטוס</th></tr>
+   ${d.payments.map(x=>`<tr><td>${fmtDate(x.week_start)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>${x.statuses.includes('paid_demo')?'שולם (דמו)':x.statuses.includes('disputed')?'במחלוקת':'נצבר'}</td></tr>`).join('')}</table></div>`:''}`;
  } else if(sub==='customers'){
   const d=await api(`/t/${slug}/customers`);
   body=`<div class="card"><table class="tbl"><tr><th>לקוח</th><th>הזמנות</th><th>₪</th><th>נקודות</th></tr>
@@ -563,12 +602,13 @@ async function vManage(sub){
 async function setStatus(slug,id,st){if(st==='cancelled'&&!await xconfirm('הלקוח יקבל עדכון על הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל'}))return;try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
 async function assignCourier(slug,oid,el){
  try{
-  const d=await api(`/t/${slug}/couriers`);
+  const d=await api(`/t/${slug}/couriers/overview`);
   if(!d.couriers.length)return toast('אין שליחים זמינים');
   const card=el.closest('.card');
   const old=card.querySelector('.assignbox');if(old)old.remove();
   const box=document.createElement('div');box.className='assignbox';box.style.cssText='margin-top:8px;display:flex;gap:6px';
-  box.innerHTML=`<select class="inp" id="as-${oid}" style="flex:1">${d.couriers.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'} · ${c.active_orders} פעילות</option>`).join('')}</select>
+  box.innerHTML=`<div class="mut" style="margin-bottom:4px">עלות משוערת: ₪${(d.estimate&&d.estimate.per_order)||''} (${(d.estimate&&d.estimate.stops_per_order)||2} נקודות × ₪${(d.estimate&&d.estimate.rate_per_stop)||''})</div>
+   <select class="inp" id="as-${oid}" style="flex:1">${d.couriers.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'} · ${c.active_orders} פעילות</option>`).join('')}</select>
    <button class="btn2 on" onclick="doAssign('${slug}','${oid}',this)">שליחת הצעה</button>`;
   card.appendChild(box);
  }catch(e){toast(e.message)}
@@ -604,7 +644,7 @@ async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'P
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
- const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['register','רישום שליח'],['orders','הזמנות']];
+ const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות']];
  let body='';
  if(sub==='overview'){
   const d=await api('/admin/overview');
@@ -658,6 +698,14 @@ async function vAdmin(sub){
   <div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
    ${d.couriers.map(c=>`<tr><td>${esc(c.name)}<div class="mut">${esc(c.phone||'')}</div></td><td>${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</td><td>${esc(c.tenant_name||'—')}</td>
     <td>${c.approved?`<button class="btn2" onclick="adminCourier('${c.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminCourier('${c.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
+ } else if(sub==='routes'){
+  const d=await api('/admin/routes');
+  body=`<button class="btn" onclick="adminAutoBuild()">בניית מסלולים אוטומטית להיום</button>
+  <div class="note">המנוע מאחד הזמנות לא משובצות לפי אזור, משבץ שליח פלטפורמה/משותף ומסדר נקודות (nearest neighbor).</div>
+  ${d.routes.length?d.routes.map(r=>`<div class="card"><b>${esc(r.courier_name)}</b> ${r.combined?'<span class="tag tb">מסלול משולב</span>':'<span class="tag">רגיל</span>'}
+   <div class="mut">${r.stops} נקודות · ${r.tenants} מכבסות</div>
+   <table class="tbl"><tr><th>#</th><th>מכבסה</th><th>כתובת</th><th>סטטוס</th></tr>
+   ${(r.stop_list||[]).map(x=>`<tr><td>${x.seq}</td><td>${esc(x.tenant||'')}</td><td>${esc(x.address||'')}</td><td>${HE[x.status]||x.status||''}</td></tr>`).join('')}</table></div>`).join(''):'<div class="card mut">אין מסלולים להיום — לחצו על בנייה אוטומטית</div>'}`;
  } else if(sub==='register'){
   const d=await api('/admin/tenants');
   body=`<div class="card">
@@ -711,6 +759,7 @@ async function vAdminTenant(id){
   <div style="display:flex;gap:8px;margin:6px 0 20px">${actions}</div>
  </div>`;
 }
+async function adminAutoBuild(){try{const r=await api('/admin/routes/auto-build',{method:'POST',body:'{}'});toast(r.routes.length?`נבנו ${r.routes.length} מסלולים`:'אין הזמנות לשיבוץ');route()}catch(e){toast(e.message)}}
 async function adminCourier(id,a){try{await api(`/admin/couriers/${id}/${a}`,{method:'POST',body:'{}'});route()}catch(e){toast(e.message)}}
 async function adminRejectCourier(id){
  const v=await xmodal({title:'דחיית שליח',body:'הסיבה תוצג לשליח ותאפשר לו להגיש בקשה מתוקנת.',okText:'דחייה',fields:[{id:'reason',label:'סיבת דחייה'}]});
@@ -839,7 +888,7 @@ async function route(){
   else if(parts[0]==='orders'&&parts[1])html=await vOrder(parts[1]);
   else if(parts[0]==='orders')html=await vOrders();
   else if(parts[0]==='club')html=await vClub();
-  else if(parts[0]==='courier')html=await vCourier();
+  else if(parts[0]==='courier')html=await vCourier(parts[1]);
   else if(parts[0]==='manage')html=await vManage(parts[1]);
   else if(parts[0]==='admin'&&parts[1]==='tenant')html=await vAdminTenant(parts[2]);
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);

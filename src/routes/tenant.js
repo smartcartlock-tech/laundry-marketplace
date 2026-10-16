@@ -184,14 +184,51 @@ r.get('/couriers', async (req, res) => {
     `SELECT c.id, c.model, c.vehicle, c.areas, c.rating, u.name, u.phone,
        (SELECT count(*)::int FROM orders o WHERE o.courier_id=c.id AND o.status IN ('confirmed','picked_up','ready','out_for_delivery')) AS active_orders
      FROM couriers c JOIN users u ON u.id=c.user_id
-     WHERE (c.tenant_id=$1 OR c.model='platform') AND c.approved ORDER BY c.model`, [req.tenant.id]);
+     WHERE (c.tenant_id=$1 OR c.model IN ('platform','shared')) AND c.approved ORDER BY c.model`, [req.tenant.id]);
   res.json({ couriers: rows });
+});
+
+// E5.T5: מסך ניהול שליחים — שיבוץ להיום, עלות משוערת, ביצועי 30 יום, היסטוריית תשלומים
+r.get('/couriers/overview', async (req, res) => {
+  const tid = req.tenant.id;
+  const [couriers, today, payments, rateR, pctR] = await Promise.all([
+    q(`SELECT c.id, c.model, c.vehicle, c.areas, c.rating, c.rating_count, u.name, u.phone,
+        (SELECT count(*)::int FROM orders o WHERE o.courier_id=c.id AND o.status IN ('confirmed','picked_up','ready','out_for_delivery')) AS active_orders,
+        (SELECT count(*)::int FROM orders o WHERE o.courier_id=c.id AND o.tenant_id=$1 AND o.status='delivered' AND o.updated_at > now() - interval '30 days') AS delivered_30d,
+        (SELECT count(*)::int FROM order_events e JOIN orders o ON o.id=e.order_id
+          WHERE o.courier_id=c.id AND o.tenant_id=$1 AND e.status='picked_up' AND o.pickup_at IS NOT NULL
+            AND e.created_at > now() - interval '30 days' AND e.created_at <= o.pickup_at + interval '30 minutes') AS ontime_30d,
+        (SELECT count(*)::int FROM order_events e JOIN orders o ON o.id=e.order_id
+          WHERE o.courier_id=c.id AND o.tenant_id=$1 AND e.status='picked_up' AND o.pickup_at IS NOT NULL
+            AND e.created_at > now() - interval '30 days') AS pickups_30d
+       FROM couriers c JOIN users u ON u.id=c.user_id
+       WHERE (c.tenant_id=$1 OR c.model IN ('platform','shared')) AND c.approved ORDER BY c.model`, [tid]),
+    q(`SELECT o.id, o.status, o.address, o.pickup_at, o.delivery_at, o.total, u.name AS customer_name,
+              cu.id AS courier_id, uu.name AS courier_name
+       FROM orders o JOIN users u ON u.id=o.customer_id
+       JOIN couriers cu ON cu.id=o.courier_id JOIN users uu ON uu.id=cu.user_id
+       WHERE o.tenant_id=$1 AND o.status NOT IN ('delivered','cancelled')
+       ORDER BY COALESCE(o.pickup_at, o.created_at)`, [tid]),
+    q(`SELECT e.week_start, sum(e.stops)::int AS stops, sum(e.gross)::numeric(9,2) AS gross,
+              sum(e.commission)::numeric(9,2) AS commission,
+              string_agg(DISTINCT e.status, ',') AS statuses
+       FROM courier_earnings e WHERE e.tenant_id=$1
+       GROUP BY e.week_start ORDER BY e.week_start DESC LIMIT 8`, [tid]),
+    q(`SELECT value FROM platform_settings WHERE key='courier_rate_per_stop'`, []),
+    q(`SELECT value FROM platform_settings WHERE key='courier_commission_pct'`, []),
+  ]);
+  const rate = Number(rateR.rows[0] ? rateR.rows[0].value : 12);
+  const pct = Number(pctR.rows[0] ? pctR.rows[0].value : 20);
+  res.json({
+    couriers: couriers.rows, today: today.rows, payments: payments.rows,
+    estimate: { rate_per_stop: rate, stops_per_order: 2, per_order: rate * 2, platform_commission_pct: pct },
+  });
 });
 r.post('/orders/:id/assign', async (req, res) => {
   const { courier_id } = req.body || {};
   const { rows: c } = await q(
     `SELECT c.*, u.id AS uid, u.phone FROM couriers c JOIN users u ON u.id=c.user_id
-     WHERE c.id=$1 AND c.approved AND (c.tenant_id=$2 OR c.model='platform')`, [courier_id, req.tenant.id]);
+     WHERE c.id=$1 AND c.approved AND (c.tenant_id=$2 OR c.model IN ('platform','shared'))`, [courier_id, req.tenant.id]);
   if (!c[0]) return res.status(404).json({ error: 'שליח לא נמצא או לא מאושר' });
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
