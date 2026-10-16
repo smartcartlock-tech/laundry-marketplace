@@ -132,4 +132,10 @@ r.get('/me', requireAuth, async (req, res) => {
 
 function publicUser(u) { return { id: u.id, phone: u.phone, email: u.email, name: u.name, role: u.role }; }
 
+// B1: התנתקות — מבטלת את כל הטוקנים הקיימים של המשתמש (העלאת token_version)
+r.post('/logout', requireAuth, async (req, res) => {
+  await q('UPDATE users SET token_version=token_version+1 WHERE id=$1', [req.user.id]);
+  res.json({ ok: true });
+});
+
 module.exports = r;
