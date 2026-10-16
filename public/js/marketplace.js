@@ -49,42 +49,42 @@ async function vHome(q){
  return `<div class="hdr" style="text-align:center;padding-top:26px">
   <h1 class="big" style="margin:0">מכבסה בקליק</h1>
   <p style="font-size:13px">כל המכבסות באזורך — במקום אחד</p>
-  <div class="searchbar" style="margin-top:14px"><input id="q" placeholder="מכבסה, עיר, שירות…" value="${esc(q||'')}" data-search-enter="1"><button class="go" data-action="home-search">חיפוש</button></div>
+  <div class="searchbar" style="margin-top:14px"><input id="q" placeholder="מכבסה, עיר, שירות…" value="${esc(q||'')}" data-actk="searchEnter"><button class="go" data-act="homeSearch">חיפוש</button></div>
  </div>
  <div class="body">
   ${offlineData?'<div class="card warn" style="text-align:center">אין חיבור לרשת — מוצגת רשימת המכבסות שנשמרה במכשיר, וחלק מהפרטים עשויים להשתנות</div>':''}
-  ${orderNews.map(n=>`<div class="card" style="background:#e8f7ee;border-color:#cbe9d6;cursor:pointer" data-go="#/orders/${n.id}"><b style="color:#178a4c">✓ ${esc(n.tenant_name)} — ההזמנה ${HE[n.status]||n.status}</b><div class="mut">לחצו לצפייה במעקב ההזמנה</div></div>`).join('')}
+  ${orderNews.map(n=>`<div class="card" style="background:#e8f7ee;border-color:#cbe9d6;cursor:pointer" data-act="goTo" data-a="#/orders/${n.id}"><b style="color:#178a4c">✓ ${esc(n.tenant_name)} — ההזמנה ${HE[n.status]||n.status}</b><div class="mut">לחצו לצפייה במעקב ההזמנה</div></div>`).join('')}
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
-  ${!q&&store.get('searches',[]).length?`<div style="margin:0 2px 10px"><span class="mut">חיפושים אחרונים: </span>${store.get('searches',[]).map(h=>`<a class="chip" href="#/?q=${encodeURIComponent(h)}">${esc(h)}</a>`).join('')}<a href="#/" data-action="clear-searches" class="chip" style="color:#8a99a3">ניקוי ✕</a></div>`:''}
+  ${!q&&store.get('searches',[]).length?`<div style="margin:0 2px 10px"><span class="mut">חיפושים אחרונים: </span>${store.get('searches',[]).map(h=>`<a class="chip" href="#/?q=${encodeURIComponent(h)}">${esc(h)}</a>`).join('')}<a href="#/" data-act="clearSearches" class="chip" style="color:#8a99a3">ניקוי ✕</a></div>`:''}
   ${laundries.length?`<div style="display:flex;gap:8px;align-items:center;margin:0 2px 10px">
-   <button class="btn2 hf-mob" type="button" data-action="toggle-side">☰ סינון</button>
-   <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px" data-filter="1">
+   <button class="btn2 hf-mob" type="button" data-act="toggleSide">☰ סינון</button>
+   <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px" data-actc="homeFilter">
     <option value="rec">מיון: מומלץ</option>
     <option value="price">מחיר — מהזול ליקר</option>
     <option value="rating">דירוג — מהגבוה לנמוך</option>
     <option value="open">פתוח עכשיו קודם</option>
     <option value="dist" ${geo?'':'disabled'}>מרחק — מהקרוב לרחוק</option>
    </select>
-   <button class="btn2" type="button" data-action="home-geo" title="חישוב מרחק מהמיקום שלי">📍 קרוב אליי</button>
+   <button class="btn2" type="button" data-act="homeGeo" title="חישוב מרחק מהמיקום שלי">📍 קרוב אליי</button>
   </div>`:''}
   <div class="home-wrap">
-  <aside class="home-side"><h3>סינון <a href="#/" data-action="home-filter-reset" style="font-weight:400;font-size:11px;color:#0e7a8a">ניקוי</a></h3>
+  <aside class="home-side"><h3>סינון <a href="#/" data-act="homeFilterReset" style="font-weight:400;font-size:11px;color:#0e7a8a">ניקוי</a></h3>
    ${svcSet.length?`<div class="sec">שירות</div>
-   ${svcSet.map(sv=>`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-svc" value="${esc(sv)}" data-filter="1"> ${esc(sv)}</label>`).join('')}`:''}
+   ${svcSet.map(sv=>`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-svc" value="${esc(sv)}" data-actc="homeFilter"> ${esc(sv)}</label>`).join('')}`:''}
    <div class="sec">דירוג</div>
-   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="3" data-filter="1"> 3★ ומעלה</label>
-   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4" data-filter="1"> 4★ ומעלה</label>
-   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4.5" data-filter="1"> 4.5★ ומעלה</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="3" data-actc="homeFilter"> 3★ ומעלה</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4" data-actc="homeFilter"> 4★ ומעלה</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4.5" data-actc="homeFilter"> 4.5★ ומעלה</label>
    <div class="sec">מחיר לק״ג</div>
-   <select class="inp" id="hf-kg" style="margin:4px 0;font-size:13px;padding:8px 10px" data-filter="1">
+   <select class="inp" id="hf-kg" style="margin:4px 0;font-size:13px;padding:8px 10px" data-actc="homeFilter">
     <option value="">הכל</option><option value="15">עד ₪15</option><option value="20">עד ₪20</option><option value="25">עד ₪25</option><option value="30">עד ₪30</option>
    </select>
    <div class="sec">זמינות ועלויות</div>
-   ${store.get('favs',[]).length?`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-fav" data-filter="1"> ★ המועדפים שלי</label>`:''}
-   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" data-filter="1"> פתוח עכשיו</label>
-   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-free" data-filter="1"> איסוף ומשלוח חינם</label>
+   ${store.get('favs',[]).length?`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-fav" data-actc="homeFilter"> ★ המועדפים שלי</label>`:''}
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" data-actc="homeFilter"> פתוח עכשיו</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-free" data-actc="homeFilter"> איסוף ומשלוח חינם</label>
   </aside>
   <div>
   <div class="mut" id="hf-count" style="margin:0 2px 8px"></div>
@@ -97,10 +97,10 @@ async function vHome(q){
      <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
     </div><span style="color:#8a99a3">‹</span></a>`}).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
   </div>
-  ${laundries.length?`<div class="card mut" id="hf-empty" style="display:none">אין מכבסות שמתאימות לסינון — <a href="#/" data-action="home-filter-reset" style="color:#0e7a8a">ניקוי סינון</a></div>`:''}
+  ${laundries.length?`<div class="card mut" id="hf-empty" style="display:none">אין מכבסות שמתאימות לסינון — <a href="#/" data-act="homeFilterReset" style="color:#0e7a8a">ניקוי סינון</a></div>`:''}
   </div></div>
-  <div class="card" style="cursor:pointer;background:#e6f4f6;text-align:center" data-go="#/join"><b style="color:#0e7a8a">＋ יש לך מכבסה? הצטרפו לפלטפורמה — גם בצילום מחירון בלבד</b></div>
-  ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="#/" data-action="logout" style="color:#0e7a8a">התנתקות</a></div>`:''}
+  <div class="card" style="cursor:pointer;background:#e6f4f6;text-align:center" data-act="goTo" data-a="#/join"><b style="color:#0e7a8a">＋ יש לך מכבסה? הצטרפו לפלטפורמה — גם בצילום מחירון בלבד</b></div>
+  ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="#/" data-act="logout" style="color:#0e7a8a">התנתקות</a></div>`:''}
  </div>`;
 }
 
@@ -168,31 +168,31 @@ async function vLaundry(slug){
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${cssColor(l.color)}">${esc(l.letter||l.name[0])}</span>`}
    <div style="flex:1"><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
-   <button id="fav-btn" data-fav="${esc(slug)}" data-name="${esc(l.name)}" data-color="${esc(cssColor(l.color))}" data-letter="${esc(l.letter||l.name[0])}" style="background:rgba(255,255,255,.18);border:none;color:#ffd34d;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שמירה למועדפים">${isFav(slug)?'★':'☆'}</button>
-   <button data-share="${esc(l.name)}" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
+   <button id="fav-btn" data-act="toggleFav" data-a="${esc(slug)}" data-b="${esc(l.name)}" data-c="${esc(cssColor(l.color))}" data-d="${esc(l.letter||l.name[0])}" style="background:rgba(255,255,255,.18);border:none;color:#ffd34d;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שמירה למועדפים">${isFav(slug)?'★':'☆'}</button>
+   <button data-act="shareLaundry" data-a="${esc(l.name)}" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
   </div>
  </div>
  <div class="body">
   ${!l.is_open?`<div class="card warn" style="text-align:center"><b>המכבסה סגורה כרגע</b><div style="margin-top:2px">אפשר לעיין במחירון — הזמנה תהיה אפשרית כשהמכבסה תיפתח</div></div>`:!openNow(l)?`<div class="card warn" style="text-align:center"><b>מחוץ לשעות הפעילות כרגע</b><div style="margin-top:2px">אפשר להזמין — האיסוף יתואם לשעות הפעילות הקרובות</div></div>`:''}
   ${(l.services&&l.services.length)?`<div style="margin:0 2px 8px">${l.services.map(sv=>`<span class="tag tb" style="margin-left:4px;padding:3px 10px">${esc(sv)}</span>`).join('')}</div>`:''}
-  <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" data-scroll="info">מידע</button><button class="chip" type="button" data-scroll="revs">ביקורות</button></div>
+  <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" data-act="scrollTo" data-a="info">מידע</button><button class="chip" type="button" data-act="scrollTo" data-a="revs">ביקורות</button></div>
   <div class="mut" style="margin:0 2px 8px">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום הזמנה ₪'+l.min_order:''}</div>
-  ${d.items.length>6?`<input class="inp" id="pl-search" placeholder="חיפוש במחירון…" data-plfilter="1">`:''}
-  ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" data-scroll="pcat-${i}">${esc(c)}</a>`).join('')}</div>`:''}
+  ${d.items.length>6?`<input class="inp" id="pl-search" placeholder="חיפוש במחירון…" data-acti="plFilter">`:''}
+  ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" data-act="scrollTo" data-a="pcat-${i}">${esc(c)}</a>`).join('')}</div>`:''}
   ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
   <div class="card">
    ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);const cp=cmp[it.name+'|'+it.unit];return `<div class="row pl-row" data-name="${esc(it.name)}">
      <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}${it.agreement_price?' · מחיר הסכם':''}</div>${cp?`<a href="#/laundry/${cp.slug}" style="text-decoration:none"><span class="tag tg" style="margin-top:3px">זול יותר ב־₪${cp.other_price} ב${esc(cp.laundry_name)}</span></a>`:''}</div>
-     ${cr?`<span class="stepper"><button data-qty="-1" data-slug="${esc(slug)}" data-item="${esc(it.id)}">−</button><b>${cr.qty}</b><button data-qty="1" data-slug="${esc(slug)}" data-item="${esc(it.id)}">+</button></span>`
-        :`<button class="btn2" data-qty="1" data-slug="${esc(slug)}" data-item="${esc(it.id)}">הוספה</button>`}
+     ${cr?`<span class="stepper"><button data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="-1">−</button><b>${cr.qty}</b><button data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="1">+</button></span>`
+        :`<button class="btn2" data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="1">הוספה</button>`}
     </div>`}).join('')}
   </div>`).join('')||'<div class="card mut">המחירון טרם הוזן</div>'}
   <div class="card mut" id="pl-empty" style="display:none;text-align:center">אין פריטים שמתאימים לחיפוש במחירון</div>
-  ${cartItems.length?`<div style="position:sticky;bottom:10px;z-index:20;margin-top:4px">`+(cartTotal>=Number(l.min_order||0)?`<button class="btn" style="box-shadow:0 4px 14px rgba(14,122,138,.35)" data-go="#/checkout/${slug}">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.85;cursor:not-allowed;box-shadow:0 4px 14px rgba(0,0,0,.18)">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`)+`</div>`:''}
+  ${cartItems.length?`<div style="position:sticky;bottom:10px;z-index:20;margin-top:4px">`+(cartTotal>=Number(l.min_order||0)?`<button class="btn" style="box-shadow:0 4px 14px rgba(14,122,138,.35)" data-act="goTo" data-a="#/checkout/${slug}">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.85;cursor:not-allowed;box-shadow:0 4px 14px rgba(0,0,0,.18)">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`)+`</div>`:''}
   ${(d.plans&&d.plans.length)||mySub?`<div class="sec">מנוי כביסה חודשי</div>
   <div class="card">
    ${mySub?`<div class="row"><div><b>יש לך ${esc(mySub.plan_name)}</b> ${mySub.status==='paused'?'(מושהה)':''}<div class="mut">נותרו ${fmtQ(mySub.bags_remaining)} שקים החודש · מתחדש ${fmtDate(mySub.period_end)}</div></div><a class="btn2" href="#/club" style="text-decoration:none">ניהול המנוי</a></div>`
-    :(d.plans||[]).map(p=>`<div class="row"><div><b>${esc(p.name)}</b><div class="mut">${p.bags_per_month} שקים בחודש (עד ${fmtQ(p.kg_per_bag)} ק״ג לשק) · איסוף והחזרה חינם${p.extra_bag_price?' · שק חורג ₪'+p.extra_bag_price:''}${p.perks?' · '+esc(p.perks):''}</div></div><div style="text-align:center"><b>₪${p.price}</b><div class="mut">לחודש</div></div><button class="btn2 on" data-joinplan="${esc(p.id)}" data-slug="${esc(slug)}">הצטרפות</button></div>`).join('')}
+    :(d.plans||[]).map(p=>`<div class="row"><div><b>${esc(p.name)}</b><div class="mut">${p.bags_per_month} שקים בחודש (עד ${fmtQ(p.kg_per_bag)} ק״ג לשק) · איסוף והחזרה חינם${p.extra_bag_price?' · שק חורג ₪'+p.extra_bag_price:''}${p.perks?' · '+esc(p.perks):''}</div></div><div style="text-align:center"><b>₪${p.price}</b><div class="mut">לחודש</div></div><button class="btn2 on" data-act="joinPlan" data-a="${esc(slug)}" data-b="${esc(p.id)}">הצטרפות</button></div>`).join('')}
   </div>`:''}
   <div class="sec" id="info">מידע</div>
   <div class="card mut" style="line-height:1.8">
@@ -254,31 +254,23 @@ function setQty(slug,itemId,delta){
 }
 
 
-/* אבטחה: מאזינים מרוכזים במקום onclick inline — אין הזרקת שדות מכבסה למחרוזות JS */
-document.addEventListener('click',e=>{
- const fav=e.target.closest('[data-fav]');
- if(fav){toggleFav(fav.dataset.fav,fav.dataset.name,fav.dataset.color,fav.dataset.letter);return}
- const shr=e.target.closest('[data-share]');
- if(shr){shareLaundry(shr.dataset.share);return}
- const goEl=e.target.closest('[data-go]');
- if(goEl){go(goEl.dataset.go);return}
- const sc=e.target.closest('[data-scroll]');
- if(sc){const t=document.getElementById(sc.dataset.scroll);if(t)t.scrollIntoView({behavior:'smooth'});return}
- const qe=e.target.closest('[data-qty]');
- if(qe){setQty(qe.dataset.slug,qe.dataset.item,Number(qe.dataset.qty));return}
- const jp=e.target.closest('[data-joinplan]');
- if(jp){joinPlan(jp.dataset.slug,jp.dataset.joinplan);return}
- const act=e.target.closest('[data-action]');
- if(act){
-  const a=act.dataset.action;
-  if(a==='home-search'){go('#/?q='+encodeURIComponent($('#q').value));return}
-  if(a==='clear-searches'){store.set('searches',[]);route();return}
-  if(a==='toggle-side'){const sd=document.querySelector('.home-side');if(sd)sd.classList.toggle('open');return}
-  if(a==='home-geo'){homeGeo();return}
-  if(a==='home-filter-reset'){homeFilterReset();return}
-  if(a==='logout'){logout();return}
- }
+
+
+/* B7: רישום פעולות להאזנה המרכזת (delegate.js) — בלי inline handlers */
+onAct({
+ toggleFav:t=>toggleFav(t.dataset.a,t.dataset.b,t.dataset.c,t.dataset.d),
+ shareLaundry:t=>shareLaundry(t.dataset.a),
+ goTo:t=>go(t.dataset.a),
+ scrollTo:t=>{const x=document.getElementById(t.dataset.a);if(x)x.scrollIntoView({behavior:'smooth'})},
+ setQty:t=>setQty(t.dataset.a,t.dataset.b,Number(t.dataset.c)),
+ joinPlan:t=>joinPlan(t.dataset.a,t.dataset.b),
+ homeSearch:()=>go('#/?q='+encodeURIComponent($('#q').value)),
+ clearSearches:()=>{store.set('searches',[]);route()},
+ toggleSide:()=>{const sd=document.querySelector('.home-side');if(sd)sd.classList.toggle('open')},
+ homeGeo:()=>homeGeo(),
+ homeFilterReset:()=>homeFilterReset(),
+ logout:()=>logout(),
+ homeFilter:()=>homeFilter(),
+ plFilter:t=>plFilter(t.value),
+ searchEnter:(t,e)=>{if(e.key==='Enter')go('#/?q='+encodeURIComponent(t.value))},
 });
-document.addEventListener('change',e=>{if(e.target.closest('[data-filter]'))homeFilter()});
-document.addEventListener('input',e=>{const p=e.target.closest('[data-plfilter]');if(p)plFilter(p.value)});
-document.addEventListener('keydown',e=>{const si=e.target.closest('[data-search-enter]');if(si&&e.key==='Enter')go('#/?q='+encodeURIComponent(si.value))});

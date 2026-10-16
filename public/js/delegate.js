@@ -1,6 +1,6 @@
 /* B7: האזנת אירועים מרכזת — מחליפה inline event handlers כהכנה ל-CSP בלי unsafe-inline.
    כל מודול רושם מפת פעולות עם onAct({name:fn}); האלמנט מסמן data-act="name" ו-data-a/b/c/d לארגומנטים.
-   data-actc ל-change, data-acti ל-input. */
+   data-actc ל-change, data-acti ל-input, data-actk ל-keydown. */
 (function(){
  const REG={};
  window.onAct=function(map){Object.assign(REG,map)};
