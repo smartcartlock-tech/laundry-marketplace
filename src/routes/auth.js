@@ -48,17 +48,19 @@ r.post('/otp/verify', async (req, res) => {
     let { rows: u } = isEmail
       ? await q('SELECT * FROM users WHERE email=$1', [target])
       : await q('SELECT * FROM users WHERE phone=$1', [target]);
+    let isNew = false;
     if (!u[0]) {
       const ins = isEmail
         ? await q('INSERT INTO users(email, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null])
         : await q('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null]);
       u = ins.rows;
+      isNew = true;
     } else if (req.body.name && req.body.name.trim() && !u[0].name) {
       // השלמת שם רק אם חסר — לא דורסים שם קיים של משתמש (QA2.T1)
       const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
       u = upd.rows;
     }
-    res.json({ token: sign(u[0]), user: publicUser(u[0]) });
+    res.json({ token: sign(u[0]), user: publicUser(u[0]), is_new: isNew });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
@@ -73,14 +75,16 @@ r.post('/google', async (req, res) => {
     const expected = process.env.GOOGLE_CLIENT_ID;
     if (expected && info.aud !== expected) return res.status(401).json({ error: 'audience לא תואם' });
     let { rows: u } = await q('SELECT * FROM users WHERE google_sub=$1 OR email=$2', [info.sub, info.email]);
+    let isNew = false;
     if (!u[0]) {
       const ins = await q('INSERT INTO users(google_sub, email, name) VALUES ($1,$2,$3) RETURNING *',
         [info.sub, info.email, info.name || null]);
       u = ins.rows;
+      isNew = true;
     } else if (!u[0].google_sub) {
       await q('UPDATE users SET google_sub=$1 WHERE id=$2', [info.sub, u[0].id]);
     }
-    res.json({ token: sign(u[0]), user: publicUser(u[0]) });
+    res.json({ token: sign(u[0]), user: publicUser(u[0]), is_new: isNew });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

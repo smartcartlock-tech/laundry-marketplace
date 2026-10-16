@@ -31,7 +31,8 @@ async function api(path,opts={}){
  if(!r.ok){const err=new Error(data.error||('שגיאה '+r.status));err.status=r.status;throw err}
  return data;
 }
-function go(h){location.hash=h}
+let routeSeq=0;
+function go(h){if(location.hash===h)route();else location.hash=h}
 async function openPdf(path){
  try{
   const r=await fetch('/api'+path,{headers:state.token?{Authorization:'Bearer '+state.token}:{}});
@@ -103,9 +104,10 @@ async function requestOtp(){
 async function verifyOtp(){
  try{
   const r=await api('/auth/otp/verify',{method:'POST',body:JSON.stringify({target:$('#login-target').value.trim(),code:$('#login-code').value.trim(),name:$('#login-name').value.trim()})});
-  state.token=r.token;state.me=r.user;save();
+  state.token=r.token;state.me=r.user;state.memberships=[];state.courier=null;save();
+  if(r.is_new)toast('ברוכים הבאים למכבסה בקליק! ההרשמה הושלמה');
   try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){}
-  const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);route();
+  const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);
  }catch(e){toast(e.message)}
 }
 function needLogin(){store.set('returnTo',location.hash||'#/');return vLogin()}
@@ -114,13 +116,16 @@ function initGoogle(){
  google.accounts.id.initialize({client_id:state.cfg.googleClientId,callback:async(resp)=>{
   try{
    const r=await api('/auth/google',{method:'POST',body:JSON.stringify({credential:resp.credential})});
-   state.token=r.token;state.me=r.user;save();const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);route();
+   state.token=r.token;state.me=r.user;state.memberships=[];state.courier=null;save();
+   if(r.is_new)toast('ברוכים הבאים למכבסה בקליק! ההרשמה הושלמה');
+   try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){}
+   const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);
   }catch(e){toast(e.message)}
  }});
  const el=document.getElementById('g-signin');
  if(el)google.accounts.id.renderButton(el,{theme:'outline',size:'large',width:320,text:'signin_with',locale:'he'});
 }
-function logout(){state.token=null;state.me=null;store.del('token');store.del('me');go('#/login');route()}
+function logout(){state.token=null;state.me=null;state.memberships=[];state.courier=null;store.del('token');store.del('me');store.del('memberships');store.del('courier');go('#/login')}
 
 /* ---- marketplace ---- */
 async function vHome(q){
@@ -275,7 +280,7 @@ async function submitOrder(slug){
   const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim()};
   const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
-  toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);route();
+  toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);
  }catch(e){toast(e.message)}
 }
 
@@ -673,7 +678,7 @@ async function vAdmin(sub){
 async function adminTenant(id,a){
  if(a==='suspend'&&!await xconfirm('המכבסה תוסתר מהמרקטפלייס עד לאישור מחדש. הזמנות פעילות לא יימחקו.',{title:'השעיית מכבסה',okText:'כן, להשעות'}))return;
  if(a==='reject'&&!await xconfirm('פעולה זו תמחק את המכבסה לצמיתות. אפשרי רק למכבסה ללא הזמנות.',{title:'דחייה ומחיקה',okText:'כן, למחוק'}))return;
- try{await api(`/admin/tenants/${id}/${a}`,{method:'POST',body:'{}'});toast(a==='approve'?'המכבסה אושרה':a==='suspend'?'המכבסה הושעתה':'המכבסה נמחקה');location.hash='#/admin/tenants';route()}catch(e){toast(e.message)}
+ try{await api(`/admin/tenants/${id}/${a}`,{method:'POST',body:'{}'});toast(a==='approve'?'המכבסה אושרה':a==='suspend'?'המכבסה הושעתה':'המכבסה נמחקה');go('#/admin/tenants')}catch(e){toast(e.message)}
 }
 /* מסך פרטי מכבסה לאדמין — סקירה לפני אישור */
 async function vAdminTenant(id){
@@ -720,7 +725,7 @@ async function viewCourierDoc(id){
   const b=await r.blob();window.open(URL.createObjectURL(b),'_blank');
  }catch(e){toast(e.message)}
 }
-async function adminRegisterCourier(){try{await api('/admin/couriers/register',{method:'POST',body:JSON.stringify({name:$('#rc-name').value,phone:$('#rc-phone').value,vehicle:$('#rc-vehicle').value,model:$('#rc-model').value,tenant_slug:$('#rc-tenant').value||undefined})});toast('השליח נרשם');go('#/admin/couriers');route()}catch(e){toast(e.message)}}
+async function adminRegisterCourier(){try{await api('/admin/couriers/register',{method:'POST',body:JSON.stringify({name:$('#rc-name').value,phone:$('#rc-phone').value,vehicle:$('#rc-vehicle').value,model:$('#rc-model').value,tenant_slug:$('#rc-tenant').value||undefined})});toast('השליח נרשם');go('#/admin/couriers')}catch(e){toast(e.message)}}
 
 /* ---- join: onboarding מכבסה עם AI ---- */
 let joinDraft=null;
@@ -816,17 +821,17 @@ async function joinSubmit(){
 
 /* ---- router ---- */
 async function route(){
+ const seq=++routeSeq;
+ document.querySelectorAll('.modal-ov').forEach(m=>m.remove());
  const h=location.hash||'#/';
  const [,path]=h.split('#');
  const [p,qstr]=path.split('?');
  const q=new URLSearchParams(qstr||'');
  const parts=p.split('/').filter(Boolean);
- renderTabs(h.split('?')[0]);
  let html='';
  $('#app').innerHTML='<div class="body"><div class="card mut" style="text-align:center;padding:40px 0">טוען…</div></div>';
  const tst=$('.toast');if(tst)tst.classList.remove('show');
  try{
-  if(!state.token&&parts[0]!=='login'&&parts[0]!==undefined&&![''].includes(parts[0])&&parts.length>0){/* צפייה חופשית בדף הבית ובמכבסות */}
   if(parts.length===0)html=await vHome(q.get('q'));
   else if(parts[0]==='login')html=vLogin();
   else if(parts[0]==='laundry')html=await vLaundry(parts[1]);
@@ -839,17 +844,25 @@ async function route(){
   else if(parts[0]==='admin'&&parts[1]==='tenant')html=await vAdminTenant(parts[2]);
   else if(parts[0]==='admin')html=await vAdmin(parts[1]);
   else if(parts[0]==='join')html=await vJoin();
-  else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/');route()">חזרה לדף הבית</button></div></div>`;
+  else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/')">חזרה לדף הבית</button></div></div>`;
  }catch(e){
-  if(e.status===401){state.token=null;state.me=null;save();html=vLogin()}
+  if(e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();html=vLogin()}
   else html=`<div class="body"><div class="card warn">${esc(e.message)}</div></div>`;
  }
+ if(seq!==routeSeq)return; // ניווט חדש יותר דורס רינדור ישן — נחיתה עקבית תמיד
+ renderTabs(h.split('?')[0]);
  $('#app').innerHTML=html;
  if(parts[0]==='login')initGoogle();
  const jf=$('#join-files');if(jf)jf.onchange=()=>joinExtract(jf.files);
  window.scrollTo(0,0);
 }
 window.addEventListener('hashchange',route);
+window.addEventListener('storage',e=>{
+ if(e.key&&e.key.startsWith('wlm_')){
+  state.token=store.get('token',null);state.me=store.get('me',null);state.memberships=store.get('memberships',[]);state.courier=store.get('courier',null);
+  route();
+ }
+});
 (async()=>{
  try{state.cfg=await api('/config')}catch(e){state.cfg={}}
  if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){state.token=null;state.me=null;save()}}
