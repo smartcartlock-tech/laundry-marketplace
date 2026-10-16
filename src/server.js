@@ -36,7 +36,9 @@ app.use('/api/t/:slug', require('./routes/tenant-ops')); // C5: סיכום יו�
 app.use('/api/t/:slug', require('./routes/tenant-checklist')); // B1: צ'ק-ליסט מוכנות
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api', require('./routes/apply')); // B2: טופס הצטרפות ציבורי
 app.use('/api/admin', require('./routes/adminplus')); // E7: dashboard/onboarding/sla
+app.use('/api/admin', require('./routes/admin-applications')); // B2: תור בקשות הצטרפות
 app.use('/api/admin', require('./routes/errlog')); // ניטור: יומן תקלות לאדמין
 app.use('/api/admin', require('./routes/backup')); // גיבוי: ייצוא נתונים מלא לאדמין
 app.use('/api/onboard', require('./routes/onboard'));
