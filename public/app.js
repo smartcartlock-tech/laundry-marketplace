@@ -460,6 +460,7 @@ async function vManage(sub){
  } else if(sub==='settings'){
   const d=await api('/laundries/'+slug);
   const l=d.laundry;
+  try{const td=await api(`/t/${slug}/settings`);if(td.tenant){l.dealer_type=td.tenant.dealer_type;l.dealer_id=td.tenant.dealer_id}}catch(e){}
   body=`<div class="card">
    <label class="lb">שם</label><input class="inp" id="s-name" value="${esc(l.name)}">
    <label class="lb">טלפון</label><input class="inp" id="s-phone" value="${esc(l.phone||'')}">
@@ -468,6 +469,11 @@ async function vManage(sub){
    <label class="lb">דמי שליחות ₪</label><input class="inp" id="s-fee" type="number" value="${l.delivery_fee||0}">
    <label class="lb">מינימום הזמנה ₪</label><input class="inp" id="s-min" type="number" value="${l.min_order||0}">
    <label style="font-size:13px;display:block;margin:8px 0"><input type="checkbox" id="s-open" ${l.is_open?'checked':''}> המכבסה פתוחה להזמנות</label>
+   <div style="border-top:1px solid #e3edf0;margin-top:10px;padding-top:8px"><b>חשבוניות (דמו)</b>
+   <div class="mut" style="margin:4px 0">המסמכים מסומנים ״מסמך דמו״ עד לרישום התוכנה ברשות המסים. בלי סוג עוסק לא יונפקו מסמכים.</div>
+   <label class="lb">סוג עוסק</label><select class="inp" id="s-dealer-type"><option value="">לא הוגדר — לא יונפקו מסמכים</option><option value="patur" ${l.dealer_type==='patur'?'selected':''}>עוסק פטור — מונפקת קבלה</option><option value="morasha" ${l.dealer_type==='morasha'?'selected':''}>עוסק מורשה — חשבונית עסקה + קבלה</option></select>
+   <label class="lb">ח.פ/ע.מ (9 ספרות)</label><input class="inp" id="s-dealer-id" value="${esc(l.dealer_id||'')}" maxlength="9" inputmode="numeric" placeholder="למשל 512345678">
+   </div>
    <label class="lb">תקנון</label><textarea class="inp" id="s-terms" rows="3">${esc(l.terms||'')}</textarea>
    <button class="btn" onclick="saveSettings('${slug}')">שמירה</button></div>`;
  }
@@ -508,7 +514,7 @@ async function addCoupon(slug){try{const b={code:$('#cp-code').value,kind:$('#cp
 async function toggleCoupon(slug,id,active){try{await api(`/t/${slug}/coupons/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
 async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
-async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value})});toast('נשמר')}catch(e){toast(e.message)}}
+async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value,dealer_type:$('#s-dealer-type').value||null,dealer_id:$('#s-dealer-id').value||null})});toast('נשמר')}catch(e){toast(e.message)}}
 
 /* ---- admin ---- */
 async function vAdmin(sub){

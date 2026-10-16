@@ -91,3 +91,47 @@ async function setAllocationNumber(client, docId, allocationNumber, actorId) {
 }
 
 module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE };
+
+// E12.T2: הנפקה אוטומטית של מסמכים בעת delivered — אידמפוטנטי, לפי סוג העוסק של המכבסה.
+// עוסק מורשה: חשבונית עסקה (מע"מ כלול במחיר) + קבלה על התשלום. עוסק פטור: קבלה בלבד.
+// ללא dealer_type — לא מונפק כלום (עד השלמת פרטי העוסק, E12.T3).
+async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
+  if (!tenant.dealer_type) return [];
+  const { rows: existing } = await client.query(
+    `SELECT id FROM documents WHERE order_id=$1 AND kind<>'credit' LIMIT 1`, [order.id]);
+  if (existing.length) return []; // כבר הונפק — לא משכפלים
+
+  const [{ buildDocumentPDF, collectPdf }] = [require('./receipt')];
+  const { rows: items } = await client.query('SELECT * FROM order_items WHERE order_id=$1', [order.id]);
+  const { rows: cust } = await client.query('SELECT id, name, phone FROM users WHERE id=$1', [order.customer_id]);
+  const customer = cust[0] || { id: order.customer_id };
+  const total = Number(order.total);
+  const issued = [];
+
+  async function issueWithPdf(kind, amount, vat, docTotal) {
+    // שלב 1: הקצאת מספר + שורה
+    const d = await issueDocument(client, {
+      tenant, kind, order, customer, amount, vat, total: docTotal, actorId,
+    });
+    // שלב 2: PDF מקור — נבנה פעם אחת ונשמר במסמך (pdf נשמר תחת חריגת הטריגר? לא — pdf חלק מהשדות הקפואים,
+    // לכן שומרים אותו ישירות בהכנסה הראשונית דרך עדכון מיוחד מטה)
+    const pdf = buildDocumentPDF({ doc: d, order, items, tenant, customer, copy: false });
+    const buf = await collectPdf(pdf);
+    await client.query('UPDATE documents SET pdf=$2 WHERE id=$1 AND pdf IS NULL', [d.id, buf]);
+    return { ...d, pdf: buf };
+  }
+
+  if (tenant.dealer_type === 'morasha') {
+    const net = Math.round((total / (1 + VAT_RATE)) * 100) / 100;
+    const vat = Math.round((total - net) * 100) / 100;
+    issued.push(await issueWithPdf('invoice', net, vat, total));
+    if (['paid_demo', 'paid_cash'].includes(order.payment_status)) {
+      issued.push(await issueWithPdf('receipt', total, 0, total));
+    }
+  } else if (tenant.dealer_type === 'patur') {
+    issued.push(await issueWithPdf('receipt', total, 0, total));
+  }
+  return issued;
+}
+
+module.exports.issueDocumentsForOrder = issueDocumentsForOrder;

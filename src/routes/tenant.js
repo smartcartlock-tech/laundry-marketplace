@@ -2,6 +2,8 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
+const { issueDocumentsForOrder, creditDocument } = require('../documents');
+const { buildDocumentPDF } = require('../receipt');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
@@ -45,7 +47,15 @@ r.post('/orders/:id/status', async (req, res) => {
         [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
       if (order.payment_method === 'cash') {
         await client.query(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
+        order.payment_status = 'paid_cash';
       }
+    }
+    if (status === 'delivered') {
+      const full = { ...req.tenant };
+      const { rows: tt } = await client.query('SELECT dealer_type, dealer_id FROM tenants WHERE id=$1', [req.tenant.id]);
+      Object.assign(full, tt[0] || {});
+      const { rows: ord } = await client.query('SELECT * FROM orders WHERE id=$1', [order.id]);
+      await issueDocumentsForOrder(client, { tenant: full, order: ord[0], actorId: req.user.id });
     }
     await client.query('COMMIT');
     const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
@@ -106,9 +116,28 @@ r.delete('/windows/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// הגדרות מכבסה (קריאה — חבר מכבסה בלבד, כולל פרטי עוסק)
+r.get('/settings', async (req, res) => {
+  const { rows } = await q('SELECT * FROM tenants WHERE id=$1', [req.tenant.id]);
+  res.json({ tenant: rows[0] });
+});
+
 // הגדרות מכבסה
 r.patch('/settings', async (req, res) => {
-  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng'];
+  // E12.T3: פרטי עוסק — סוג עוסק + ח.פ/ע.מ (9 ספרות) עם ולידציה
+  if (req.body.dealer_type !== undefined) {
+    if (req.body.dealer_type !== null && !['morasha', 'patur'].includes(req.body.dealer_type)) {
+      return res.status(400).json({ error: 'סוג עוסק לא תקין (morasha/patur)' });
+    }
+    if (req.body.dealer_type === 'morasha') {
+      const did = String(req.body.dealer_id !== undefined ? req.body.dealer_id : (req.tenant.dealer_id || ''));
+      if (!/^\d{9}$/.test(did)) return res.status(400).json({ error: 'עוסק מורשה חייב ח.פ/ע.מ תקין (9 ספרות)' });
+    }
+  }
+  if (req.body.dealer_id !== undefined && req.body.dealer_id !== null && req.body.dealer_id !== '' && !/^\d{9}$/.test(String(req.body.dealer_id))) {
+    return res.status(400).json({ error: 'ח.פ/ע.מ חייב להיות 9 ספרות' });
+  }
+  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id'];
   const sets = [], params = [];
   for (const k of allowed) {
     if (req.body[k] !== undefined) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
@@ -232,6 +261,61 @@ r.patch('/coupons/:id', async (req, res) => {
      per_user_limit !== undefined ? (per_user_limit === null ? null : Math.max(1, parseInt(per_user_limit))) : null]);
   if (!rows[0]) return res.status(404).json({ error: 'קופון לא נמצא' });
   res.json({ coupon: rows[0] });
+});
+
+
+// מסמכים חשבונאיים של המכבסה (E12)
+r.get('/documents', async (req, res) => {
+  const { rows } = await q(
+    `SELECT d.id, d.kind, d.doc_number, d.doc_year, d.allocation_number, d.amount, d.vat, d.total,
+            d.status, d.credited_amount, d.order_id, d.issued_at, u.name AS customer_name
+     FROM documents d LEFT JOIN users u ON u.id=d.customer_id
+     WHERE d.tenant_id=$1 ORDER BY d.doc_year DESC, d.doc_number DESC LIMIT 300`, [req.tenant.id]);
+  const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי' };
+  res.json({ documents: rows.map(d => ({ ...d, kind_he: KIND_HE[d.kind] || d.kind })) });
+});
+
+r.get('/documents/:id/pdf', async (req, res) => {
+  const { rows } = await q(
+    `SELECT d.*, t.name AS tenant_name, t.color, t.address AS tenant_address, t.city AS tenant_city,
+            t.dealer_type, t.dealer_id, u.name AS customer_name, u.phone AS customer_phone
+     FROM documents d JOIN tenants t ON t.id=d.tenant_id LEFT JOIN users u ON u.id=d.customer_id
+     WHERE d.id=$1 AND d.tenant_id=$2`, [req.params.id, req.tenant.id]);
+  const d = rows[0];
+  if (!d) return res.status(404).json({ error: 'מסמך לא נמצא' });
+  if (req.query.copy !== '1' && d.pdf) {
+    res.set('content-type', 'application/pdf');
+    res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}.pdf"`);
+    return res.end(d.pdf);
+  }
+  const { rows: items } = d.order_id ? await q('SELECT * FROM order_items WHERE order_id=$1', [d.order_id]) : { rows: [] };
+  const pdf = buildDocumentPDF({
+    doc: d, order: d.order_id ? { id: d.order_id } : null, items,
+    tenant: { name: d.tenant_name, address: d.tenant_address, city: d.tenant_city, color: d.color, dealer_type: d.dealer_type, dealer_id: d.dealer_id },
+    customer: { name: d.customer_name, phone: d.customer_phone }, copy: true,
+  });
+  res.set('content-type', 'application/pdf');
+  pdf.pipe(res);
+});
+
+// E12.T5: הנפקת זיכוי מול מסמך מקור (מלא אם amount חסר)
+r.post('/documents/:id/credit', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: tt } = await client.query('SELECT * FROM tenants WHERE id=$1', [req.tenant.id]);
+    const credit = await creditDocument(client, {
+      tenant: tt[0], original: { id: req.params.id },
+      amount: req.body && req.body.amount !== undefined ? Number(req.body.amount) : null,
+      actorId: req.user.id,
+    });
+    await client.query('COMMIT');
+    res.status(201).json({ credit });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (e.status) return res.status(e.status).json({ error: e.error });
+    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
 });
 
 module.exports = r;

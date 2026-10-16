@@ -148,3 +148,93 @@ function buildReceiptPDF({ order, items, tenant, customer }) {
 }
 
 module.exports = { buildReceiptPDF, drawRtl, splitRuns };
+
+// E12.T2: PDF למסמך חשבונאי (חשבונית עסקה / קבלה / זיכוי) — כולל חותמת דמו תמידית
+// עד לרישום התוכנה ברשות המסים, וסימון "העתק" בהפקה חוזרת.
+const KIND_TITLE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי' };
+
+function collectPdf(doc) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    doc.on('data', c => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+  });
+}
+
+// doc: שורת documents; copy=true מסמן "העתק"; מחזיר pdfkit document (צריך doc.end() של הקורא)
+function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy }) {
+  const pdf = new PDFDocument({ size: 'A4', margin: 50, info: { Title: `${KIND_TITLE[d.kind]} ${d.doc_number}` } });
+  pdf.registerFont('he', FONT_REG);
+  pdf.registerFont('heb', FONT_BOLD);
+
+  // חותמת דמו קבועה — עד להשלמת רישום התוכנה ברשות המסים
+  pdf.save().rotate(0);
+  pdf.font('heb').fontSize(10).fillColor('#b00');
+  drawRtl(pdf, 'מסמך דמו — לא לצורכי מע"מ (טרם רישום תוכנה ברשות המסים)', PAGE_RIGHT, 30);
+  if (copy) drawRtl(pdf, 'העתק', PAGE_RIGHT, 44);
+  pdf.restore();
+  pdf.y = 66;
+
+  pdf.font('heb').fontSize(20).fillColor(tenant.color || '#0e7a8a');
+  line(pdf, tenant.name);
+  pdf.font('he').fontSize(10).fillColor('#444');
+  const dealerBits = [];
+  if (tenant.dealer_id) dealerBits.push(`ח.פ/ע.מ: ${tenant.dealer_id}`);
+  if (tenant.dealer_type) dealerBits.push(tenant.dealer_type === 'morasha' ? 'עוסק מורשה' : 'עוסק פטור');
+  line(pdf, [tenant.address, tenant.city].filter(Boolean).join(', ') + (dealerBits.length ? ' · ' + dealerBits.join(' · ') : ''));
+
+  pdf.moveDown(0.5);
+  pdf.font('heb').fontSize(16).fillColor('#111');
+  const numStr = `מספר ${d.doc_number}/${d.doc_year}`;
+  line(pdf, `${KIND_TITLE[d.kind]} — ${numStr}`);
+  pdf.font('he').fontSize(10).fillColor('#333');
+  if (d.allocation_number) line(pdf, `מספר הקצאה: ${d.allocation_number}`);
+  const dt = new Date(d.issued_at);
+  line(pdf, `תאריך הפקה: ${dt.toLocaleDateString('he-IL')} ${dt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`);
+  if (order) line(pdf, `בגין הזמנה: #${order.id.slice(0, 8)}`);
+  line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח'}${customer && customer.phone ? ' · ' + customer.phone : ''}`);
+  if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.doc_year}`);
+  pdf.moveDown(0.8);
+
+  if (items && items.length) {
+    pdf.font('heb').fontSize(11).fillColor('#0e7a8a');
+    line(pdf, 'פירוט');
+    pdf.moveTo(50, pdf.y).lineTo(PAGE_RIGHT, pdf.y).strokeColor('#0e7a8a').lineWidth(1).stroke();
+    pdf.moveDown(0.3);
+    pdf.font('he').fontSize(10).fillColor('#111');
+    for (const it of items) {
+      const y = pdf.y;
+      const qn = Number(it.qty);
+      pdf.font('he').text(money(Number(it.price) * qn), 50, y, { lineBreak: false });
+      pdf.text(`x${qn % 1 ? qn : Math.round(qn)}`, 130, y, { lineBreak: false });
+      const h = drawRtl(pdf, it.name, PAGE_RIGHT, y);
+      pdf.y = Math.max(y + h, y + 16);
+    }
+    pdf.moveDown(0.5);
+    pdf.moveTo(50, pdf.y).lineTo(PAGE_RIGHT, pdf.y).strokeColor('#ccc').lineWidth(0.5).stroke();
+    pdf.moveDown(0.4);
+  }
+
+  pdf.fillColor('#111');
+  const vatRow = Number(d.vat) !== 0;
+  pdf.font('he').fontSize(10);
+  if (vatRow) {
+    row2(pdf, 'סכום לפני מע"מ', money(d.amount));
+    row2(pdf, `מע"מ (${Math.round(Number(d.vat) / Number(d.amount) * 100)}%)`, money(d.vat));
+  }
+  pdf.font('heb').fontSize(13);
+  row2(pdf, 'סה"כ', money(d.total));
+  if (d.kind !== 'credit' && Number(d.credited_amount) > 0) {
+    pdf.font('he').fontSize(10).fillColor('#b00');
+    row2(pdf, 'זוכה', '-' + money(d.credited_amount));
+  }
+  pdf.moveDown(1);
+  pdf.font('he').fontSize(9).fillColor('#999');
+  line(pdf, 'הופק אוטומטית על ידי מערכת מכבסה בקליק — מסמך דמו, אינו חשבונית מס לצורכי מע"מ.');
+  pdf.end();
+  return pdf;
+}
+
+module.exports.buildDocumentPDF = buildDocumentPDF;
+module.exports.collectPdf = collectPdf;

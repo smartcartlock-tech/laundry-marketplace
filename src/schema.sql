@@ -235,8 +235,12 @@ BEGIN
      OR NEW.doc_year IS DISTINCT FROM OLD.doc_year OR NEW.doc_number IS DISTINCT FROM OLD.doc_number
      OR NEW.amount IS DISTINCT FROM OLD.amount OR NEW.vat IS DISTINCT FROM OLD.vat
      OR NEW.total IS DISTINCT FROM OLD.total OR NEW.original_id IS DISTINCT FROM OLD.original_id
-     OR NEW.issued_at IS DISTINCT FROM OLD.issued_at OR NEW.pdf IS DISTINCT FROM OLD.pdf THEN
+     OR NEW.issued_at IS DISTINCT FROM OLD.issued_at THEN
     RAISE EXCEPTION 'document fields are immutable (use a credit note)';
+  END IF;
+  -- PDF מקור: נשמר פעם אחת בלבד (NULL -> ערך); אין החלפה או מחיקה
+  IF NEW.pdf IS DISTINCT FROM OLD.pdf AND NOT (OLD.pdf IS NULL AND NEW.pdf IS NOT NULL) THEN
+    RAISE EXCEPTION 'original pdf is write-once';
   END IF;
   RETURN NEW;
 END; $$ LANGUAGE plpgsql;
