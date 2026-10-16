@@ -46,13 +46,11 @@ async function sendPdf(res, d, copy) {
     const { rows: orow } = await q('SELECT id, delivery_fee, discount FROM orders WHERE id=$1', [d.order_id]);
     order = orow[0] || { id: d.order_id };
   }
-  // זיכוי: הפניה למסמך המקור ברינדור חוזר
-  let creditNote = null;
+  // זיכוי: הפניה למסמך המקור ברינדור חוזר (השורה המובנית בבילדר מדפיסה אותה — בלי note כפול)
   if (d.kind === 'credit' && d.original_id) {
     const { rows: orig } = await q('SELECT doc_number, doc_year, total FROM documents WHERE id=$1', [d.original_id]);
     if (orig[0]) { d.original_number = orig[0].doc_number; d.original_year = orig[0].doc_year;
-      d.credit_full = Math.abs(Number(d.total)) >= Number(orig[0].total) - 0.001;
-      creditNote = `בזיכוי למסמך מספר ${orig[0].doc_number}/${orig[0].doc_year}`; }
+      d.credit_full = Math.abs(Number(d.total)) >= Number(orig[0].total) - 0.001; }
   }
   // מקור: הבייטים המקוריים, בלתי משתנים. מסמך מדור קדם-רצועת-אימות (sha256 חסר)
   // עובר לרינדור חוזר מאותו צילום עם QR/ברקוד — מסומן "העתק" כנדרש באיפיון.
@@ -64,7 +62,7 @@ async function sendPdf(res, d, copy) {
   const codes = await docVerificationImages(d);
   const effectiveCopy = copy || !d.sha256;
   const pdf = buildDocumentPDF({ doc: d, order, items: pdfItems, tenant, customer, copy: effectiveCopy, codes,
-    note: creditNote || (covered.length ? (covered.length === 1 ? 'חשבונית מרכזת המכסה הזמנה אחת' : `חשבונית מרכזת המכסה ${covered.length} הזמנות`) : null) });
+    note: covered.length ? (covered.length === 1 ? 'חשבונית מרכזת המכסה הזמנה אחת' : `חשבונית מרכזת המכסה ${covered.length} הזמנות`) : null });
   res.set('content-type', 'application/pdf');
   res.set('content-disposition', `inline; filename="${d.kind}-${d.doc_year}-${d.doc_number}-copy.pdf"`);
   pdf.pipe(res);

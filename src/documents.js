@@ -116,7 +116,7 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
     const pdfDoc = buildDocumentPDF({
       doc: credit, order: original.order_id ? { id: original.order_id } : null, items: itemRows, tenant,
       customer: custRows[0] || { id: original.customer_id }, copy: false, codes,
-      note: `בזיכוי למסמך מספר ${original.doc_number}/${original.doc_year}`,
+      // בלי note — השורה המובנית "בזיכוי למסמך מספר X" כבר מודפסת בבילדר
     });
     const buf = await collectPdf(pdfDoc);
     await client.query('UPDATE documents SET pdf=$2, sha256=$3 WHERE id=$1 AND pdf IS NULL',
