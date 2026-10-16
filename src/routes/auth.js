@@ -50,9 +50,15 @@ r.post('/otp/verify', async (req, res) => {
       : await q('SELECT * FROM users WHERE phone=$1', [target]);
     let isNew = false;
     if (!u[0]) {
+      // E3.T4: שיוך מקור לקוח — הרשמה מדף ממותג נרשמת כ'לקוח שלה' של אותה מכבסה
+      let signupSource = null, signupTenant = null;
+      if (req.body.signup_source === 'branded' && req.body.signup_slug) {
+        const { rows: bt } = await q('SELECT id FROM tenants WHERE slug=$1 AND approved', [req.body.signup_slug]);
+        if (bt[0]) { signupSource = 'branded'; signupTenant = bt[0].id; }
+      }
       const ins = isEmail
-        ? await q('INSERT INTO users(email, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null])
-        : await q('INSERT INTO users(phone, name) VALUES ($1,$2) RETURNING *', [target, req.body.name || null]);
+        ? await q('INSERT INTO users(email, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant])
+        : await q('INSERT INTO users(phone, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant]);
       u = ins.rows;
       isNew = true;
     } else if (req.body.name && req.body.name.trim() && !u[0].name) {

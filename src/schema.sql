@@ -425,3 +425,14 @@ CREATE TABLE IF NOT EXISTS courier_tenant_ratings (
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(courier_id, order_id)
 );
+-- E3: דף עסקי ממותג (White Label)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS slogan text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo bytea;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_mime text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_source text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_tenant_id uuid REFERENCES tenants(id);
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check;
+ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('app','bot','admin','branded'));
+INSERT INTO platform_settings(key, value) VALUES ('branded_commission_pct','5'), ('marketplace_commission_pct','12')
+ON CONFLICT (key) DO NOTHING;

@@ -6,6 +6,22 @@ const store={
  del(k){localStorage.removeItem('wlm_'+k)}
 };
 let state={token:store.get('token',null),me:store.get('me',null),cfg:null,cart:store.get('cart',[]),memberships:store.get('memberships',[]),courier:store.get('courier',null)};
+/* E3: מצב מותג לבן — כניסה דרך /b/:slug מציגה רק את המכבסה הזאת, במיתוג שלה */
+const __bm=location.pathname.match(/^\/b\/([^\/]+)/);
+state.brandSlug=__bm?decodeURIComponent(__bm[1]):null;state.brand=null;
+function shade(hex,f){const n=parseInt(hex.slice(1),16);const r=Math.round(((n>>16)&255)*f),g=Math.round(((n>>8)&255)*f),b=Math.round((n&255)*f);return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
+async function applyBrandTheme(slug){
+ try{
+  if(!state.brand||state.brand.slug!==slug){const d=await api('/laundries/'+slug);state.brand=d.laundry}
+  const l=state.brand,c=l.color||'#0e7a8a',dark=shade(c,.6);
+  let st=document.getElementById('brand-css');
+  if(!st){st=document.createElement('style');st.id='brand-css';document.head.appendChild(st)}
+  st.textContent=`.hdr{background:linear-gradient(120deg,${dark},${c})!important}.btn{background:linear-gradient(120deg,${dark},${c})!important}.btn2{background:${c}1a!important;color:${c}!important;border-color:${c}55!important}.btn2.on,.chip.on,.searchbar .go{background:${c}!important;color:#fff!important;border-color:${c}!important}.chip{background:${c}14!important;color:${c}!important;border-color:${c}55!important}`;
+  document.title=l.name;
+  const tm=document.querySelector('meta[name=theme-color]');if(tm)tm.content=c;
+  const mf=document.querySelector('link[rel=manifest]');if(mf)mf.href='/api/laundries/'+slug+'/manifest.webmanifest';
+ }catch(e){}
+}
 function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier)}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 let toastTimer=null;
@@ -111,7 +127,7 @@ async function requestOtp(){
 }
 async function verifyOtp(){
  try{
-  const r=await api('/auth/otp/verify',{method:'POST',body:JSON.stringify({target:$('#login-target').value.trim(),code:$('#login-code').value.trim(),name:$('#login-name').value.trim()})});
+  const r=await api('/auth/otp/verify',{method:'POST',body:JSON.stringify({target:$('#login-target').value.trim(),code:$('#login-code').value.trim(),name:$('#login-name').value.trim(),signup_source:state.brandSlug?'branded':undefined,signup_slug:state.brandSlug||undefined})});
   state.token=r.token;state.me=r.user;state.memberships=[];state.courier=null;save();
   if(r.is_new)toast('ברוכים הבאים למכבסה בקליק! ההרשמה הושלמה');
   try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){}
@@ -149,7 +165,7 @@ async function vHome(q){
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
   ${laundries.map(l=>`<a class="card lcard" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
-    <span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>
+    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${l.is_open?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
@@ -172,7 +188,7 @@ async function vLaundry(slug){
  return `<div class="hdr">
   <div style="display:flex;gap:12px;align-items:center">
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
-   <span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>
+   ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
    <div><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${l.is_open?'פתוח':'סגור'}</p></div>
   </div>
  </div>
@@ -200,6 +216,7 @@ async function vLaundry(slug){
   </div>
   <div class="sec" id="revs">ביקורות</div>
   <div class="card">${d.reviews.map(rv=>`<div class="row"><div><b>${esc(rv.author||'לקוח')}</b> <span class="stars">${'★'.repeat(rv.rating)}</span><div class="mut">${esc(rv.text||'')}</div></div></div>`).join('')||'<div class="mut">עוד אין ביקורות</div>'}</div>
+  ${state.brandSlug===slug?`<div style="text-align:center;font-size:11px;color:#8a99a3;padding:2px 0 10px">מופעל ע״י וולט למכבסות</div>`:''}
  </div>`;
 }
 function setQty(slug,itemId,delta){
@@ -301,7 +318,7 @@ async function submitOrder(slug){
   const pickup_at=w.length===2?nextWindowDate(Number(w[0]),w[1]):null;
   const w2=($('#co-delivery')&&$('#co-delivery').value||'').split('|');
   const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
-  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim(),use_subscription:!!($('#co-sub')&&$('#co-sub').checked)};
+  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim(),use_subscription:!!($('#co-sub')&&$('#co-sub').checked),source:state.brandSlug===slug?'branded':undefined};
   const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);
@@ -668,6 +685,9 @@ async function vManage(sub){
    <div class="card"><b>פילוח ערוצים</b>
     ${d.channels.map(c=>{const pct=d.totals.orders?Math.round(c.orders/d.totals.orders*100):0;return `<div style="margin-top:8px"><div class="row" style="border:none;padding:0"><div>${CH[c.source]||c.source}</div><div class="mut">${c.orders} הזמנות · ₪${c.revenue} · ${pct}%</div></div><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div></div>`}).join('')||'<div class="mut">אין נתונים</div>'}
    </div>
+   ${d.commission?`<div class="card"><b>עמלה משוערת לפי מקור לקוח</b>
+    <div class="row"><div>לקוחות שלך (מהדף הממותג)</div><div>${d.commission.own.orders} הזמנות · ₪${d.commission.own.revenue} · עמלה ${d.commission.own.commission_pct}% ≈ ₪${d.commission.own.commission_est}</div></div>
+    <div class="row"><div>לקוחות מרקטפלייס</div><div>${d.commission.marketplace.orders} הזמנות · ₪${d.commission.marketplace.revenue} · עמלה ${d.commission.marketplace.commission_pct}% ≈ ₪${d.commission.marketplace.commission_est}</div></div></div>`:''}
    <div class="card"><b>פריטים מובילים</b>${d.topItems.map(t=>`<div class="row"><div>${esc(t.name)}</div><div>${t.qty} · ₪${t.revenue}</div></div>`).join('')||'<div class="mut">אין נתונים</div>'}</div>
    <div class="card"><b>ייצוא (Excel)</b>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -693,6 +713,15 @@ async function vManage(sub){
    <label class="lb">אופן הפקת מסמכים</label><select class="inp" id="s-invoice-mode"><option value="per_order" ${l.invoice_mode!=='consolidated'?'selected':''}>מסמך לכל הזמנה — אוטומטי בסיום הזמנה</option><option value="consolidated" ${l.invoice_mode==='consolidated'?'selected':''}>חשבונית מרכזת — הפקה ידנית מרוכזת בלשונית מסמכים</option></select>
    <label class="lb">ח.פ/ע.מ (9 ספרות)</label><input class="inp" id="s-dealer-id" value="${esc(l.dealer_id||'')}" maxlength="9" inputmode="numeric" placeholder="למשל 512345678">
    </div>
+   <div style="border-top:1px solid #e3edf0;margin-top:10px;padding-top:8px"><b>מיתוג הדף העסקי (White Label)</b>
+   <div class="mut" style="margin:4px 0">הדף הממותג: <a href="/b/${slug}" target="_blank" style="color:#0e7a8a" dir="ltr">/b/${slug}</a> · <a href="/api/laundries/${slug}/card" target="_blank" style="color:#0e7a8a">כרטיס QR להדפסה</a></div>
+   <label class="lb">צבע מותג</label><input class="inp" id="s-color" type="color" value="${l.color||'#0e7a8a'}" style="height:44px;padding:4px">
+   <label class="lb">סלוגן</label><input class="inp" id="s-slogan" value="${esc(l.slogan||'')}">
+   <label class="lb">וואטסאפ עסקי</label><input class="inp" id="s-wa" value="${esc(l.whatsapp||'')}" dir="ltr">
+   <label class="lb">לוגו (PNG/JPG/WebP עד 2MB)</label>
+   ${l.has_logo?`<div style="margin-bottom:6px"><img src="/api/laundries/${slug}/logo" style="height:48px;border:1px solid #e2eaee;border-radius:8px;padding:4px;background:#fff"> <button class="btn2" onclick="delLogo('${slug}')">הסרת לוגו</button></div>`:''}
+   <input class="inp" id="s-logo" type="file" accept="image/png,image/jpeg,image/webp">
+   <button class="btn2 on" onclick="uploadLogo('${slug}')">העלאת לוגו</button></div>
    <label class="lb">תקנון</label><textarea class="inp" id="s-terms" rows="3">${esc(l.terms||'')}</textarea>
    <button class="btn" onclick="saveSettings('${slug}')">שמירה</button></div>`;
  }
@@ -725,6 +754,17 @@ async function subUsage(id){
   await xmodal({title:'היסטוריית ניצול',okText:'סגור',cancelText:'סגור',body:d.usage.map(u=>`${fmtDT(u.created_at)} — ${Number(u.bags)>0?'ניצול '+fmtQ(u.bags)+' שקים':Number(u.bags)<0?'החזר '+fmtQ(-Number(u.bags))+' שקים':esc(u.note||'')}`).join('<br>')||'אין תנועות'});
  }catch(e){toast(e.message)}
 }
+async function uploadLogo(slug){
+ const f=$('#s-logo').files[0];if(!f)return toast('בחרו קובץ תמונה');
+ const fd=new FormData();fd.append('logo',f);
+ try{
+  const r=await fetch('/api/t/'+slug+'/logo',{method:'POST',headers:{authorization:'Bearer '+state.token},body:fd});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(j.error||'ההעלאה נכשלה');
+  toast('הלוגו עודכן');route();
+ }catch(e){toast(e.message)}
+}
+async function delLogo(slug){try{await api(`/t/${slug}/logo`,{method:'DELETE'});toast('הלוגו הוסר');route()}catch(e){toast(e.message)}}
 async function addPlan(slug){try{await api(`/t/${slug}/plans`,{method:'POST',body:JSON.stringify({name:$('#pl-name').value,bags_per_month:$('#pl-bags').value,kg_per_bag:$('#pl-kg').value||8,price:$('#pl-price').value,extra_bag_price:$('#pl-extra').value,perks:$('#pl-perks').value})});toast('התוכנית נוצרה');route()}catch(e){toast(e.message)}}
 async function togglePlan(slug,id,active){try{await api(`/t/${slug}/plans/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function toggleItemSub(slug,id,on){try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({subscription_eligible:on})});route()}catch(e){toast(e.message)}}
@@ -1092,7 +1132,7 @@ async function route(){
  $('#app').innerHTML='<div class="body"><div class="card mut" style="text-align:center;padding:40px 0">טוען…</div></div>';
  const tst=$('.toast');if(tst)tst.classList.remove('show');
  try{
-  if(parts.length===0)html=await vHome(q.get('q'));
+  if(parts.length===0)html=state.brandSlug?await vLaundry(state.brandSlug):await vHome(q.get('q'));
   else if(parts[0]==='login')html=vLogin();
   else if(parts[0]==='laundry')html=await vLaundry(parts[1]);
   else if(parts[0]==='checkout')html=await vCheckout(parts[1]);
@@ -1114,6 +1154,7 @@ async function route(){
  renderTabs(h.split('?')[0]);
  $('#app').innerHTML=html;
  if(parts[0]==='login')initGoogle();
+ if(state.brandSlug)applyBrandTheme(state.brandSlug);
  const jf=$('#join-files');if(jf)jf.onchange=()=>joinExtract(jf.files);
  window.scrollTo(0,0);
 }

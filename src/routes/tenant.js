@@ -1,4 +1,6 @@
 const express = require('express');
+const multer = require('multer');
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 const { q, pool } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
@@ -147,7 +149,7 @@ r.patch('/settings', async (req, res) => {
   if (req.body.invoice_mode !== undefined && !['per_order', 'consolidated'].includes(req.body.invoice_mode)) {
     return res.status(400).json({ error: 'אופן הפקת מסמכים לא תקין (per_order/consolidated)' });
   }
-  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id','invoice_mode'];
+  const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id','invoice_mode','slogan','whatsapp','color'];
   const sets = [], params = [];
   for (const k of allowed) {
     if (req.body[k] !== undefined) { params.push(req.body[k]); sets.push(`${k}=$${params.length}`); }
@@ -206,6 +208,18 @@ r.get('/subscriptions', async (req, res) => {
   res.json({ subscriptions: rows });
 });
 
+// E3.T1: העלאת לוגו מכבסה
+r.post('/logo', logoUpload.single('logo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'חסר קובץ לוגו' });
+  if (!/^image\/(png|jpeg|webp)$/.test(req.file.mimetype)) return res.status(400).json({ error: 'קובץ תמונה בלבד (PNG/JPG/WebP)' });
+  await q('UPDATE tenants SET logo=$1, logo_mime=$2 WHERE id=$3', [req.file.buffer, req.file.mimetype, req.tenant.id]);
+  res.json({ ok: true });
+});
+r.delete('/logo', async (req, res) => {
+  await q('UPDATE tenants SET logo=NULL, logo_mime=NULL WHERE id=$1', [req.tenant.id]);
+  res.json({ ok: true });
+});
+
 // דוחות בסיסיים
 r.get('/stats', async (req, res) => {
   const tid = req.tenant.id;
@@ -226,7 +240,22 @@ r.get('/stats', async (req, res) => {
             COALESCE(sum(p.price) FILTER (WHERE s.status='active'),0)::numeric(10,2) AS mrr,
             COALESCE(sum(s.bags_used) FILTER (WHERE s.status='active'),0)::numeric(8,1) AS bags_used
      FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1`, [tid]);
-  res.json({ byStatus: byStatus.rows, revenue: revenue.rows[0], customers: customers.rows[0], topItems: top.rows, subscriptions: subs[0] });
+  // E3.T4: פילוח ערוצים — לקוח שלה (נרשם בדף הממותג / הזמין ממנו) מול לקוח מרקטפלייס + עמלה משוערת
+  const { rows: rates } = await q(`SELECT key, value FROM platform_settings WHERE key IN ('branded_commission_pct','marketplace_commission_pct')`);
+  const rate = Object.fromEntries(rates.map(x => [x.key, Number(x.value)]));
+  const ownPct = rate.branded_commission_pct || 5, mktPct = rate.marketplace_commission_pct || 12;
+  const { rows: ch } = await q(
+    `SELECT CASE WHEN o.source='branded' OR u.signup_tenant_id=o.tenant_id THEN 'own' ELSE 'marketplace' END AS channel,
+            count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS revenue
+     FROM orders o JOIN users u ON u.id=o.customer_id
+     WHERE o.tenant_id=$1 AND o.status <> 'cancelled' GROUP BY 1`, [tid]);
+  const chMap = Object.fromEntries(ch.map(x => [x.channel, x]));
+  const own = chMap.own || { orders: 0, revenue: 0 }, mkt = chMap.marketplace || { orders: 0, revenue: 0 };
+  const channels = {
+    own: { orders: own.orders, revenue: Number(own.revenue), commission_pct: ownPct, commission_est: Math.round(Number(own.revenue) * ownPct) / 100 },
+    marketplace: { orders: mkt.orders, revenue: Number(mkt.revenue), commission_pct: mktPct, commission_est: Math.round(Number(mkt.revenue) * mktPct) / 100 },
+  };
+  res.json({ byStatus: byStatus.rows, revenue: revenue.rows[0], customers: customers.rows[0], topItems: top.rows, subscriptions: subs[0], channels });
 });
 
 // לקוחות המכבסה
@@ -550,7 +579,22 @@ r.get('/reports', async (req, res) => {
          COALESCE(sum(p.price) FILTER (WHERE s.status='active'),0)::numeric(10,2) AS mrr
        FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1`, [tid]),
   ]);
-  res.json({ totals: totals.rows[0], weekly: weekly.rows, channels: channels.rows, customers: returning.rows[0], topItems: top.rows, subscriptions: subs[0] });
+  // E3.T4: פילוח לקוח שלה/מרקטפלייס + עמלה משוערת
+  const { rows: rates } = await q(`SELECT key, value FROM platform_settings WHERE key IN ('branded_commission_pct','marketplace_commission_pct')`);
+  const rate = Object.fromEntries(rates.map(x => [x.key, Number(x.value)]));
+  const ownPct = rate.branded_commission_pct || 5, mktPct = rate.marketplace_commission_pct || 12;
+  const { rows: chSplit } = await q(
+    `SELECT CASE WHEN o.source='branded' OR u.signup_tenant_id=o.tenant_id THEN 'own' ELSE 'marketplace' END AS channel,
+            count(*)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS revenue
+     FROM orders o JOIN users u ON u.id=o.customer_id
+     WHERE o.tenant_id=$1 AND o.status <> 'cancelled' GROUP BY 1`, [tid]);
+  const chMap = Object.fromEntries(chSplit.map(x => [x.channel, x]));
+  const own = chMap.own || { orders: 0, revenue: 0 }, mkt = chMap.marketplace || { orders: 0, revenue: 0 };
+  const commission = {
+    own: { orders: own.orders, revenue: Number(own.revenue), commission_pct: ownPct, commission_est: Math.round(Number(own.revenue) * ownPct) / 100 },
+    marketplace: { orders: mkt.orders, revenue: Number(mkt.revenue), commission_pct: mktPct, commission_est: Math.round(Number(mkt.revenue) * mktPct) / 100 },
+  };
+  res.json({ totals: totals.rows[0], weekly: weekly.rows, channels: channels.rows, customers: returning.rows[0], topItems: top.rows, subscriptions: subs[0], commission });
 });
 
 // E11.T2: ייצוא CSV (BOM לעברית ב-Excel) — הזמנות, לקוחות, תשלומי שליחים

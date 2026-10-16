@@ -1,4 +1,5 @@
 const express = require('express');
+const bwip = require('bwip-js');
 const { q } = require('../db');
 const r = express.Router();
 
@@ -34,13 +35,78 @@ r.get('/laundries/:slug', async (req, res) => {
        WHERE r.tenant_id=$1 AND r.target_courier_id IS NULL ORDER BY r.created_at DESC LIMIT 20`, [t[0].id]),
     q('SELECT id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks FROM subscription_plans WHERE tenant_id=$1 AND active ORDER BY sort, price', [t[0].id]),
   ]);
-  const ten = t[0]; delete ten.api_key;
+  const ten = t[0]; delete ten.api_key; ten.has_logo = !!ten.logo; delete ten.logo; delete ten.logo_mime;
   // דירוג אמיתי מהמערכת בלבד
   if (reviews.rows.length) {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
     ten.rating_count = reviews.rows.length;
   } else { ten.rating = null; ten.rating_count = 0; }
   res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows });
+});
+
+// E3: לוגו מכבסה (ציבורי)
+r.get('/laundries/:slug/logo', async (req, res) => {
+  const { rows } = await q('SELECT logo, logo_mime FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!rows[0] || !rows[0].logo) return res.status(404).json({ error: 'אין לוגו' });
+  res.setHeader('content-type', rows[0].logo_mime || 'image/png');
+  res.setHeader('cache-control', 'public, max-age=300');
+  res.send(rows[0].logo);
+});
+
+// E3: manifest דינמי לאפליקציית המותג הלבן
+r.get('/laundries/:slug/manifest.webmanifest', async (req, res) => {
+  const { rows } = await q('SELECT name, slogan, color, logo FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!rows[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const t = rows[0];
+  const base = '/b/' + req.params.slug;
+  const icons = t.logo
+    ? [{ src: '/api/laundries/' + req.params.slug + '/logo', sizes: 'any', type: 'image/png', purpose: 'any' }]
+    : [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }];
+  res.setHeader('content-type', 'application/manifest+json');
+  res.json({
+    name: t.name, short_name: t.name, description: t.slogan || undefined,
+    start_url: base, scope: base, display: 'standalone', dir: 'rtl', lang: 'he',
+    background_color: '#f5f8f9', theme_color: t.color || '#0e7a8a', icons,
+  });
+});
+
+function brandedUrl(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  return `${proto}://${req.headers.host}/b/${req.params.slug}`;
+}
+
+// E3.T3: QR לסניף — מוביל לדף הממותג
+r.get('/laundries/:slug/qr.png', async (req, res) => {
+  const { rows } = await q('SELECT 1 FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!rows[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const png = await bwip.toBuffer({ bcid: 'qrcode', text: brandedUrl(req), scale: 6, margin: 2 });
+  res.setHeader('content-type', 'image/png');
+  res.setHeader('cache-control', 'public, max-age=3600');
+  res.send(png);
+});
+
+// E3.T3: כרטיס הדפסה לסניף
+r.get('/laundries/:slug/card', async (req, res) => {
+  const { rows } = await q('SELECT name, slogan, color, logo FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
+  if (!rows[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const t = rows[0];
+  const escH = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8"><title>כרטיס סניף — ${escH(t.name)}</title>
+<style>body{font-family:Arial,sans-serif;background:#fff;text-align:center;padding:30px}
+.card{display:inline-block;border:2px solid ${escH(t.color || '#0e7a8a')};border-radius:16px;padding:28px 34px;max-width:340px}
+h1{color:${escH(t.color || '#0e7a8a')};font-size:24px;margin:8px 0 2px}.s{color:#555;font-size:13px;margin-bottom:14px}
+img{width:220px;height:220px}.u{direction:ltr;font-size:12px;color:#333;margin-top:8px}.pw{font-size:11px;color:#999;margin-top:14px}
+@media print{.np{display:none}}</style></head><body>
+<div class="card">
+${t.logo ? `<img src="/api/laundries/${req.params.slug}/logo" style="width:70px;height:70px;object-fit:contain">` : ''}
+<h1>${escH(t.name)}</h1>${t.slogan ? `<div class="s">${escH(t.slogan)}</div>` : ''}
+<img src="/api/laundries/${req.params.slug}/qr.png" alt="QR">
+<div class="u">${escH(brandedUrl(req))}</div>
+<div class="s" style="margin-top:10px">סרקו להזמנת כביסה באפליקציה שלנו</div>
+<div class="pw">מופעל ע״י וולט למכבסות</div>
+</div><div class="np" style="margin-top:16px"><button onclick="print()">הדפסה</button></div>
+</body></html>`);
 });
 
 // קונפיגורציה ציבורית ל-PWA

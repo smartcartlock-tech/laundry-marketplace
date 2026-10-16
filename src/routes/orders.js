@@ -20,7 +20,7 @@ async function event(orderId, status, actorId, note) {
 r.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes, use_subscription } = req.body || {};
+    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes, use_subscription, source } = req.body || {};
     if (!slug || !Array.isArray(items) || !items.length || !address) return res.status(400).json({ error: 'חסרים פרטי הזמנה' });
     const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [slug]);
     const tenant = t[0];
@@ -94,10 +94,10 @@ r.post('/', async (req, res) => {
     const { rows: o } = await client.query(
       `INSERT INTO orders(tenant_id, customer_id, source, address, lat, lng, pickup_at, delivery_at,
         subtotal, delivery_fee, discount, total, payment_method, payment_status, points_earned, points_redeemed, coupon_id, notes, subscription_id)
-       VALUES ($1,$2,'app',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+       VALUES ($1,$2,$19,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [tenant.id, req.user.id, address, lat || null, lng || null, pickup_at || null, delivery_at || null,
        subtotal, deliveryFee, discount, total, payMethod, payStatus, pointsEarned, pointsRedeemed, coupon ? coupon.id : null, notes || null,
-       subscription ? subscription.id : null]);
+       subscription ? subscription.id : null, source === 'branded' ? 'branded' : 'app']);
     const order = o[0];
     for (const ln of lines) {
       await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
