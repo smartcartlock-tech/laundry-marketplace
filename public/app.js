@@ -371,7 +371,7 @@ async function vLaundry(slug){
     </div>`}).join('')}
   </div>`).join('')||'<div class="card mut">המחירון טרם הוזן</div>'}
   <div class="card mut" id="pl-empty" style="display:none;text-align:center">אין פריטים שמתאימים לחיפוש במחירון</div>
-  ${cartItems.length?(cartTotal>=Number(l.min_order||0)?`<button class="btn" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.6;cursor:not-allowed">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`):''}
+  ${cartItems.length?`<div style="position:sticky;bottom:10px;z-index:20;margin-top:4px">`+(cartTotal>=Number(l.min_order||0)?`<button class="btn" style="box-shadow:0 4px 14px rgba(14,122,138,.35)" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.85;cursor:not-allowed;box-shadow:0 4px 14px rgba(0,0,0,.18)">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`)+`</div>`:''}
   ${(d.plans&&d.plans.length)||mySub?`<div class="sec">מנוי כביסה חודשי</div>
   <div class="card">
    ${mySub?`<div class="row"><div><b>יש לך ${esc(mySub.plan_name)}</b> ${mySub.status==='paused'?'(מושהה)':''}<div class="mut">נותרו ${fmtQ(mySub.bags_remaining)} שקים החודש · מתחדש ${fmtDate(mySub.period_end)}</div></div><a class="btn2" href="#/club" style="text-decoration:none">ניהול המנוי</a></div>`
@@ -579,12 +579,17 @@ async function vOrders(){
  const r=await api('/orders/mine');
  return `<div class="hdr"><h2>ההזמנות שלי</h2></div>
  <div class="body">
-  ${r.orders.map(o=>`<div class="card lcard" style="cursor:pointer" onclick="go('#/orders/${o.id}')">
+  ${(()=>{const act=r.orders.filter(o=>o.status!=='cancelled'),cnc=r.orders.filter(o=>o.status==='cancelled');state.__cncCount=cnc.length;return act.map(o=>`<div class="card lcard" style="cursor:pointer" onclick="go('#/orders/${o.id}')">
     <span class="logo sm" style="background:${o.color||'#0e7a8a'}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
     <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div></div>
     ${o.status==='delivered'?`<button class="btn2" style="flex-shrink:0" onclick="event.stopPropagation();reorder('${o.id}','${o.slug}')" title="הוספת אותם פריטים לסל">↻ שוב</button>`:''}
-    <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'}
+    <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות פעילות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'})()}
+  ${r.orders.some(o=>o.status==='cancelled')?`<details class="card" style="cursor:pointer"><summary class="mut" style="cursor:pointer">הזמנות שבוטלו (${r.orders.filter(o=>o.status==='cancelled').length}) — הצגה</summary>`+r.orders.filter(o=>o.status==='cancelled').map(o=>`<div class="card lcard" style="cursor:pointer;opacity:.75" onclick="go('#/orders/${o.id}')">
+    <span class="logo sm" style="background:${o.color||'#0e7a8a'}">${esc(o.letter||'מ')}</span>
+    <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}</div></div>
+    <span style="color:#8a99a3">‹</span></div>`).join('')+`</details>`:''}
  </div>`;
 }
 async function vOrder(id){
