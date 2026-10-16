@@ -14,7 +14,7 @@ const TENANT_GETS = [
   '/business-accounts', '/financials', '/analytics', '/reports',
   '/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries',
   '/bookkeeping/trial-balance', '/bookkeeping/periods',
-  '/bookkeeping/expenses', '/bookkeeping/expenses/x/file',
+  '/bookkeeping/expenses', '/bookkeeping/expenses/x/file', '/bookkeeping/documents',
 ];
 const TENANT_WRITES = [
   ['POST', '/items', {}], ['POST', '/windows', {}], ['POST', '/coupons', {}], ['PATCH', '/settings', {}],
@@ -26,6 +26,8 @@ const TENANT_WRITES = [
   ['POST', '/bookkeeping/entries/x/reverse', {}], ['POST', '/bookkeeping/periods/close', {}],
   ['POST', '/bookkeeping/expenses', {}], ['POST', '/bookkeeping/expenses/x/post', {}],
   ['POST', '/bookkeeping/expenses/x/void', {}],
+  ['POST', '/bookkeeping/documents', {}], ['POST', '/bookkeeping/documents/x/allocate', {}],
+  ['POST', '/bookkeeping/documents/x/issue', {}], ['POST', '/bookkeeping/documents/x/cancel', {}],
 ];
 
 test('סריקת בידוד: זר לא מקבל דבר מאף נתיב טננטי', async (t) => {

@@ -437,6 +437,154 @@ r.post('/bookkeeping/expenses/:id/void', async (req, res) => {
   } finally { client.release(); }
 });
 
+// --- 092: מסמכי הכנסה. כלל ברזל: חשבונית מס (305/320) אינה מונפקת בלי מספר הקצאה ---
+const DOC_KINDS = {
+  tax_invoice: { code: 305, he: 'חשבונית מס', needsAllocation: true, morashaOnly: true },
+  tax_invoice_receipt: { code: 320, he: 'חשבונית מס/קבלה', needsAllocation: true, morashaOnly: true },
+  invoice: { code: 300, he: 'חשבונית עסקה', needsAllocation: false, morashaOnly: false },
+  receipt: { code: 400, he: 'קבלה', needsAllocation: false, morashaOnly: false },
+};
+const ALLOC_RE = /^[0-9]{9,10}$/; // 9 הספרות הימניות מודפסות על החשבונית; מזהה מלא עד 10
+
+function docStatusHe(d) {
+  if (d.status === 'issued') return 'הונפק';
+  if (d.status === 'cancelled') return 'בוטל';
+  return DOC_KINDS[d.kind].needsAllocation ? 'טיוטה — ממתין למספר הקצאה' : 'טיוטה';
+}
+
+r.post('/bookkeeping/documents', async (req, res) => {
+  const tid = req.tenant.id;
+  const { kind, customer_name, party_id, customer_tax_id, amount_net, vat_amount, lines, notes } = req.body || {};
+  const K = DOC_KINDS[kind];
+  if (!K) return res.status(400).json({ error: 'סוג מסמך לא תקין' });
+  if (K.morashaOnly && req.tenant.dealer_type !== 'morasha') {
+    return res.status(400).json({ error: `עוסק פטור אינו מפיק ${K.he} — מפיק חשבונית עסקה (300)` });
+  }
+  if (!customer_name || String(customer_name).trim().length < 2) return res.status(400).json({ error: 'שם לקוח חסר' });
+  const net = Number(amount_net), vat = Number(vat_amount || 0);
+  if (isNaN(net) || net <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
+  if (isNaN(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
+  if (vat > 0 && req.tenant.dealer_type !== 'morasha') return res.status(400).json({ error: 'עוסק פטור אינו גובה מע"מ' });
+  if (party_id) {
+    const { rows: pr } = await q(`SELECT 1 FROM bk_parties WHERE id=$1 AND tenant_id=$2 AND kind='customer'`, [party_id, tid]);
+    if (!pr[0]) return res.status(400).json({ error: 'כרטיס לקוח לא נמצא' });
+  }
+  let cleanLines = [];
+  if (Array.isArray(lines) && lines.length) {
+    if (lines.length > 100) return res.status(400).json({ error: 'יותר מדי שורות (עד 100)' });
+    let sum = 0;
+    for (const l of lines) {
+      const qty = Number(l.quantity || 1), price = Number(l.unit_price), total = Number(l.total ?? qty * price);
+      if (!l.description || isNaN(qty) || qty <= 0 || isNaN(price) || price < 0 || isNaN(total) || total < 0) {
+        return res.status(400).json({ error: 'שורת מסמך לא תקינה' });
+      }
+      sum += total;
+      cleanLines.push({ description: String(l.description).slice(0, 200), quantity: qty, unit_price: price, total });
+    }
+    if (Math.abs(sum - net) > 0.01) return res.status(400).json({ error: `סכום השורות (${sum.toFixed(2)}) לא תואם את סכום המסמך (${net.toFixed(2)})` });
+  }
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: d } = await client.query(
+      `INSERT INTO bk_documents (tenant_id, party_id, customer_name, customer_tax_id, kind, amount_net, vat_amount, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, kind, status`,
+      [tid, party_id || null, String(customer_name).trim(), customer_tax_id ? encryptField(String(customer_tax_id)) : null,
+       kind, net.toFixed(2), vat.toFixed(2), notes || null, req.user.id]);
+    for (const l of cleanLines) {
+      await client.query(
+        `INSERT INTO bk_document_lines (tenant_id, document_id, description, quantity, unit_price, total)
+         VALUES ($1,$2,$3,$4,$5,$6)`, [tid, d[0].id, l.description, l.quantity, l.unit_price, l.total]);
+    }
+    await client.query('COMMIT');
+    await audit(req, 'bk_doc_create', 'bk_document', d[0].id, { kind, total: (net + vat).toFixed(2) });
+    res.status(201).json({ document: { ...d[0], status_he: docStatusHe(d[0]) } });
+  } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+});
+
+r.get('/bookkeeping/documents', async (req, res) => {
+  const { rows } = await q(
+    `SELECT d.id, d.kind, d.doc_year, d.doc_number, d.issue_date, d.status, d.customer_name,
+            d.amount_net, d.vat_amount, (d.amount_net + d.vat_amount) AS total,
+            (d.allocation_number IS NOT NULL) AS has_allocation, d.created_at,
+            (SELECT count(*)::int FROM bk_document_lines l WHERE l.document_id = d.id) AS lines
+     FROM bk_documents d WHERE d.tenant_id=$1 ORDER BY d.created_at DESC LIMIT 500`, [req.tenant.id]);
+  res.json({ documents: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d) })) });
+});
+
+// הזנת מספר הקצאה ידנית — הבעלים מעתיק מהאזור האישי ברשות (אין קריאה אוטומטית לרשות)
+r.post('/bookkeeping/documents/:id/allocate', async (req, res) => {
+  const num = String((req.body || {}).allocation_number || '').replace(/[^0-9]/g, '');
+  if (!ALLOC_RE.test(num)) return res.status(400).json({ error: 'מספר הקצאה חייב להיות 9-10 ספרות' });
+  const { rows } = await q(
+    `UPDATE bk_documents SET allocation_number=$1, allocation_at=now(), updated_at=now()
+     WHERE id=$2 AND tenant_id=$3 AND status='draft'
+       AND kind IN ('tax_invoice','tax_invoice_receipt')
+     RETURNING id, kind`,
+    [num, req.params.id, req.tenant.id]);
+  if (!rows[0]) return res.status(409).json({ error: 'מסמך לא נמצא, אינו טיוטה, או שאינו חשבונית מס' });
+  await audit(req, 'bk_doc_allocate', 'bk_document', rows[0].id, {});
+  res.json({ allocated: true });
+});
+
+// הנפקה: מספר סידורי רציף + פקודת יומן. חשבונית מס בלי הקצאה נשארת טיוטה (409)
+r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
+  const tid = req.tenant.id;
+  const { rows: ds } = await q(`SELECT * FROM bk_documents WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  const d = ds[0];
+  if (!d) return res.status(404).json({ error: 'מסמך לא נמצא' });
+  if (d.status !== 'draft') return res.status(409).json({ error: 'ניתן להנפיק טיוטה בלבד' });
+  const K = DOC_KINDS[d.kind];
+  if (K.needsAllocation && !d.allocation_number) {
+    return res.status(409).json({ error: 'טיוטה — ממתין למספר הקצאה. יש לבקש מספר באזור האישי של רשות המסים ולהזינו כאן' });
+  }
+  const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
+  if (await periodClosed(tid, todayIL)) return res.status(409).json({ error: 'התקופה הנוכחית סגורה — לא ניתן להנפיק' });
+
+  const income = await acctByCode(tid, '4000');
+  const debitAcct = await acctByCode(tid, d.kind === 'tax_invoice_receipt' || d.kind === 'receipt' ? '1000' : '1020');
+  const vatAcct = Number(d.vat_amount) > 0 ? await acctByCode(tid, '2010') : null;
+  if (!income || !debitAcct || (Number(d.vat_amount) > 0 && !vatAcct)) return res.status(400).json({ error: 'חשבון חסר — יש לאתחל את תרשים החשבונות' });
+  const total = Number(d.amount_net) + Number(d.vat_amount);
+
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const year = Number(todayIL.slice(0, 4));
+    await client.query(
+      `INSERT INTO bk_doc_counters (tenant_id, kind, year, next_number) VALUES ($1,$2,$3,1) ON CONFLICT DO NOTHING`,
+      [tid, d.kind, year]);
+    const { rows: cn } = await client.query(
+      `UPDATE bk_doc_counters SET next_number = next_number + 1 WHERE tenant_id=$1 AND kind=$2 AND year=$3 RETURNING next_number`,
+      [tid, d.kind, year]);
+    const docNumber = cn[0].next_number - 1;
+    const lines = [
+      { account_id: debitAcct.id, party_id: d.party_id, debit: total, details: `${K.he} ${docNumber} — ${d.customer_name}` },
+      { account_id: income.id, party_id: d.party_id, credit: Number(d.amount_net), details: `${K.he} ${docNumber}` },
+    ];
+    if (Number(d.vat_amount) > 0) lines.push({ account_id: vatAcct.id, party_id: d.party_id, credit: Number(d.vat_amount), details: 'מע"מ עסקאות' });
+    const e = await insertEntryTx(client, tid, {
+      date: todayIL, description: `${K.he} מס׳ ${docNumber} ל${d.customer_name}`, source: 'invoice', lines, createdBy: req.user.id,
+    });
+    await client.query(
+      `UPDATE bk_documents SET status='issued', doc_year=$1, doc_number=$2, issue_date=$3, entry_id=$4, updated_at=now() WHERE id=$5`,
+      [year, docNumber, todayIL, e.id, d.id]);
+    await client.query('COMMIT');
+    await audit(req, 'bk_doc_issue', 'bk_document', d.id, { kind: d.kind, doc_number: docNumber, total: total.toFixed(2) });
+    res.json({ issued: true, doc_year: year, doc_number: docNumber, entry_no: e.entry_no });
+  } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+});
+
+// ביטול טיוטה בלבד (ביטול מסמך מונפק = חשבונית זיכוי, בהמשך)
+r.post('/bookkeeping/documents/:id/cancel', async (req, res) => {
+  const { rows } = await q(
+    `UPDATE bk_documents SET status='cancelled', updated_at=now() WHERE id=$1 AND tenant_id=$2 AND status='draft' RETURNING id`,
+    [req.params.id, req.tenant.id]);
+  if (!rows[0]) return res.status(409).json({ error: 'ניתן לבטל טיוטה בלבד — מסמך מונפק מבטלים בחשבונית זיכוי' });
+  await audit(req, 'bk_doc_cancel', 'bk_document', rows[0].id, {});
+  res.json({ cancelled: true });
+});
+
 async function acctByCode(tid, code) {
   const { rows } = await q(`SELECT id, code FROM bk_accounts WHERE tenant_id=$1 AND code=$2 AND active`, [tid, code]);
   return rows[0] || null;
