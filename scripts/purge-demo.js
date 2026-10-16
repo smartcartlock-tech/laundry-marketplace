@@ -1,5 +1,7 @@
 // H3: ניקוי נתוני דמו מהפרוד לפני go-live. סקריפט ידני בלבד — לא רץ אוטומטית.
-// מסיר את 4 מכבסות הדמו (achuza/express/mumchim/carmel), משתמשי הדמו (+9725000000xx) וכל הנתונים התלויים.
+// מסיר את טננטי הדמו ומשתמשי הדמו (is_demo=true בלבד, מיגרציה 008) וכל הנתונים התלויים.
+// G5: לעולם לא נוגע בנתונים שאינם דמו — טננט/משתמש בלי is_demo לא נמחק, והסקריפט
+// נעצר לחלוטין אם משתמש דמו קשור לטננט שאינו דמו (מניעת יתומים, למשל מכבסה עם הנה"ח אמיתית).
 // בטיחות: דורש CONFIRM_PURGE_DEMO=yes; רץ בטרנזקציה; מדפיס ספירות לפני מחיקה.
 // חובה לפני הרצה: גיבוי מלא (scripts/backup.js). מומלץ: APP_MODE=pilot כבר מוגדר.
 // הרצה: CONFIRM_PURGE_DEMO=yes DATABASE_URL=... node scripts/purge-demo.js
@@ -16,18 +18,38 @@ const pool = new Pool({
   ...(SCHEMA ? { options: `-c search_path=${SCHEMA},public` } : {}),
 });
 
-const DEMO_SLUGS = ['achuza', 'express', 'mumchim', 'carmel'];
-
 (async () => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: tenants } = await client.query('SELECT id, slug FROM tenants WHERE slug = ANY($1)', [DEMO_SLUGS]);
+    const { rows: tenants } = await client.query('SELECT id, slug FROM tenants WHERE is_demo');
     const tids = tenants.map(t => t.id);
-    const { rows: users } = await client.query(`SELECT id FROM users WHERE phone LIKE '+9725000000%'`);
+    const { rows: users } = await client.query('SELECT id FROM users WHERE is_demo');
     const uids = users.map(u => u.id);
     console.log(`מכבסות דמו: ${tenants.map(t => t.slug).join(', ') || 'אין'} · משתמשי דמו: ${uids.length}`);
     if (!tids.length && !uids.length) { console.log('אין מה לנקות'); await client.query('ROLLBACK'); return; }
+
+    // G5: הגנת הפרדה — משתמש דמו שקשור לטננט שאינו דמו (חברות, שליחות, הזמנה, מסמך)
+    // פירושו שמחיקתו תשאיר נתונים אמיתיים יתומים. עוצרים הכל בלי למחוק דבר.
+    if (uids.length) {
+      const { rows: leaks } = await client.query(
+        `SELECT u.phone, t.slug, x.rel FROM (
+           SELECT tm.user_id AS uid, tm.tenant_id AS tid, 'חברות בצוות' AS rel FROM tenant_members tm
+           UNION ALL SELECT c.user_id, c.tenant_id, 'שליח פרטי של' FROM couriers c WHERE c.tenant_id IS NOT NULL
+           UNION ALL SELECT o.customer_id, o.tenant_id, 'הזמנה ב' FROM orders o
+           UNION ALL SELECT cu.user_id, o.tenant_id, 'משלוח ב' FROM orders o JOIN couriers cu ON cu.id = o.courier_id
+           UNION ALL SELECT d.customer_id, d.tenant_id, 'מסמך ב' FROM documents d
+         ) x JOIN users u ON u.id = x.uid JOIN tenants t ON t.id = x.tid
+         WHERE x.uid = ANY($1) AND NOT t.is_demo LIMIT 20`, [uids]);
+      if (leaks.length) {
+        await client.query('ROLLBACK');
+        console.error('חסום: נמצאו משתמשי דמו הקשורים לטננטים שאינם דמו — לא נמחק דבר:');
+        for (const l of leaks) console.error(`  ${l.phone} — ${l.rel} ${l.slug}`);
+        console.error('יש לנתק את הקשרים ידנית או לסמן את הטננטים is_demo לפני הרצה חוזרת.');
+        process.exitCode = 1;
+        return;
+      }
+    }
 
     // מסמכים חשבונאיים חסומי-מחיקה בטריגר — מושבת זמנית בתוך הטרנזקציה ומוחזר מיד
     await client.query('ALTER TABLE documents DISABLE TRIGGER documents_immutable_trg');

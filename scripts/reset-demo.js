@@ -1,6 +1,7 @@
 // G5: איפוס נתוני דמו בטוח — מנקה את נתוני הדמו (purge-demo) ומזריע מחדש (seed).
 // הגנות: (1) נעילה לחלוטין ב-APP_MODE=pilot — שם הנתונים אמיתיים; (2) דורש CONFIRM_RESET_DEMO=yes;
-// (3) דורש SEED_DEMO=true (סביבת דמו בלבד); (4) מדפיס תוכנית לפני ביצוע.
+// (3) דורש SEED_DEMO=true (סביבת דמו בלבד); (4) purge-demo נוגע רק בטננטים/משתמשים עם is_demo
+// ונעצר אם משתמש דמו קשור לטננט שאינו דמו.
 // הרצה: CONFIRM_RESET_DEMO=yes DATABASE_URL=... node scripts/reset-demo.js
 const { MODE } = require('../src/config');
 

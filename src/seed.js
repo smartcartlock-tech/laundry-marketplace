@@ -20,8 +20,8 @@ async function run() {
     await client.query('BEGIN');
     const uid = async (phone, name, role='customer') => {
       const { rows } = await client.query(
-        `INSERT INTO users(phone, name, role) VALUES ($1,$2,$3)
-         ON CONFLICT (phone) DO UPDATE SET name=EXCLUDED.name RETURNING id`, [phone, name, role]);
+        `INSERT INTO users(phone, name, role, is_demo) VALUES ($1,$2,$3,true)
+         ON CONFLICT (phone) DO UPDATE SET name=EXCLUDED.name, is_demo=true RETURNING id`, [phone, name, role]);
       return rows[0].id;
     };
     const adminId = await uid('+972500000001', 'מנהל פלטפורמה', 'admin');
@@ -32,8 +32,8 @@ async function run() {
 
     for (const L of LAUNDRIES) {
       const { rows: t } = await client.query(
-        `INSERT INTO tenants(slug, name, letter, color, city, address, phone, services, delivery_fee, min_order, approved, rating, rating_count, hours)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11,$12,$13) ON CONFLICT (slug) DO NOTHING RETURNING id`,
+        `INSERT INTO tenants(slug, name, letter, color, city, address, phone, services, delivery_fee, min_order, approved, rating, rating_count, hours, is_demo)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11,$12,$13,true) ON CONFLICT (slug) DO NOTHING RETURNING id`,
         [L.slug, L.name, L.letter, L.color, L.city, L.address, L.phone || null, L.services, L.delivery_fee, L.min_order, L.rating, L.rc,
          JSON.stringify({ '0': [['08:00','20:00']], '1': [['08:00','20:00']], '2': [['08:00','20:00']], '3': [['08:00','20:00']], '4': [['08:00','20:00']], '5': [['08:00','13:00']], '6': [] })]);
       if (!t[0]) continue;
