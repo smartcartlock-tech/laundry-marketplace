@@ -11,12 +11,12 @@ test('bot API: אימות מפתח, מחירון, יצירת הזמנה מזוה
   const badKey = await api('/api/bot/pricelist', { apiKey: 'nope' });
   assert.equal(badKey.status, 401);
 
-  // שליפת מפתח ה-API של מכבסת האחוזה מה-DB
-  const db = new Client({ connectionString: TEST_DB, options: `-c search_path=${schema}` });
-  await db.connect();
-  const { rows } = await db.query(`SELECT api_key FROM tenants WHERE slug='achuza'`);
-  await db.end();
-  const key = rows[0].api_key;
+  // B3: המפתח לא נשמר גלוי — מקבלים אותו פעם אחת ברוטציית אדמין
+  const admin = await api.login('+972500000001');
+  const { rows: tidRows } = await (async () => { const db = new Client({ connectionString: TEST_DB, options: `-c search_path=${schema}` }); await db.connect(); const r = await db.query(`SELECT id FROM tenants WHERE slug='achuza'`); await db.end(); return r; })();
+  const rot = await api('/api/admin/tenants/' + tidRows[0].id + '/apikey/rotate', { method: 'POST', token: admin });
+  assert.equal(rot.status, 200, JSON.stringify(rot.json));
+  const key = rot.json.api_key;
   assert.ok(key);
 
   const pl = await api('/api/bot/pricelist', { apiKey: key });

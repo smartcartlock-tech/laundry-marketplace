@@ -11,7 +11,9 @@ async function botAuth(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!key) return res.status(401).json({ error: 'missing api key' });
   // מפתח קבוע של מכבסה
-  const { rows } = await q('SELECT * FROM tenants WHERE api_key=$1 AND approved', [key]);
+  // B3: המפתח נשמר כ-sha256 בלבד — משווים hash מול hash, אף פעם לא גלוי
+  const keyHash = require('crypto').createHash('sha256').update(String(key)).digest('hex');
+  const { rows } = await q('SELECT * FROM tenants WHERE api_key_hash=$1 AND approved', [keyHash]);
   if (rows[0]) { req.tenant = rows[0]; return next(); }
   // E10.T1: מפתח שיחה זמני מהבוט המרכזי (handoff) — מוגבל לטלפון השיחה ולמכבסה אחת
   const { rows: sess } = await q(

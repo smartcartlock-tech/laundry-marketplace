@@ -43,6 +43,12 @@ r.post('/tenants', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false) RETURNING *`,
       [slug, name, name.trim()[0] || 'מ', phone || null, address || null, city || null,
        svc, JSON.stringify(hours || {}), terms || null, Number(delivery_fee) || 0, Number(min_order) || 0]);
+    // B3: גיבוב מפתח הבוט מיד עם היצירה — הגלוי לא נשמר. חיבור הבוט מתבצע ברוטציה מהאדמין.
+    if (t[0].api_key) {
+      const h = require('crypto').createHash('sha256').update(t[0].api_key).digest('hex');
+      await q('UPDATE tenants SET api_key=NULL, api_key_hash=$2 WHERE id=$1', [t[0].id, h]);
+      t[0].api_key = null; t[0].api_key_hash = h;
+    }
     const tenant = t[0];
     await q('INSERT INTO tenant_members(tenant_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
       [tenant.id, req.user.id, 'owner']);
