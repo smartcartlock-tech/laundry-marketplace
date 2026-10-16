@@ -8,7 +8,8 @@ r.get('/laundries', async (req, res) => {
   const { q: query, service } = req.query;
   const params = [];
   let where = 'WHERE t.approved AND t.is_open IS NOT NULL';
-  if (query) { params.push(`%${query}%`); where += ` AND (t.name ILIKE $${params.length} OR t.city ILIKE $${params.length} OR t.address ILIKE $${params.length})`; }
+  // חיפוש חופשי: שם, עיר, כתובת — וגם שירותים (E13: חיפוש לפי שירות, למשל "שטיח")
+  if (query) { params.push(`%${query}%`); where += ` AND (t.name ILIKE $${params.length} OR t.city ILIKE $${params.length} OR t.address ILIKE $${params.length} OR EXISTS (SELECT 1 FROM unnest(t.services) sv WHERE sv ILIKE $${params.length}))`; }
   if (service) { params.push(service); where += ` AND $${params.length} = ANY(t.services)`; }
   const { rows } = await q(
     `SELECT t.id, t.slug, t.name, t.letter, t.color, t.city, t.address, t.services, t.rating, t.rating_count,

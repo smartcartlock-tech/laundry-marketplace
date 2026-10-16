@@ -112,3 +112,10 @@ table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
  .home-grid .lcard{margin:0}
  .home-grid .card{max-width:none}
 }
+
+/* E13: סינון מתקדם — פאנל מובייל נפתח + סרגל כלים */
+.hf-mob{display:inline-block}
+@media(min-width:1280px){.hf-mob{display:none}}
+@media(max-width:1279px){
+ .home-side.open{display:block;background:#fff;border:1px solid #e2eaee;border-radius:14px;padding:16px;margin-bottom:12px}
+}

@@ -169,9 +169,42 @@ function initGoogle(){
 function logout(){state.token=null;state.me=null;state.memberships=[];state.courier=null;store.del('token');store.del('me');store.del('memberships');store.del('courier');go('#/login')}
 
 /* ---- marketplace ---- */
+/* E13: חיפוש וסינון מתקדם — שירותים, דירוג, זמינות, מחיר לק״ג, שליחות חינם, מרחק ומיון */
+function haversine(lat1,lng1,lat2,lng2){
+ const R=6371,dLa=(lat2-lat1)*Math.PI/180,dLo=(lng2-lng1)*Math.PI/180;
+ const a=Math.sin(dLa/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLo/2)**2;
+ return 2*R*Math.asin(Math.sqrt(a));
+}
+function fmtDist(d){return d<1?Math.round(d*1000)+' מ׳':d.toFixed(1)+' ק״מ'}
+function homeGeo(){
+ if(!navigator.geolocation)return toast('הדפדפן לא תומך במיקום');
+ toast('מאתר מיקום…');
+ navigator.geolocation.getCurrentPosition(p=>{
+  const geo={lat:p.coords.latitude,lng:p.coords.longitude};store.set('geo',geo);
+  document.querySelectorAll('#home-grid .lcard').forEach(c=>{
+   const lat=Number(c.dataset.lat),lng=Number(c.dataset.lng);
+   if(c.dataset.lat&&!isNaN(lat)&&!isNaN(lng)){
+    const d=haversine(geo.lat,geo.lng,lat,lng);c.dataset.dist=d;
+    const sp=c.querySelector('.dist');if(sp)sp.textContent=' · '+fmtDist(d);
+   }
+  });
+  const sel=document.getElementById('home-sort');
+  if(sel){const op=sel.querySelector('option[value=dist]');if(op)op.disabled=false;sel.value='dist'}
+  homeFilter();toast('המיקום עודכן — התוצאות ממוינות לפי קרבה');
+ },()=>toast('לא הצלחנו לקבל מיקום — אשרו גישה למיקום בדפדפן'),{timeout:10000});
+}
+function homeFilterReset(){
+ document.querySelectorAll('.home-side input[type=checkbox]:checked').forEach(x=>x.checked=false);
+ const k=document.getElementById('hf-kg');if(k)k.value='';
+ const s=document.getElementById('home-sort');if(s)s.value='rec';
+ homeFilter();
+}
 async function vHome(q){
  let laundries=[];
  try{const r=await api('/laundries'+(q?'?q='+encodeURIComponent(q):''));laundries=r.laundries}catch(e){toast(e.message)}
+ const geo=store.get('geo',null);
+ const svcSet=[...new Set(laundries.flatMap(l=>l.services||[]))].sort();
+ const distOf=l=>geo&&l.lat!=null&&l.lng!=null?haversine(geo.lat,geo.lng,l.lat,l.lng):null;
  return `<div class="hdr" style="text-align:center;padding-top:26px">
   <h1 class="big" style="margin:0">מכבסה בקליק</h1>
   <p style="font-size:13px">כל המכבסות באזורך — במקום אחד</p>
@@ -181,46 +214,87 @@ async function vHome(q){
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
+  ${laundries.length?`<div style="display:flex;gap:8px;align-items:center;margin:0 2px 10px">
+   <button class="btn2 hf-mob" type="button" onclick="const s=document.querySelector('.home-side');if(s)s.classList.toggle('open')">☰ סינון</button>
+   <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px" onchange="homeFilter()">
+    <option value="rec">מיון: מומלץ</option>
+    <option value="price">מחיר — מהזול ליקר</option>
+    <option value="rating">דירוג — מהגבוה לנמוך</option>
+    <option value="open">פתוח עכשיו קודם</option>
+    <option value="dist" ${geo?'':'disabled'}>מרחק — מהקרוב לרחוק</option>
+   </select>
+   <button class="btn2" type="button" onclick="homeGeo()" title="חישוב מרחק מהמיקום שלי">📍 קרוב אליי</button>
+  </div>`:''}
   <div class="home-wrap">
-  <aside class="home-side"><h3>סינון</h3>
-   <div class="sec">שירות</div>
-   ${['כביסה','ניקוי יבש','גיהוץ','שטיחים'].map(sv=>`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-svc" value="${sv}" onchange="homeFilter()"> ${sv}</label>`).join('')}
+  <aside class="home-side"><h3>סינון <a href="#/" onclick="homeFilterReset();return false" style="font-weight:400;font-size:11px;color:#0e7a8a">ניקוי</a></h3>
+   ${svcSet.length?`<div class="sec">שירות</div>
+   ${svcSet.map(sv=>`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-svc" value="${esc(sv)}" onchange="homeFilter()"> ${esc(sv)}</label>`).join('')}`:''}
    <div class="sec">דירוג</div>
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="3" onchange="homeFilter()"> 3★ ומעלה</label>
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4" onchange="homeFilter()"> 4★ ומעלה</label>
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4.5" onchange="homeFilter()"> 4.5★ ומעלה</label>
-   <div class="sec">זמינות</div>
+   <div class="sec">מחיר לק״ג</div>
+   <select class="inp" id="hf-kg" style="margin:4px 0;font-size:13px;padding:8px 10px" onchange="homeFilter()">
+    <option value="">הכל</option><option value="15">עד ₪15</option><option value="20">עד ₪20</option><option value="25">עד ₪25</option><option value="30">עד ₪30</option>
+   </select>
+   <div class="sec">זמינות ועלויות</div>
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" onchange="homeFilter()"> פתוח עכשיו</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-free" onchange="homeFilter()"> איסוף ומשלוח חינם</label>
   </aside>
+  <div>
+  <div class="mut" id="hf-count" style="margin:0 2px 8px"></div>
   <div class="home-grid" id="home-grid">
-  ${laundries.map(l=>`<a class="card lcard" data-rating="${l.rating||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
-    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
+  ${laundries.map((l,i)=>{const dd=distOf(l);return `<a class="card lcard" data-idx="${i}" data-rating="${l.rating||0}" data-rc="${l.rating_count||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" data-fee="${Number(l.delivery_fee||0)}" data-kg="${l.from_kg!=null?Number(l.from_kg):''}" data-price="${l.from_price!=null?Number(l.from_price):''}" data-lat="${l.lat!=null?l.lat:''}" data-lng="${l.lng!=null?l.lng:''}" data-dist="${dd!=null?dd:''}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
+    ${l.has_logo?`<img class="logo" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
-     <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
+     <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}<span class="dist">${dd!=null?' · '+fmtDist(dd):''}</span></div>
      <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
-    </div><span style="color:#8a99a3">‹</span></a>`).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
+    </div><span style="color:#8a99a3">‹</span></a>`}).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
+  </div>
+  ${laundries.length?`<div class="card mut" id="hf-empty" style="display:none">אין מכבסות שמתאימות לסינון — <a href="#/" onclick="homeFilterReset();return false" style="color:#0e7a8a">ניקוי סינון</a></div>`:''}
   </div></div>
   <div class="card" style="cursor:pointer;background:#e6f4f6;text-align:center" onclick="go('#/join')"><b style="color:#0e7a8a">＋ יש לך מכבסה? הצטרפו לפלטפורמה — גם בצילום מחירון בלבד</b></div>
   ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="#/" onclick="logout();return false" style="color:#0e7a8a">התנתקות</a></div>`:''}
  </div>`;
 }
 
-
-/* E8.T1: סינון צד-לקוח ברשת הדסקטופ (שירות/דירוג/זמינות) */
+/* E13: סינון + מיון משולבים (עובד גם בסרגל הדסקטופ וגם בפאנל המובייל) */
 function homeFilter(){
+ const grid=document.getElementById('home-grid');if(!grid)return;
  const svc=[...document.querySelectorAll('.hf-svc:checked')].map(x=>x.value);
  const rates=[...document.querySelectorAll('.hf-rate:checked')].map(x=>Number(x.value));
  const minRate=rates.length?Math.min(...rates):0;
- const openOnly=document.getElementById('hf-open')&&document.getElementById('hf-open').checked;
- document.querySelectorAll('#home-grid .lcard').forEach(c=>{
-  const r=Number(c.dataset.rating||0), o=c.dataset.open==='1', svcs=(c.dataset.services||'').split('|');
+ const openEl=document.getElementById('hf-open'),freeEl=document.getElementById('hf-free');
+ const openOnly=openEl&&openEl.checked,freeDel=freeEl&&freeEl.checked;
+ const kgEl=document.getElementById('hf-kg');
+ const maxKg=kgEl&&kgEl.value?Number(kgEl.value):0;
+ const sortEl=document.getElementById('home-sort');
+ const sort=sortEl?sortEl.value:'rec';
+ const cards=[...grid.querySelectorAll('.lcard')];
+ let shown=0;
+ cards.forEach(c=>{
+  const r=Number(c.dataset.rating||0),o=c.dataset.open==='1',svcs=(c.dataset.services||'').split('|');
+  const fee=Number(c.dataset.fee||0),kg=c.dataset.kg!==''?Number(c.dataset.kg):null;
   let ok=true;
   if(svc.length&&!svc.some(x=>svcs.includes(x)))ok=false;
   if(minRate&&r<minRate)ok=false;
   if(openOnly&&!o)ok=false;
+  if(freeDel&&fee>0)ok=false;
+  if(maxKg&&(kg===null||kg>maxKg))ok=false;
   c.style.display=ok?'':'none';
+  if(ok)shown++;
  });
+ const key={rec:c=>Number(c.dataset.idx),
+  price:c=>c.dataset.price!==''?Number(c.dataset.price):1e9,
+  rating:c=>-(Number(c.dataset.rating||0)*10000+Number(c.dataset.rc||0)),
+  open:c=>c.dataset.open==='1'?0:1,
+  dist:c=>c.dataset.dist!==''?Number(c.dataset.dist):1e9}[sort];
+ if(key)[...cards].sort((a,b)=>key(a)-key(b)).forEach(c=>grid.appendChild(c));
+ const cnt=document.getElementById('hf-count');
+ if(cnt)cnt.textContent=shown?shown+' מכבסות':'';
+ const emp=document.getElementById('hf-empty');
+ if(emp)emp.style.display=shown?'none':'block';
 }
 
 async function vLaundry(slug){
