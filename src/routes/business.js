@@ -96,4 +96,50 @@ r.delete('/:bid/users/:uid', async (req, res) => {
   res.json({ ok: true });
 });
 
+// E4.T2: תבניות הזמנה חוזרת לחשבון עסקי
+r.get('/:bid/recurring', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { rows } = await q(
+    `SELECT rt.*, u.name AS user_name, u.phone AS user_phone FROM recurring_templates rt
+     JOIN users u ON u.id=rt.user_id WHERE rt.account_id=$1 ORDER BY rt.created_at DESC`, [acc.id]);
+  res.json({ templates: rows });
+});
+
+r.post('/:bid/recurring', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { user_id, days, items, pickup_time, address } = req.body || {};
+  if (!user_id || !Array.isArray(days) || !days.length || !Array.isArray(items) || !items.length || !address)
+    return res.status(400).json({ error: 'חסרים פרטי תבנית (משתמש, ימים, פריטים, כתובת)' });
+  const cleanDays = [...new Set(days.map(Number))].filter(d => d >= 0 && d <= 6);
+  if (!cleanDays.length) return res.status(400).json({ error: 'ימים לא תקינים' });
+  const { rows: mem } = await q('SELECT 1 FROM business_account_users WHERE account_id=$1 AND user_id=$2', [acc.id, user_id]);
+  if (!mem[0]) return res.status(400).json({ error: 'המשתמש לא משויך לחשבון העסקי' });
+  if (pickup_time && !/^\d{1,2}:\d{2}$/.test(pickup_time)) return res.status(400).json({ error: 'שעת איסוף לא תקינה' });
+  const { rows } = await q(
+    `INSERT INTO recurring_templates(account_id, user_id, days, items, pickup_time, address)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [acc.id, user_id, JSON.stringify(cleanDays), JSON.stringify(items), pickup_time || null, String(address).trim()]);
+  res.json({ template: rows[0] });
+});
+
+r.patch('/:bid/recurring/:rid', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { days, items, pickup_time, address, active } = req.body || {};
+  const cleanDays = Array.isArray(days) ? [...new Set(days.map(Number))].filter(d => d >= 0 && d <= 6) : null;
+  const { rows } = await q(
+    `UPDATE recurring_templates SET days=COALESCE($3,days), items=COALESCE($4,items),
+       pickup_time=COALESCE($5,pickup_time), address=COALESCE($6,address), active=COALESCE($7,active)
+     WHERE id=$1 AND account_id=$2 RETURNING *`,
+    [req.params.rid, acc.id, cleanDays ? JSON.stringify(cleanDays) : null, items ? JSON.stringify(items) : null,
+     pickup_time ?? null, address ?? null, typeof active === 'boolean' ? active : null]);
+  if (!rows[0]) return res.status(404).json({ error: 'תבנית לא נמצאה' });
+  res.json({ template: rows[0] });
+});
+
+r.delete('/:bid/recurring/:rid', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  await q('DELETE FROM recurring_templates WHERE id=$1 AND account_id=$2', [req.params.rid, acc.id]);
+  res.json({ ok: true });
+});
+
 module.exports = r;

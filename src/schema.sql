@@ -625,3 +625,18 @@ CREATE TABLE IF NOT EXISTS sla_alerts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS sla_alerts_order_kind_idx ON sla_alerts(order_id, kind) WHERE order_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS sla_alerts_status_idx ON sla_alerts(status, created_at DESC);
+-- E4.T2: תבניות הזמנה חוזרת לחשבון עסקי
+CREATE TABLE IF NOT EXISTS recurring_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES business_accounts(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  days jsonb NOT NULL,
+  items jsonb NOT NULL,
+  pickup_time text,
+  address text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  last_run_on date,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_source_check;
+ALTER TABLE orders ADD CONSTRAINT orders_source_check CHECK (source IN ('app','bot','admin','branded','recurring'));

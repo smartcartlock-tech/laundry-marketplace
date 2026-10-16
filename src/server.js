@@ -41,6 +41,12 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 // eslint-disable-next-line no-unused-vars
+// E4.T2: job הזמנות חוזרות — רץ בהפעלה ואחת לשעה (שרת יחיד ב-Render)
+const { generateDueOrders } = require('./recurring');
+const runRecurring = () => generateDueOrders(require('./db').q).catch(e => console.error('[recurring]', e.message));
+setTimeout(runRecurring, 15000);
+setInterval(runRecurring, 60 * 60 * 1000);
+
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'server error' }); });
 
 const PORT = process.env.PORT || 3000;
