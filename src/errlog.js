@@ -1,6 +1,7 @@
 // ניטור תקלות פשוט: טבלת error_log + middleware לכידת שגיאות + endpoint אדמין לצפייה.
 // נרשמות שגיאות 500 בלבד (לא 4xx צפויות). נשמרות עד 500 שורות אחרונות.
 const { q } = require('./db');
+const { maybeAlertAdmin } = require('./error-alerts');
 
 async function migrateErrorLog() {
   await q(`CREATE TABLE IF NOT EXISTS error_log (
@@ -26,6 +27,8 @@ async function logError(err, req) {
     if (++pruneCounter % 100 === 0) {
       await q(`DELETE FROM error_log WHERE id < (SELECT COALESCE(MIN(id),0) FROM (SELECT id FROM error_log ORDER BY id DESC LIMIT 500) t)`);
     }
+    // E3: התראה לאדמין על 500 חדש (מדוכאת ל-1 ל-10 דקות) — fire-and-forget
+    maybeAlertAdmin({ method: req && req.method, path: req && req.originalUrl, message: (err && err.message) || err }).catch(() => {});
   } catch (e) { console.error('[errlog] write failed:', e.message); }
 }
 

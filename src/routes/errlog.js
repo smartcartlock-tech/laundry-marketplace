@@ -13,4 +13,9 @@ r.get('/errors', async (req, res) => {
   res.json({ errors: rows });
 });
 
+// E3: endpoint לבדיקות בלבד (ALLOW_SIMULATE_ERRORS=1 מועבר מ-test) — מייצר 500 אמיתי דרך ה-errorHandler
+if (process.env.ALLOW_SIMULATE_ERRORS === '1') {
+  r.post('/errors/simulate', (req, res, next) => { next(new Error('simulated test failure')); });
+}
+
 module.exports = r;
