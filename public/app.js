@@ -242,13 +242,14 @@ async function vHome(q){
     <option value="">הכל</option><option value="15">עד ₪15</option><option value="20">עד ₪20</option><option value="25">עד ₪25</option><option value="30">עד ₪30</option>
    </select>
    <div class="sec">זמינות ועלויות</div>
+   ${store.get('favs',[]).length?`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-fav" onchange="homeFilter()"> ★ המועדפים שלי</label>`:''}
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" onchange="homeFilter()"> פתוח עכשיו</label>
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-free" onchange="homeFilter()"> איסוף ומשלוח חינם</label>
   </aside>
   <div>
   <div class="mut" id="hf-count" style="margin:0 2px 8px"></div>
   <div class="home-grid" id="home-grid">
-  ${laundries.map((l,i)=>{const dd=distOf(l);return `<a class="card lcard" data-idx="${i}" data-rating="${l.rating||0}" data-rc="${l.rating_count||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" data-fee="${Number(l.delivery_fee||0)}" data-kg="${l.from_kg!=null?Number(l.from_kg):''}" data-price="${l.from_price!=null?Number(l.from_price):''}" data-lat="${l.lat!=null?l.lat:''}" data-lng="${l.lng!=null?l.lng:''}" data-dist="${dd!=null?dd:''}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
+  ${laundries.map((l,i)=>{const dd=distOf(l);return `<a class="card lcard" data-idx="${i}" data-rating="${l.rating||0}" data-rc="${l.rating_count||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" data-fee="${Number(l.delivery_fee||0)}" data-kg="${l.from_kg!=null?Number(l.from_kg):''}" data-price="${l.from_price!=null?Number(l.from_price):''}" data-lat="${l.lat!=null?l.lat:''}" data-lng="${l.lng!=null?l.lng:''}" data-dist="${dd!=null?dd:''}" data-fav="${isFav(l.slug)?1:0}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
     ${l.has_logo?`<img class="logo" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
@@ -286,6 +287,8 @@ function homeFilter(){
   if(openOnly&&!o)ok=false;
   if(freeDel&&fee>0)ok=false;
   if(maxKg&&(kg===null||kg>maxKg))ok=false;
+  const favEl=document.getElementById('hf-fav');
+  if(favEl&&favEl.checked&&c.dataset.fav!=='1')ok=false;
   c.style.display=ok?'':'none';
   if(ok)shown++;
  });
@@ -322,6 +325,7 @@ async function vLaundry(slug){
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
    <div style="flex:1"><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
+   <button id="fav-btn" onclick="toggleFav('${slug}','${esc(l.name)}','${l.color||'#0e7a8a'}','${esc(l.letter||l.name[0])}')" style="background:rgba(255,255,255,.18);border:none;color:#ffd34d;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שמירה למועדפים">${isFav(slug)?'★':'☆'}</button>
    <button onclick="shareLaundry('${esc(l.name)}')" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
   </div>
  </div>
@@ -368,6 +372,15 @@ function plFilter(txt){
  document.querySelectorAll('.pl-row').forEach(r=>{const ok=!t||r.dataset.name.includes(t);r.style.display=ok?'':'none';if(ok)shown++});
  const emp=document.getElementById('pl-empty');
  if(emp)emp.style.display=shown?'none':'block';
+}
+/* E13.T6: מועדפים — שמירה מקומית, סימון בדף מכבסה וסינון בבית */
+function isFav(slug){return store.get('favs',[]).some(f=>f.slug===slug)}
+function toggleFav(slug,name,color,letter){
+ let f=store.get('favs',[]);
+ if(f.some(x=>x.slug===slug)){f=f.filter(x=>x.slug!==slug);toast('הוסר מהמועדפים')}
+ else{f.push({slug:slug,name:name,color:color,letter:letter});toast('נשמר במועדפים ★')}
+ store.set('favs',f);
+ const b=document.getElementById('fav-btn');if(b)b.textContent=isFav(slug)?'★':'☆';
 }
 /* E13.T4: שיתוף דף מכבסה */
 async function shareLaundry(name){
@@ -564,7 +577,8 @@ async function vOrder(id){
     ${FLOW.map((s,i)=>{const ev=evByStatus[s];return `<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${ev?`<div class="mut">${fmtDT(ev.created_at)}</div>`:i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}${i===idx&&ev&&ev.note&&ev.note!=='הזמנה נוצרה'?`<div class="mut">${esc(ev.note)}</div>`:''}</div>`}).join('')}
    </div>
    <div class="mut" style="text-align:center;margin-top:2px">המעקב מתעדכן אוטומטית · <a href="#/orders/${id}" onclick="route();return false" style="color:#0e7a8a">רענון עכשיו</a></div>
-  </div>`}
+  </div>
+  ${isMine?`<div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><b>עדכוני סטטוס בזמן אמת</b><div class="mut">התראה בכל שינוי סטטוס — גם כשהאפליקציה סגורה</div></div><button class="btn2 on" id="push-btn" onclick="pushSubscribe()">🔔 הפעלה</button></div>`:''}`}
   ${isMine&&(o.status==='delivered'||o.status==='cancelled')?`<button class="btn" style="margin-bottom:12px" onclick="reorder('${o.id}','${o.slug}')">↻ הזמנה חוזרת — אותם פריטים שוב</button>`:''}
   <div class="card">
    ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${it.qty} × ₪${it.price}</div></div>`).join('')}
