@@ -30,6 +30,8 @@ app.use('/api/subscriptions', require('./routes/subscriptions'));
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'not found' }));
 
+app.use('/', require('./routes/seo')); // E8.T2: /area/:city, sitemap.xml, robots.txt
+
 // PWA סטטי + נפילה ל-index.html לנתיבי SPA
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   index: 'index.html',

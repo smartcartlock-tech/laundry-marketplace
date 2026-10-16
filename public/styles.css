@@ -96,3 +96,19 @@ table.tbl td{padding:8px;border-bottom:1px solid #eef3f5}
  .docs-actions{display:grid;grid-template-columns:1fr 1fr 1fr}
  .docs-actions .btn2{text-align:center}
 }
+
+/* E8.T1: גרסת דסקטופ רחבה 1280px+ — חיפוש מרכזי, סרגל סינון, רשת כרטיסים */
+.home-side{display:none}
+@media(min-width:1280px){
+ body{max-width:1440px}
+ #app{max-width:1280px}
+ .hdr .big{font-size:34px}
+ .hdr .searchbar{max-width:640px;margin:0 auto}
+ .home-wrap{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:start}
+ .home-side{display:block;position:sticky;top:70px;background:#fff;border:1px solid #e2eaee;border-radius:14px;padding:16px}
+ .home-side h3{margin:0 0 10px;font-size:15px}
+ .home-side .sec{margin-top:14px;font-size:12px;font-weight:700;color:#6b7d88}
+ .home-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+ .home-grid .lcard{margin:0}
+ .home-grid .card{max-width:none}
+}

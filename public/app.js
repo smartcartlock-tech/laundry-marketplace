@@ -164,16 +164,46 @@ async function vHome(q){
   <div style="margin:4px 2px 10px">
    <a class="chip ${!q?'on':''}" href="#/">הכל</a><a class="chip" href="#/?q=${encodeURIComponent('כביסה')}">כביסה</a><a class="chip" href="#/?q=${encodeURIComponent('ניקוי יבש')}">ניקוי יבש</a><a class="chip" href="#/?q=${encodeURIComponent('גיהוץ')}">גיהוץ</a><a class="chip" href="#/?q=${encodeURIComponent('שטיח')}">שטיחים</a>
   </div>
-  ${laundries.map(l=>`<a class="card lcard" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
+  <div class="home-wrap">
+  <aside class="home-side"><h3>סינון</h3>
+   <div class="sec">שירות</div>
+   ${['כביסה','ניקוי יבש','גיהוץ','שטיחים'].map(sv=>`<label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-svc" value="${sv}" onchange="homeFilter()"> ${sv}</label>`).join('')}
+   <div class="sec">דירוג</div>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="3" onchange="homeFilter()"> 3★ ומעלה</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4" onchange="homeFilter()"> 4★ ומעלה</label>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" class="hf-rate" value="4.5" onchange="homeFilter()"> 4.5★ ומעלה</label>
+   <div class="sec">זמינות</div>
+   <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" onchange="homeFilter()"> פתוח עכשיו</label>
+  </aside>
+  <div class="home-grid" id="home-grid">
+  ${laundries.map(l=>`<a class="card lcard" data-rating="${l.rating||0}" data-open="${l.is_open?1:0}" data-services="${esc((l.services||[]).join('|'))}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
     ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${l.is_open?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
      <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
     </div><span style="color:#8a99a3">‹</span></a>`).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
+  </div></div>
   <div class="card" style="cursor:pointer;background:#e6f4f6;text-align:center" onclick="go('#/join')"><b style="color:#0e7a8a">＋ יש לך מכבסה? הצטרפו לפלטפורמה — גם בצילום מחירון בלבד</b></div>
   ${state.me?`<div class="card mut" style="text-align:center">מחובר כ${esc(state.me.name||state.me.phone||state.me.email)} · <a href="#/" onclick="logout();return false" style="color:#0e7a8a">התנתקות</a></div>`:''}
  </div>`;
+}
+
+
+/* E8.T1: סינון צד-לקוח ברשת הדסקטופ (שירות/דירוג/זמינות) */
+function homeFilter(){
+ const svc=[...document.querySelectorAll('.hf-svc:checked')].map(x=>x.value);
+ const rates=[...document.querySelectorAll('.hf-rate:checked')].map(x=>Number(x.value));
+ const minRate=rates.length?Math.min(...rates):0;
+ const openOnly=document.getElementById('hf-open')&&document.getElementById('hf-open').checked;
+ document.querySelectorAll('#home-grid .lcard').forEach(c=>{
+  const r=Number(c.dataset.rating||0), o=c.dataset.open==='1', svcs=(c.dataset.services||'').split('|');
+  let ok=true;
+  if(svc.length&&!svc.some(x=>svcs.includes(x)))ok=false;
+  if(minRate&&r<minRate)ok=false;
+  if(openOnly&&!o)ok=false;
+  c.style.display=ok?'':'none';
+ });
 }
 
 async function vLaundry(slug){
