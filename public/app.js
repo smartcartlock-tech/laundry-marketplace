@@ -192,6 +192,7 @@ async function vCheckout(slug){
 }
 function updTotal(){const t=$('#co-total');if(!t)return;const on=$('#redeem')&&$('#redeem').checked;const disc=on?Number(t.dataset.redeem):0;$('#co-discount').textContent='−₪'+disc;$('#co-discount-row').style.display=disc?'flex':'none';t.textContent='₪'+(Number(t.dataset.base)-disc)}
 async function submitOrder(slug){
+ if(!state.token)return needLogin();
  try{
   const items=state.cart.filter(c=>c.slug===slug).map(c=>({item_id:c.item_id,qty:c.qty}));
   const addrEl=$('#co-address');const address=addrEl.value.trim();
