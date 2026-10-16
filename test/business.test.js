@@ -63,6 +63,15 @@ test('business accounts: CRUD, contractual price override, user linking', async 
     slug: 'achuza', items: [{ item_id: item.id, qty: 1 }], address: 'הרצל 1, תל אביב' } });
   assert.equal(Number(off.json.order.subtotal), regular);
 
+  // E4.T4: הזמנה חדשה מהמחירון ההסכמי ע"י המכבסה (מחיר הסכמי, source=admin)
+  const uid = (await api('/api/auth/me', { token: customer })).json.user.id;
+  const bo = await api(`/api/t/achuza/business-accounts/${acc.id}/orders`, { method: 'POST', token: owner, body: {
+    user_id: uid, items: [{ item_id: item.id, qty: 2 }], address: 'הרצל 1, תל אביב' } });
+  assert.equal(bo.status, 201, JSON.stringify(bo.json));
+  assert.equal(Number(bo.json.order.subtotal), (regular - 5) * 2);
+  assert.equal(bo.json.order.source, 'admin');
+  assert.equal(bo.json.order.business_account_id, acc.id);
+
   // מחיקה
   const del = await api(`/api/t/achuza/business-accounts/${acc.id}`, { method: 'DELETE', token: owner });
   assert.equal(del.json.ok, true);

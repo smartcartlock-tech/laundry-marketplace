@@ -192,4 +192,43 @@ r.get('/:bid/summary', async (req, res) => {
   res.json({ summary: rows[0] });
 });
 
+// E4.T4: הזמנה חדשה מהמחירון ההסכמי — יצירה ע"י המכבסה עבור משתמש החשבון
+r.post('/:bid/orders', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { user_id, items, address, pickup_at } = req.body || {};
+  if (!user_id || !Array.isArray(items) || !items.length || !address)
+    return res.status(400).json({ error: 'חסרים פרטי הזמנה (משתמש, פריטים, כתובת)' });
+  const { rows: mem } = await q('SELECT 1 FROM business_account_users WHERE account_id=$1 AND user_id=$2', [acc.id, user_id]);
+  if (!mem[0]) return res.status(400).json({ error: 'המשתמש לא משויך לחשבון העסקי' });
+  const ids = items.map(i => i.item_id);
+  const { rows: dbItems } = await q('SELECT * FROM price_items WHERE tenant_id=$1 AND active AND id = ANY($2)', [req.tenant.id, ids]);
+  const { rows: bp } = await q('SELECT item_id, price FROM business_prices WHERE account_id=$1', [acc.id]);
+  const omap = new Map(bp.map(x => [x.item_id, Number(x.price)]));
+  let subtotal = 0;
+  const lines = [];
+  for (const it of items) {
+    const db = dbItems.find(d => d.id === it.item_id);
+    if (!db) return res.status(400).json({ error: 'פריט לא קיים במחירון' });
+    const qty = Number(it.qty) || 1;
+    if (qty <= 0 || qty > 100) return res.status(400).json({ error: 'כמות לא תקינה' });
+    const price = omap.has(db.id) ? omap.get(db.id) : Number(db.price);
+    subtotal += price * qty;
+    lines.push({ item_id: db.id, name: db.name, price, qty });
+  }
+  const deliveryFee = Number(req.tenant.delivery_fee) || 0;
+  const total = subtotal + deliveryFee;
+  const { rows: o } = await q(
+    `INSERT INTO orders(tenant_id, customer_id, source, address, pickup_at, subtotal, delivery_fee, discount, total,
+       payment_method, payment_status, notes, business_account_id)
+     VALUES ($1,$2,'admin',$3,$4,$5,$6,0,$7,'cash','pending',$8,$9) RETURNING *`,
+    [req.tenant.id, user_id, String(address).trim(), pickup_at || null, subtotal, deliveryFee, total,
+     `הזמנה עסקית — ${acc.name} (שוטף+30)`, acc.id]);
+  for (const ln of lines) {
+    await q('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
+      [o[0].id, ln.item_id, ln.name, ln.price, ln.qty]);
+  }
+  await q(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'new',$2,'הזמנה עסקית נוצרה ע"י המכבסה')`, [o[0].id, req.user.id]);
+  res.status(201).json({ order: o[0] });
+});
+
 module.exports = r;

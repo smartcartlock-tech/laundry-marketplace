@@ -726,7 +726,7 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['biz','עסקיים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
  if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
@@ -824,6 +824,8 @@ async function vManage(sub){
   <div class="sec">מנויים (${sb.subscriptions.length})</div>
   <div class="card">${sb.subscriptions.map(x=>`<div class="row"><div><b>${esc(x.customer_name||'')}</b> · ${esc(x.plan_name)} ${x.status==='paused'?'<span class="tag tb">מושהה</span>':''}
     <div class="mut">${esc(x.customer_phone||'')} · נוצלו ${fmtQ(x.bags_used)}/${x.bags_per_month} שקים החודש · מתחדש ${fmtDate(x.period_end)}</div></div><div>₪${x.plan_price}</div></div>`).join('')||'<div class="mut">אין מנויים עדיין — שתפו עם הלקוחות את דף המכבסה</div>'}</div>`;
+ } else if(sub==='biz'){
+  body=await vManageBiz(slug);
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
@@ -979,6 +981,94 @@ async function doAssign(slug,oid,btn){
   toast(r.mode==='assigned'?'שובץ שליח מכבסה':'הצעה נשלחה לשליח');route();
  }catch(e){btn.disabled=false;btn.textContent='שליחת הצעה';toast(e.message)}
 }
+/* E4.T4: מסך חשבון עסקי (מוקאפ 7) — מצטבר חודשי, הזמנה חוזרת, מחירון הסכמי, חשבונית מרוכזת, הזמנה חדשה */
+let bizSel=null;
+async function vManageBiz(slug){
+ const d=await api(`/t/${slug}/business-accounts`);
+ const items=(await api(`/t/${slug}/items`)).items.filter(i=>i.active);
+ const acc=d.accounts.find(a=>a.id===bizSel)||d.accounts[0];
+ bizSel=acc?acc.id:null;
+ let html=`<div class="card"><label class="lb">חשבון עסקי חדש</label>
+  <input class="inp" id="bz-name" placeholder="שם החברה">
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <input class="inp" id="bz-comp" placeholder="ח״פ" style="flex:1;min-width:100px">
+   <input class="inp" id="bz-contact" placeholder="איש קשר" style="flex:1;min-width:100px">
+   <input class="inp" id="bz-phone" placeholder="טלפון איש קשר" style="flex:1;min-width:110px">
+  </div>
+  <button class="btn2 on" onclick="bizCreate('${slug}')">יצירת חשבון</button></div>`;
+ html+=`<div class="card">${d.accounts.map(a=>`<div class="row"><div style="${a.active?'':'opacity:.4'}"><b>${esc(a.name)}</b>${a.active?'':' (מושבת)'}
+   <div class="mut">${a.company_id?'ח״פ '+esc(a.company_id)+' · ':''}${a.users_count} משתמשים · ${a.prices_count} מחירים הסכמיים · ${a.payment_terms==='net30'?'שוטף+30':esc(a.payment_terms)}</div></div>
+   <button class="btn2 ${bizSel===a.id?'on':''}" onclick="bizPick('${a.id}')">${bizSel===a.id?'נבחר':'ניהול'}</button></div>`).join('')||'<div class="mut">אין חשבונות עסקיים עדיין</div>'}</div>`;
+ if(!acc)return html;
+ const det=await api(`/t/${slug}/business-accounts/${acc.id}`);
+ const sum=(await api(`/t/${slug}/business-accounts/${acc.id}/summary`)).summary;
+ const rec=(await api(`/t/${slug}/business-accounts/${acc.id}/recurring`)).templates;
+ const inv=(await api(`/t/${slug}/business-accounts/${acc.id}/invoices`)).invoices;
+ html+=`<div class="kpis"><div class="kpi"><b>${sum.orders_count}</b>הזמנות החודש</div><div class="kpi"><b>₪${sum.month_total}</b>מצטבר חודשי</div></div>`;
+ // הזמנה חדשה מהמחירון ההסכמי
+ html+=`<div class="card"><label class="lb">הזמנה חדשה מהמחירון ההסכמי</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <select class="inp" id="bz-ouser" style="flex:1;min-width:130px">${det.users.map(u=>`<option value="${u.id}">${esc(u.name||u.phone)}</option>`).join('')||'<option value="">— שייכו משתמש קודם —</option>'}</select>
+   <select class="inp" id="bz-oitem" style="flex:1;min-width:130px">${items.map(i=>{const o=det.prices.find(p=>p.item_id===i.id);return `<option value="${i.id}">${esc(i.name)} · ₪${o?o.price:i.price}</option>`}).join('')}</select>
+   <input class="inp" id="bz-oqty" type="number" value="1" min="1" style="width:70px">
+  </div>
+  <input class="inp" id="bz-oaddr" placeholder="כתובת איסוף">
+  <button class="btn2 on" onclick="bizOrder('${slug}','${acc.id}')">יצירת הזמנה</button></div>`;
+ // הזמנה חוזרת
+ const DAYS=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+ html+=`<div class="card"><label class="lb">הזמנה חוזרת</label>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${DAYS.map((d,i)=>`<label class="chip" style="cursor:pointer"><input type="checkbox" id="bz-d${i}" style="accent-color:#0e7a8a"> ${d}</label>`).join('')}</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <select class="inp" id="bz-ruser" style="flex:1;min-width:120px">${det.users.map(u=>`<option value="${u.id}">${esc(u.name||u.phone)}</option>`).join('')||'<option value="">— שייכו משתמש קודם —</option>'}</select>
+   <select class="inp" id="bz-ritem" style="flex:1;min-width:120px">${items.map(i=>`<option value="${i.id}">${esc(i.name)}</option>`).join('')}</select>
+   <input class="inp" id="bz-rqty" type="number" value="1" min="1" style="width:60px">
+   <input class="inp" id="bz-rtime" type="time" value="09:00" style="width:100px">
+  </div>
+  <input class="inp" id="bz-raddr" placeholder="כתובת קבועה לאיסוף">
+  <button class="btn2 on" onclick="bizRecCreate('${slug}','${acc.id}')">יצירת תבנית</button>
+  ${rec.map(t=>`<div class="row" style="margin-top:8px"><div style="${t.active?'':'opacity:.4'}"><b>${esc(t.user_name||'')}</b> · ימים ${(t.days||[]).map(d=>DAYS[d]).join(' ')}${t.pickup_time?' · '+t.pickup_time.slice(0,5):''}
+    <div class="mut">${(t.items||[]).map(i=>{const it=items.find(x=>x.id===i.item_id);return (it?esc(it.name):'פריט')+' ×'+fmtQ(i.qty)}).join(', ')} · ${esc(t.address)}${t.last_run_on?' · הופק לאחרונה '+fmtDate(t.last_run_on):''}</div></div>
+    <button class="btn2" onclick="bizRecToggle('${slug}','${acc.id}','${t.id}',${!t.active})">${t.active?'השהיה':'הפעלה'}</button></div>`).join('')}</div>`;
+ // מחירון הסכמי
+ html+=`<div class="card"><label class="lb">מחירון הסכמי</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+   <select class="inp" id="bz-pitem" style="flex:2;min-width:140px">${items.map(i=>`<option value="${i.id}">${esc(i.name)} (רגיל ₪${i.price})</option>`).join('')}</select>
+   <input class="inp" id="bz-pprice" type="number" placeholder="מחיר הסכמי ₪" style="flex:1;min-width:110px">
+   <button class="btn2 on" onclick="bizSetPrice('${slug}','${acc.id}')">קביעה</button>
+  </div>
+  ${det.prices.map(p=>`<div class="row" style="margin-top:6px"><div>${esc(p.name)} <div class="mut">רגיל ₪${p.regular_price}</div></div>
+   <div><b>₪${p.price}</b> <button class="btn2" onclick="bizDelPrice('${slug}','${acc.id}','${p.item_id}')">הסרה</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין דריסות מחיר — ההזמנות במחירון הרגיל</div>'}</div>`;
+ // משתמשים
+ html+=`<div class="card"><label class="lb">משתמשים משויכים</label>
+  <div style="display:flex;gap:8px"><input class="inp" id="bz-uphone" placeholder="טלפון משתמש רשום" style="flex:1"><button class="btn2 on" onclick="bizAddUser('${slug}','${acc.id}')">שיוך</button></div>
+  ${det.users.map(u=>`<div class="row" style="margin-top:6px"><div>${esc(u.name||'')} <span class="mut" dir="ltr">${esc(u.phone)}</span></div><button class="btn2" onclick="bizDelUser('${slug}','${acc.id}','${u.id}')">הסרה</button></div>`).join('')||'<div class="mut" style="margin-top:6px">אין משתמשים משויכים</div>'}</div>`;
+ // חשבונית מרוכזת
+ const now=new Date();
+ html+=`<div class="card"><label class="lb">חשבונית מרוכזת חודשית</label>
+  <div class="mut">הפקה אוטומטית ב-1 לחודש · מסמך דמו — לא חשבונית מס</div>
+  <button class="btn2 on" onclick="bizInvGen('${slug}','${acc.id}')">הפקה לחודש ${now.getMonth()+1}/${now.getFullYear()}</button>
+  ${inv.map(i=>`<div class="row" style="margin-top:6px"><div><b>${i.month}/${i.year}</b> <div class="mut">${i.orders_count} הזמנות · הופק ${fmtDate(i.issued_at)}</div></div>
+   <div><b>₪${i.total}</b> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','pdf')">PDF</button> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','csv')">CSV</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין חשבוניות עדיין</div>'}</div>`;
+ return html;
+}
+function bizPick(id){bizSel=id;route()}
+async function bizCreate(slug){try{await api(`/t/${slug}/business-accounts`,{method:'POST',body:JSON.stringify({name:$('#bz-name').value,company_id:$('#bz-comp').value,contact_name:$('#bz-contact').value,contact_phone:$('#bz-phone').value})});route()}catch(e){toast(e.message)}}
+async function bizAddUser(slug,bid){try{await api(`/t/${slug}/business-accounts/${bid}/users`,{method:'POST',body:JSON.stringify({phone:$('#bz-uphone').value})});route()}catch(e){toast(e.message)}}
+async function bizDelUser(slug,bid,uid){try{await api(`/t/${slug}/business-accounts/${bid}/users/${uid}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
+async function bizSetPrice(slug,bid){try{await api(`/t/${slug}/business-accounts/${bid}/prices`,{method:'PUT',body:JSON.stringify({prices:[{item_id:$('#bz-pitem').value,price:Number($('#bz-pprice').value)}]})});route()}catch(e){toast(e.message)}}
+async function bizDelPrice(slug,bid,itemId){try{await api(`/t/${slug}/business-accounts/${bid}/prices`,{method:'PUT',body:JSON.stringify({prices:[{item_id:itemId,price:null}]})});route()}catch(e){toast(e.message)}}
+async function bizRecCreate(slug,bid){try{
+ const days=[0,1,2,3,4,5,6].filter(i=>$('#bz-d'+i)&&$('#bz-d'+i).checked);
+ await api(`/t/${slug}/business-accounts/${bid}/recurring`,{method:'POST',body:JSON.stringify({user_id:$('#bz-ruser').value,days,items:[{item_id:$('#bz-ritem').value,qty:Number($('#bz-rqty').value)||1}],pickup_time:$('#bz-rtime').value,address:$('#bz-raddr').value})});route()}catch(e){toast(e.message)}}
+async function bizRecToggle(slug,bid,rid,active){try{await api(`/t/${slug}/business-accounts/${bid}/recurring/${rid}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
+async function bizInvGen(slug,bid){try{const now=new Date();await api(`/t/${slug}/business-accounts/${bid}/invoices/generate`,{method:'POST',body:JSON.stringify({year:now.getFullYear(),month:now.getMonth()+1})});toast('החשבונית הופקה');route()}catch(e){toast(e.message)}}
+async function bizOrder(slug,bid){try{
+ const r=await api(`/t/${slug}/business-accounts/${bid}/orders`,{method:'POST',body:JSON.stringify({user_id:$('#bz-ouser').value,items:[{item_id:$('#bz-oitem').value,qty:Number($('#bz-oqty').value)||1}],address:$('#bz-oaddr').value})});
+ toast('הזמנה נוצרה בסך ₪'+r.order.total);route()}catch(e){toast(e.message)}}
+async function bizDoc(slug,bid,iid,kind){try{
+ const r=await fetch(`/api/t/${slug}/business-accounts/${bid}/invoices/${iid}/${kind}`,{headers:{authorization:'Bearer '+state.token}});
+ if(!r.ok)throw new Error('שגיאה בטעינת המסמך');
+ const b=await r.blob();window.open(URL.createObjectURL(b),'_blank')}catch(e){toast(e.message)}}
 async function addItem(slug){try{await api(`/t/${slug}/items`,{method:'POST',body:JSON.stringify({name:$('#it-name').value,price:$('#it-price').value,unit:$('#it-unit').value,category:$('#it-cat').value})});route()}catch(e){toast(e.message)}}
 async function editItem(slug,id,btn){
  const vals=await xmodal({title:'עריכת פריט',okText:'שמירה',fields:[{id:'name',label:'שם הפריט',value:btn.dataset.name},{id:'price',label:'מחיר בש״ח',value:btn.dataset.price,type:'number'}]});
