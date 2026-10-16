@@ -117,6 +117,66 @@ async function waitHealth(base, child) {
   const burst = await Promise.all(Array.from({ length: 30 }, () => api('/api/courier/day-route', { token: burstTok })));
   const burstMs = Number(process.hrtime.bigint() - b0) / 1e6;
   console.log(`\nconcurrent burst: 30 × day-route in ${burstMs.toFixed(0)}ms, statuses: ${burst.map(r => r.status).join(',')}`);
+  // ===== תרחיש קצה 1: שיבוץ אוטומטי מקבילי (8 קריאות auto-build בו-זמנית) =====
+  const adminReq = await api('/api/auth/otp/request', { method: 'POST', body: { target: '+972500000001' } });
+  const adminTok = (await api('/api/auth/otp/verify', { method: 'POST', body: { target: '+972500000001', code: adminReq.json.demoCode } })).json.token;
+  // 200 הזמנות confirmed לא משובצות
+  await pg.query(
+    `INSERT INTO orders(tenant_id, customer_id, status, address, subtotal, total)
+     SELECT $1, $2, 'confirmed', 'רחוב המקביל '||g||', תל אביב', 60, 60 FROM generate_series(1,200) g`,
+    [tenant[0].id, cust[0].id]);
+  const b1 = process.hrtime.bigint();
+  const builds = await Promise.all(Array.from({ length: 8 }, () =>
+    api('/api/admin/routes/auto-build', { method: 'POST', token: adminTok, body: {} })));
+  const buildMs = Number(process.hrtime.bigint() - b1) / 1e6;
+  console.log(`\nparallel auto-build ×8 in ${buildMs.toFixed(0)}ms: statuses ${builds.map(r => r.status).join(',')}`);
+  const { rows: dupCheck } = await pg.query(
+    `SELECT (SELECT count(*) FROM courier_route_stops rs JOIN orders o ON o.id=rs.order_id WHERE o.address LIKE 'רחוב המקביל%') AS stops,
+            (SELECT count(DISTINCT rs.order_id) FROM courier_route_stops rs JOIN orders o ON o.id=rs.order_id WHERE o.address LIKE 'רחוב המקביל%') AS distinct_orders,
+            (SELECT count(*) FROM orders WHERE address LIKE 'רחוב המקביל%' AND courier_id IS NOT NULL) AS assigned`);
+  console.log(`assigned orders: ${dupCheck[0].assigned}, route stops: ${dupCheck[0].stops}, distinct orders in stops: ${dupCheck[0].distinct_orders}`);
+  if (Number(dupCheck[0].stops) !== Number(dupCheck[0].distinct_orders)) console.error('⚠️ RACE: order appears in multiple route stops (double assignment)');
+  else console.log('no double-assignment');
+
+  // ===== תרחיש קצה 2: חריגת חלון איסוף + סימון כפול מקבילי =====
+  // הזרקת חלון איסוף ליום השבוע של היום (seed מכסה רק א'-ה')
+  await pg.query(`INSERT INTO pickup_windows(tenant_id, weekday, start_time, end_time, capacity, kind)
+    VALUES ($1, EXTRACT(ISODOW FROM (now() AT TIME ZONE 'Asia/Jerusalem')::date)::int % 7, '09:00','12:00',10,'pickup')`, [tenant[0].id]);
+  // 30 הזמנות confirmed עם pickup_at היום 09:00 (חלון 09:00-12:00; עכשיו מחוץ לחלון+חסד → חריגה)
+  const c0 = couriers[0];
+  await pg.query(
+    `INSERT INTO orders(tenant_id, customer_id, status, address, subtotal, total, courier_id, pickup_at)
+     SELECT $1, $2, 'confirmed', 'רחוב החלון '||g||', תל אביב', 60, 60, $3,
+            ((now() AT TIME ZONE 'Asia/Jerusalem')::date + interval '9 hours') AT TIME ZONE 'Asia/Jerusalem'
+     FROM generate_series(1,30) g`, [tenant[0].id, cust[0].id, c0.id]);
+  const tok0 = await login(c0.phone);
+  const { rows: winOrders } = await pg.query(
+    `SELECT id FROM orders WHERE address LIKE 'רחוב החלון%' AND courier_id=$1`, [c0.id]);
+  const w0 = process.hrtime.bigint();
+  let violations = 0;
+  for (const o of winOrders) {
+    const r = await api(`/api/courier/orders/${o.id}/mark`, { method: 'POST', token: tok0, body: { action: 'picked_up' } });
+    if (r.json && r.json.window_violation) violations++;
+    else if (r.status !== 200) console.error('mark FAIL', r.status, JSON.stringify(r.json).slice(0, 100));
+  }
+  const wMs = Number(process.hrtime.bigint() - w0) / 1e6;
+  console.log(`\nwindow-violation marks: ${winOrders.length} picked_up in ${wMs.toFixed(0)}ms (avg ${(wMs / winOrders.length).toFixed(1)}ms), flagged violations: ${violations}/${winOrders.length}`);
+  const { rows: ev } = await pg.query(
+    `SELECT count(*) FROM order_events e JOIN orders o ON o.id=e.order_id
+     WHERE o.address LIKE 'רחוב החלון%' AND e.note LIKE '%חריגה%'`);
+  console.log(`order_events with violation note: ${ev[0].count}`);
+  // סימון כפול מקבילי על אותה הזמנה: 5 מקבילים → 1 מצליח
+  const { rows: one } = await pg.query(
+    `SELECT id FROM orders WHERE address LIKE 'רחוב המקביל%' AND courier_id IS NOT NULL AND status='confirmed' LIMIT 1`);
+  if (one[0]) {
+    const { rows: oc } = await pg.query('SELECT courier_id FROM orders WHERE id=$1', [one[0].id]);
+    const { rows: cph } = await pg.query('SELECT u.phone FROM couriers c JOIN users u ON u.id=c.user_id WHERE c.id=$1', [oc[0].courier_id]);
+    const tokC = await login(cph[0].phone);
+    const marks = await Promise.all(Array.from({ length: 5 }, () =>
+      api(`/api/courier/orders/${one[0].id}/mark`, { method: 'POST', token: tokC, body: { action: 'picked_up' } })));
+    console.log(`parallel mark ×5 on one order: statuses ${marks.map(r => r.status).join(',')} (expect one 200, rest 409)`);
+  }
+
   await pg.end();
   child.kill('SIGKILL');
   process.exit(0);
