@@ -554,7 +554,6 @@ CREATE TABLE IF NOT EXISTS content_articles (
   published boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
->>>>>>> 4eb9e4a (E6.T1-T5: B2B community layer — managers forum, tenders with bid comparison & deadline lock, group purchasing, capacity exchange with demo payment, industry content (admin-published, members-only))
 
 
 
