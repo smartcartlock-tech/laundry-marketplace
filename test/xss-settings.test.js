@@ -56,7 +56,7 @@ test('צד לקוח: אין שדות מכבסה בתוך מחרוזות JS של 
   const mk = fs.readFileSync('public/js/marketplace.js', 'utf8');
   assert.ok(!mk.includes("onclick=\"toggleFav('${"), 'toggleFav inline עם שדות');
   assert.ok(!mk.includes("onclick=\"shareLaundry('${"), 'shareLaundry inline');
-  assert.ok(mk.includes('data-fav=') && mk.includes('data-share='), 'data attributes');
+  assert.ok(mk.includes('data-act="toggleFav"') && mk.includes('data-act="shareLaundry"'), 'data-act attributes');
   assert.ok(mk.includes('cssColor(l.color)'), 'צבע דרך cssColor');
   assert.ok(mk.includes('r.map(x=>esc(x))'), 'שעות עוברות esc');
   for (const f of ['public/js/club.js', 'public/js/orders.js', 'public/js/community.js']) {
