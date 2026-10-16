@@ -35,6 +35,7 @@ app.use('/api/courier', require('./routes/courier'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/admin', require('./routes/adminplus')); // E7: dashboard/onboarding/sla
 app.use('/api/admin', require('./routes/errlog')); // ניטור: יומן תקלות לאדמין
+app.use('/api/admin', require('./routes/backup')); // גיבוי: ייצוא נתונים מלא לאדמין
 app.use('/api/onboard', require('./routes/onboard'));
 app.use('/api/bot', require('./routes/bot'));
 app.use('/api/community', require('./routes/community'));
