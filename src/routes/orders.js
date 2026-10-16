@@ -114,6 +114,9 @@ r.post('/', async (req, res) => {
     // מימוש נקודות: 1 נקודה = ₪1, עד תקרת אחוז מהסכום שנותר אחרי קופון
     let discount = couponDiscount, pointsRedeemed = 0;
     if (redeem_points) {
+      // נעילת שורת הלקוח למשך הטרנזקציה: מונעת מירוץ מימוש כפול — שתי הזמנות מקבילות
+      // קוראות אותה יתרה ומממשות שתיהן. השנייה ממתינה לנעילה ורואה את היתרה המעודכנת.
+      await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [req.user.id]);
       const { rows: bal } = await client.query(
         'SELECT COALESCE(sum(delta),0) AS bal FROM points_ledger WHERE tenant_id=$1 AND user_id=$2', [tenant.id, req.user.id]);
       const remaining = Math.max(0, subtotal - couponDiscount);
