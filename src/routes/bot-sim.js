@@ -38,8 +38,9 @@ async function findOrderByCode(code) {
   return rows[0] || null;
 }
 
+// N8: תפריט קצר ופשוט — דוגמאות מוכנות להקלדה במקום רשימה ארוכה
 function menuText() {
-  return 'אני בוט להדגמה (סימולציה בלבד — לא נשלחת שום הודעה אמיתית). אפשר לשאול אותי:\n• "מכבסות" — רשימת מכבסות הדמו\n• "מחירון" — מחירון של מכבסת דמו\n• "שעות" — שעות פעילות\n• "איפה ההזמנה <קוד מעקב>" — בדיקת סטטוס לפי קוד\n• "שעות פתיחה של <שם מכבסה>" — שעות לפי מכבסה\n• "סטטוס" — סטטוס ההזמנה האחרונה שלך (בכניסה מחוברת)\n• "בטל הזמנה <קוד>" / "שנה חלון איסוף <קוד>" — באישור מפורש\n• "סיכום יומי" — לבעלי מכבסה מחוברים';
+  return 'אפשר לכתוב לי למשל:\n• "מחירון"\n• "שעות פתיחה של האחוזה"\n• "איפה ההזמנה A1B2C3D4"\n• "בטל הזמנה A1B2C3D4"\n• "סיכום יומי" (לבעלי מכבסה)';
 }
 
 async function botReply(message, user, req) {
@@ -47,7 +48,7 @@ async function botReply(message, user, req) {
   const low = m.toLowerCase();
   if (!m) return { reply: 'לא קיבלתי הודעה. נסו לכתוב משהו 🙂' };
   if (/^(שלום|היי|הי|אהלן|בוקר טוב|ערב טוב|hello|hi)(?![a-z\u0590-\u05ff])/.test(low)) {
-    return { reply: `שלום${user ? ' ' + user.name : ''}! 👋\n` + menuText() };
+    return { reply: `שלום${user ? ' ' + user.name : ''}! 👋 אני בוט להדגמה (סימולציה בלבד — לא נשלחת שום הודעה אמיתית).\n` + menuText() };
   }
   // N7: ביטול הזמנה / שינוי חלון איסוף — רק לפי קוד מעקב ורק עם אישור מפורש בשני צעדים
   const codeM = (m.match(/[0-9A-Fa-f]{8}/) || [])[0];
@@ -165,7 +166,8 @@ async function botReply(message, user, req) {
     return { reply: `ההזמנה האחרונה שלך אצל ${o.tenant_name} בסטטוס: ${stHe[o.status] || o.status} (נפתחה ב-${new Date(o.created_at).toLocaleDateString('he-IL')}).` };
   }
   if (low.includes('תודה')) return { reply: 'בשמחה! 🙏 זכרו — זו סימולציה להדגמה בלבד.' };
-  return { reply: 'לא הבנתי את הבקשה 🤔\n' + menuText() };
+  if (/^(עזרה|help|מה אפשר|איך)/.test(low)) return { reply: menuText() };
+  return { reply: 'לא הבנתי 🤔\n' + menuText() };
 }
 
 r.post('/chat', limiter('botsim', 30, 10 * 60 * 1000, (req) => req.ip), async (req, res) => {

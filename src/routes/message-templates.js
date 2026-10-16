@@ -85,9 +85,9 @@ r.post('/:id/preview', async (req, res) => {
 r.post('/seed-defaults', async (req, res) => {
   try {
     const defaults = [
-      ['order_status_in_app', 'in_app', 'עדכון סטטוס הזמנה', 'שלום {{name}}, ההזמנה שלך מספר {{order_id}} עברה לסטטוס: {{status}}.', ['name', 'order_id', 'status']],
-      ['welcome_sim', 'whatsapp_sim', 'ברוכים הבאים (סימולציה)', 'שלום {{name}}! ברוכים הבאים למכבסה בקליק. זו הודעת סימולציה בלבד — לא נשלח דבר.', ['name']],
-      ['receipt_email_sim', 'email_sim', 'קבלה במייל (סימולציה)', 'היי {{name}}, מצורפת קבלה על הזמנה {{order_id}} בסך ₪{{total}}. מסמך דמו — לא לצורכי מע"מ.', ['name', 'order_id', 'total']],
+      ['order_status_in_app', 'in_app', 'עדכון על ההזמנה שלך', 'שלום {{name}}, הזמנה {{order_id}} עברה לסטטוס: {{status}}.', ['name', 'order_id', 'status']],
+      ['welcome_sim', 'whatsapp_sim', 'ברוכים הבאים (דמו)', 'שלום {{name}}! שמחים שהצטרפת למכבסה בקליק. זו הודעת דמו — לא נשלח דבר באמת.', ['name']],
+      ['receipt_email_sim', 'email_sim', 'קבלה במייל (דמו)', 'היי {{name}}, מצורפת קבלה על הזמנה {{order_id}} בסך ₪{{total}}. מסמך דמו — לא לצורכי מע"מ.', ['name', 'order_id', 'total']],
     ];
     let inserted = 0;
     for (const [key, channel, title, body, variables] of defaults) {
