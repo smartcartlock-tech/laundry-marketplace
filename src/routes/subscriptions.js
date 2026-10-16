@@ -56,7 +56,7 @@ r.post('/join', async (req, res) => {
 // המנויים שלי (עם יתרת שקים ותוכנית)
 r.get('/mine', async (req, res) => {
   const { rows } = await q(
-    `SELECT s.*, p.name AS plan_name, p.bags_per_month, p.kg_per_bag, p.price AS plan_price, p.perks,
+    `SELECT s.*, p.name AS plan_name, p.bags_per_month, p.kg_per_bag, p.price AS plan_price, p.perks, p.extra_bag_price,
             t.name AS tenant_name, t.slug, t.color, t.letter
      FROM subscriptions s
      JOIN subscription_plans p ON p.id=s.plan_id

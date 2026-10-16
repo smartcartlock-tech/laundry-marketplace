@@ -157,6 +157,8 @@ async function vLaundry(slug){
  let d;
  try{d=await api('/laundries/'+slug)}catch(e){return `<div class="body"><div class="card">${esc(e.message)}</div></div>`}
  const l=d.laundry;
+ let mySub=null;
+ if(state.token){try{const sm=await api('/subscriptions/mine');mySub=sm.subscriptions.find(x=>x.slug===slug&&x.status!=='cancelled')}catch(e){}}
  const cartItems=state.cart.filter(c=>c.slug===slug);
  const cartTotal=cartItems.reduce((s,c)=>s+c.price*c.qty,0);
  const hoursTxt=Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join(' · ')||'—';
@@ -177,6 +179,11 @@ async function vLaundry(slug){
     </div>`}).join('')||'<div class="mut">המחירון טרם הוזן</div>'}
   </div>
   ${cartItems.length?(cartTotal>=Number(l.min_order||0)?`<button class="btn" onclick="go('#/checkout/${slug}')">להזמנה · סל ₪${cartTotal}</button>`:`<button class="btn" disabled style="opacity:.6;cursor:not-allowed">חסרים ₪${Number(l.min_order)-cartTotal} למינימום הזמנה (₪${l.min_order}) · סל ₪${cartTotal}</button>`):''}
+  ${(d.plans&&d.plans.length)||mySub?`<div class="sec">מנוי כביסה חודשי</div>
+  <div class="card">
+   ${mySub?`<div class="row"><div><b>יש לך ${esc(mySub.plan_name)}</b> ${mySub.status==='paused'?'(מושהה)':''}<div class="mut">נותרו ${fmtQ(mySub.bags_remaining)} שקים החודש · מתחדש ${fmtDate(mySub.period_end)}</div></div><a class="btn2" href="#/club" style="text-decoration:none">ניהול המנוי</a></div>`
+    :(d.plans||[]).map(p=>`<div class="row"><div><b>${esc(p.name)}</b><div class="mut">${p.bags_per_month} שקים בחודש (עד ${fmtQ(p.kg_per_bag)} ק״ג לשק) · איסוף והחזרה חינם${p.extra_bag_price?' · שק חורג ₪'+p.extra_bag_price:''}${p.perks?' · '+esc(p.perks):''}</div></div><div style="text-align:center"><b>₪${p.price}</b><div class="mut">לחודש</div></div><button class="btn2 on" onclick="joinPlan('${slug}','${p.id}')">הצטרפות</button></div>`).join('')}
+  </div>`:''}
   <div class="sec" id="info">מידע</div>
   <div class="card mut" style="line-height:1.8">
    שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
@@ -207,6 +214,9 @@ async function vCheckout(slug){
  const items=state.cart.filter(c=>c.slug===slug);
  if(!items.length){go('#/laundry/'+slug);return ''}
  const subtotal=items.reduce((s,c)=>s+c.price*c.qty,0);
+ let mySub=null;
+ try{const sm=await api('/subscriptions/mine');mySub=sm.subscriptions.find(x=>x.slug===slug&&x.status==='active'&&Number(x.bags_remaining)>0)}catch(e){}
+ const eligQty=items.filter(c=>{const it=d.items.find(i=>i.id===c.item_id);return it&&it.subscription_eligible}).reduce((s2,c)=>s2+c.qty,0);
  let points=0;
  try{const cl=await api('/orders/club/summary');const b=cl.balances.find(x=>x.slug===slug);points=b?b.balance:0}catch(e){}
  const maxRedeem=Math.min(points,Math.floor(subtotal*(l.points_redeem_max_pct??0.2)));
@@ -219,9 +229,10 @@ async function vCheckout(slug){
    <div class="row"><div class="mut">שליחות</div><div>₪${l.delivery_fee||0}</div></div>
    <div class="row" id="co-coupon-row" style="display:none"><div class="mut">הנחת קופון <b id="co-coupon-code"></b></div><div id="co-coupon-disc" style="color:#0a7">−₪0</div></div>
    <div class="row" id="co-discount-row" style="display:none"><div class="mut">הנחת נקודות</div><div id="co-discount">−₪0</div></div>
-   <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-subtotal="${subtotal}" data-fee="${Number(l.delivery_fee||0)}" data-points="${points}" data-pct="${l.points_redeem_max_pct??0.2}" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
+   <div class="row" style="border-top:2px solid #d3e8ec"><b>סה״כ לתשלום</b><b id="co-total" style="font-size:17px" data-subtotal="${subtotal}" data-fee="${Number(l.delivery_fee||0)}" data-points="${points}" data-pct="${l.points_redeem_max_pct??0.2}" data-base="${subtotal+Number(l.delivery_fee||0)}" data-redeem="${maxRedeem}" data-noneligible="${items.filter(c=>{const it=d.items.find(i=>i.id===c.item_id);return !it||!it.subscription_eligible}).reduce((s2,c)=>s2+c.price*c.qty,0)}" data-subremaining="${mySub?mySub.bags_remaining:0}" data-extrabag="${mySub&&mySub.extra_bag_price!==null&&mySub.extra_bag_price!==undefined?mySub.extra_bag_price:''}">₪${subtotal+Number(l.delivery_fee||0)}</b></div>
    <div class="row"><div class="mut">יש קופון?</div><div style="display:flex;gap:6px"><input class="inp" id="co-coupon" placeholder="קוד קופון" style="margin:0;flex:1"><button class="btn2 on" onclick="applyCoupon('${slug}')">החלה</button></div></div>
    <div id="co-coupon-msg" class="mut" style="display:none;margin-top:4px"></div>
+   ${mySub&&eligQty>0?`<div class="row" id="co-sub-row"><div class="mut">מנוי: ${esc(mySub.plan_name)} · נותרו ${fmtQ(mySub.bags_remaining)} שקים</div><label style="font-size:13px"><input type="checkbox" id="co-sub" onchange="updTotal()"> שלם עם המנוי — פריטים מכוסים ב־₪0, איסוף חינם</label></div>`:''}
    <div class="row"><div class="mut">נקודות במכבסה זו: ${points}</div><div>${maxRedeem>0?`<label style="font-size:12px"><input type="checkbox" id="redeem" onchange="updTotal()"><span id="co-redeem-lbl"> מימוש ${maxRedeem} נקודות (−₪${maxRedeem})</span></label>`:'<span class="mut">אין נקודות למימוש כאן</span>'}</div></div>
   </div>
   <div class="card">
@@ -247,10 +258,15 @@ function updTotal(){
  const maxRedeem=Math.min(points,Math.floor(remaining*pct));
  const lbl=$('#co-redeem-lbl');if(lbl)lbl.textContent=' מימוש '+maxRedeem+' נקודות (−₪'+maxRedeem+')';
  const on=$('#redeem')&&$('#redeem').checked;
- const pdisc=on?maxRedeem:0;
+ const subOn=$('#co-sub')&&$('#co-sub').checked;
+ const pdisc=on&&!subOn?maxRedeem:0;
  $('#co-discount').textContent='−₪'+pdisc;$('#co-discount-row').style.display=pdisc?'flex':'none';
  $('#co-coupon-disc').textContent='−₪'+coupon;$('#co-coupon-row').style.display=coupon?'flex':'none';
- t.textContent='₪'+Math.max(0,subtotal+fee-coupon-pdisc);
+ if(subOn){
+  const nonElig=Number(t.dataset.noneligible),rem=Number(t.dataset.subremaining);
+  const elig=Math.max(0,subtotal-Number(t.dataset.noneligible)); // הערכה בלבד — החישוב המחייב בשרת
+  t.textContent='~₪'+Math.max(0,nonElig-coupon)+' (במנוי)';
+ }else t.textContent='₪'+Math.max(0,subtotal+fee-coupon-pdisc);
 }
 async function applyCoupon(slug){
  const inp=$('#co-coupon'),msg=$('#co-coupon-msg');const code=inp.value.trim();if(!code)return;
@@ -278,7 +294,7 @@ async function submitOrder(slug){
   const pickup_at=w.length===2?nextWindowDate(Number(w[0]),w[1]):null;
   const w2=($('#co-delivery')&&$('#co-delivery').value||'').split('|');
   const delivery_at=w2.length===2?nextWindowDate(Number(w2[0]),w2[1]):null;
-  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim()};
+  const body={slug,items,address,pickup_at,delivery_at,payment_method:$('#co-pay').value,redeem_points:!!($('#redeem')&&$('#redeem').checked),coupon_code:window.__coCoupon?window.__coCoupon.code:undefined,notes:$('#co-notes').value.trim(),use_subscription:!!($('#co-sub')&&$('#co-sub').checked)};
   const r=await api('/orders',{method:'POST',body:JSON.stringify(body)});
   state.cart=state.cart.filter(c=>c.slug!==slug);save();
   toast('ההזמנה נקלטה!');go('#/orders/'+r.order.id);
@@ -344,8 +360,28 @@ async function sendReview(id){try{await api('/orders/'+id+'/review',{method:'POS
 async function vClub(){
  if(!state.token)return needLogin();
  const d=await api('/orders/club/summary');
+ let subs={subscriptions:[]};try{subs=await api('/subscriptions/mine')}catch(e){}
  return `<div class="hdr"><h2>מועדון לקוחות</h2> <p>הנקודות נצברות וניתנות למימוש בכל מכבסה בנפרד — ושוות כסף בהזמנה הבאה</p></div>
  <div class="body">
+  ${subs.subscriptions.length?`<div class="sec">המנויים שלי</div>`+subs.subscriptions.map(sb=>`
+  <div class="card">
+   <div style="display:flex;gap:10px;align-items:center">
+    <span class="logo sm" style="background:${sb.color||'#0e7a8a'}">${esc(sb.letter||'מ')}</span>
+    <div style="flex:1"><b>${esc(sb.tenant_name)}</b> · ${esc(sb.plan_name)} ${sb.status==='paused'?'<span class="tag tb">מושהה</span>':''}
+     <div class="mut">₪${sb.plan_price}/חודש · מתחדש ${fmtDate(sb.period_end)}</div>
+     ${sb.perks?`<div class="mut">${esc(sb.perks)}</div>`:''}
+    </div>
+    <div style="text-align:center;min-width:64px"><b style="font-size:22px;color:#0e7a8a">${fmtQ(sb.bags_remaining)}</b><div class="mut">שקים נותרו</div></div>
+   </div>
+   <div class="mut" style="margin:8px 0 2px">נוצלו ${fmtQ(sb.bags_used)} מתוך ${sb.bags_per_month} שקים החודש</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+    <button class="btn2" onclick="subUsage('${sb.id}')">היסטוריית ניצול</button>
+    ${sb.status==='active'?`<button class="btn2" onclick="subUpgrade('${sb.id}','${sb.slug}')">שינוי תוכנית</button><button class="btn2" onclick="subAct('${sb.id}','pause')">השהיה</button>`:''}
+    ${sb.status==='paused'?`<button class="btn2 on" onclick="subAct('${sb.id}','resume')">חידוש מנוי</button>`:''}
+    <button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="subCancel('${sb.id}')">ביטול מנוי</button>
+   </div>
+  </div>`).join(''):''}
+  <div class="sec">נקודות</div>
   ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${b.color||'#0e7a8a'}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
   <div class="sec">תנועות אחרונות</div>
@@ -480,7 +516,7 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['documents','מסמכים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['documents','מסמכים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
  if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
@@ -509,7 +545,7 @@ async function vManage(sub){
     <select class="inp" id="it-cat" style="flex:1"><option>כביסה</option><option>ניקוי יבש</option><option>גיהוץ</option><option>שטיחים</option><option>אחר</option></select></div>
     <button class="btn2 on" onclick="addItem('${slug}')">הוספה</button></div>
    <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='item'?'ליחידה':'ל'+unitLbl(i.unit)}</div></div>
-    <div>₪${i.price} <button class="btn2" onclick="editItem('${slug}','${i.id}',this)" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
+    <div>₪${i.price} <button class="btn2" ${i.subscription_eligible?'style="border-color:#0e7a8a;color:#0e7a8a"':''} title="פריט מכוסה במנוי" onclick="toggleItemSub('${slug}','${i.id}',${!i.subscription_eligible})">${i.subscription_eligible?'✓ במנוי':'למנוי'}</button> <button class="btn2" onclick="editItem('${slug}','${i.id}',this)" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
  } else if(sub==='windows'){
   const d=await api(`/t/${slug}/windows`);
   body=`<div class="card">
@@ -538,6 +574,29 @@ async function vManage(sub){
    <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
     <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
     <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
+ } else if(sub==='subs'){
+  const d=await api(`/t/${slug}/plans`);
+  const sb=await api(`/t/${slug}/subscriptions`);
+  const act=sb.subscriptions.filter(x=>x.status==='active');
+  const mrr=act.reduce((sm,x)=>sm+Number(x.plan_price),0);
+  body=`<div class="kpis"><div class="kpi"><b>${act.length}</b>מנויים פעילים</div><div class="kpi"><b>₪${mrr}</b>הכנסה חוזרת חודשית</div></div>
+  <div class="card"><label class="lb">תוכנית מנוי חדשה</label>
+   <input class="inp" id="pl-name" placeholder="שם התוכנית (למשל מנוי משפחתי)">
+   <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <input class="inp" id="pl-bags" type="number" placeholder="שקים בחודש" style="flex:1" min="1">
+    <input class="inp" id="pl-kg" type="number" placeholder="ק״ג לשק" style="flex:1" min="1">
+    <input class="inp" id="pl-price" type="number" placeholder="מחיר ₪/חודש" style="flex:1" min="0">
+    <input class="inp" id="pl-extra" type="number" placeholder="שק חורג ₪ (רשות)" style="flex:1" min="0">
+   </div>
+   <input class="inp" id="pl-perks" placeholder="הטבות (טקסט חופשי, רשות)">
+   <button class="btn2 on" onclick="addPlan('${slug}')">יצירת תוכנית</button></div>
+  <div class="sec">תוכניות (${d.plans.length})</div>
+  <div class="card">${d.plans.map(p=>`<div class="row"><div style="${p.active?'':'opacity:.4'}"><b>${esc(p.name)}</b> — ₪${p.price}/חודש
+    <div class="mut">${p.bags_per_month} שקים · ${fmtQ(p.kg_per_bag)} ק״ג לשק${p.extra_bag_price?' · שק חורג ₪'+p.extra_bag_price:''}${p.perks?' · '+esc(p.perks):''} · ${p.active_subs} מנויים פעילים</div></div>
+    <button class="btn2" onclick="togglePlan('${slug}','${p.id}',${!p.active})">${p.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין תוכניות מנוי עדיין</div>'}</div>
+  <div class="sec">מנויים (${sb.subscriptions.length})</div>
+  <div class="card">${sb.subscriptions.map(x=>`<div class="row"><div><b>${esc(x.customer_name||'')}</b> · ${esc(x.plan_name)} ${x.status==='paused'?'<span class="tag tb">מושהה</span>':''}
+    <div class="mut">${esc(x.customer_phone||'')} · נוצלו ${fmtQ(x.bags_used)}/${x.bags_per_month} שקים החודש · מתחדש ${fmtDate(x.period_end)}</div></div><div>₪${x.plan_price}</div></div>`).join('')||'<div class="mut">אין מנויים עדיין — שתפו עם הלקוחות את דף המכבסה</div>'}</div>`;
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
@@ -573,7 +632,9 @@ async function vManage(sub){
     <div class="kpi"><b>₪${d.revenue.total}</b>מחזור</div>
     <div class="kpi"><b>${d.revenue.orders}</b>הזמנות</div>
     <div class="kpi"><b>${d.customers.customers}</b>לקוחות</div>
-    <div class="kpi"><b>${d.customers.returning}</b>חוזרים</div></div>
+    <div class="kpi"><b>${d.customers.returning}</b>חוזרים</div>
+    ${d.subscriptions?`<div class="kpi"><b>${d.subscriptions.active}</b>מנויים פעילים</div>
+    <div class="kpi"><b>₪${d.subscriptions.mrr}</b>הכנסה חוזרת</div>`:''}</div>
    <div class="card"><b>הזמנות לפי סטטוס</b>${d.byStatus.map(s=>`<div class="row"><div>${HE[s.status]}</div><div>${s.n}</div></div>`).join('')}</div>
    <div class="card"><b>פריטים מובילים</b>${d.topItems.map(t=>`<div class="row"><div>${esc(t.name)}</div><div>${t.qty} · ₪${t.revenue}</div></div>`).join('')||'<div class="mut">אין נתונים</div>'}</div>`;
  } else if(sub==='settings'){
@@ -602,6 +663,33 @@ async function vManage(sub){
  return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="javascript:logout()" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
  <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
+async function joinPlan(slug,planId){
+ if(!state.token)return go('#/login');
+ if(!await xconfirm('ההצטרפות כוללת תשלום דמו (ללא סליקה אמיתית). המנוי מתחדש אוטומטית כל חודש עד לביטול.',{title:'הצטרפות למנוי חודשי',okText:'מאשר, הצטרפו'}))return;
+ try{await api('/subscriptions/join',{method:'POST',body:JSON.stringify({slug,plan_id:planId})});toast('ברוך הבא! המנוי פעיל');route()}catch(e){toast(e.message)}
+}
+async function subAct(id,a){try{await api('/subscriptions/'+id+'/'+a,{method:'POST',body:'{}'});toast(a==='pause'?'המנוי הושהה':'המנוי חודש');route()}catch(e){toast(e.message)}}
+async function subCancel(id){if(!await xconfirm('המנוי יבוטל והחידוש האוטומטי יופסק. שקים שלא נוצלו לא יועברו.',{title:'ביטול מנוי',okText:'כן, לבטל את המנוי'}))return;try{await api('/subscriptions/'+id+'/cancel',{method:'POST',body:'{}'});toast('המנוי בוטל');route()}catch(e){toast(e.message)}}
+async function subUpgrade(id,slug){
+ try{
+  const d=await api('/subscriptions/plans/'+slug);
+  if(!d.plans.length)return toast('אין תוכניות זמינות');
+  const v=await xmodal({title:'שינוי תוכנית',body:d.plans.map((p,i)=>`${i+1}. ${esc(p.name)} — ${p.bags_per_month} שקים, ₪${p.price}/חודש`).join('<br>'),okText:'שינוי',fields:[{id:'idx',label:'מספר תוכנית (1-'+d.plans.length+')'}]});
+  if(!v)return;
+  const p=d.plans[Number(v.idx)-1];if(!p)return toast('בחירה לא תקינה');
+  await api('/subscriptions/'+id+'/upgrade',{method:'POST',body:JSON.stringify({plan_id:p.id})});
+  toast('התוכנית עודכנה');route();
+ }catch(e){toast(e.message)}
+}
+async function subUsage(id){
+ try{
+  const d=await api('/subscriptions/'+id+'/usage');
+  await xmodal({title:'היסטוריית ניצול',okText:'סגור',cancelText:'סגור',body:d.usage.map(u=>`${fmtDT(u.created_at)} — ${Number(u.bags)>0?'ניצול '+fmtQ(u.bags)+' שקים':Number(u.bags)<0?'החזר '+fmtQ(-Number(u.bags))+' שקים':esc(u.note||'')}`).join('<br>')||'אין תנועות'});
+ }catch(e){toast(e.message)}
+}
+async function addPlan(slug){try{await api(`/t/${slug}/plans`,{method:'POST',body:JSON.stringify({name:$('#pl-name').value,bags_per_month:$('#pl-bags').value,kg_per_bag:$('#pl-kg').value||8,price:$('#pl-price').value,extra_bag_price:$('#pl-extra').value,perks:$('#pl-perks').value})});toast('התוכנית נוצרה');route()}catch(e){toast(e.message)}}
+async function togglePlan(slug,id,active){try{await api(`/t/${slug}/plans/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
+async function toggleItemSub(slug,id,on){try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({subscription_eligible:on})});route()}catch(e){toast(e.message)}}
 async function setStatus(slug,id,st){if(st==='cancelled'&&!await xconfirm('הלקוח יקבל עדכון על הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל'}))return;try{await api(`/t/${slug}/orders/${id}/status`,{method:'POST',body:JSON.stringify({status:st})});route()}catch(e){toast(e.message)}}
 async function assignCourier(slug,oid,el){
  try{

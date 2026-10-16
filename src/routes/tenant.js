@@ -157,6 +157,53 @@ r.patch('/settings', async (req, res) => {
   res.json({ tenant: rows[0] });
 });
 
+// E2.T4: ניהול תוכניות מנוי
+r.get('/plans', async (req, res) => {
+  const { rows } = await q(
+    `SELECT p.*, (SELECT count(*)::int FROM subscriptions s WHERE s.plan_id=p.id AND s.status='active') AS active_subs
+     FROM subscription_plans p WHERE p.tenant_id=$1 ORDER BY p.sort, p.price`, [req.tenant.id]);
+  res.json({ plans: rows });
+});
+r.post('/plans', async (req, res) => {
+  const { name, bags_per_month, kg_per_bag, price, extra_bag_price, perks } = req.body || {};
+  if (!name || !(Number(bags_per_month) > 0) || !(Number(price) >= 0)) {
+    return res.status(400).json({ error: 'שם, מספר שקים ומחיר חובה' });
+  }
+  const { rows } = await q(
+    `INSERT INTO subscription_plans(tenant_id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [req.tenant.id, name, Number(bags_per_month), Number(kg_per_bag) || 8, Number(price),
+     extra_bag_price === undefined || extra_bag_price === '' ? null : Number(extra_bag_price), perks || null]);
+  res.status(201).json({ plan: rows[0] });
+});
+r.patch('/plans/:id', async (req, res) => {
+  const { name, bags_per_month, kg_per_bag, price, extra_bag_price, perks, active } = req.body || {};
+  const { rows } = await q(
+    `UPDATE subscription_plans SET name=COALESCE($1,name), bags_per_month=COALESCE($2,bags_per_month),
+       kg_per_bag=COALESCE($3,kg_per_bag), price=COALESCE($4,price), perks=COALESCE($5,perks),
+       active=COALESCE($6,active),
+       extra_bag_price=CASE WHEN $7 THEN $8 ELSE extra_bag_price END
+     WHERE id=$9 AND tenant_id=$10 RETURNING *`,
+    [name ?? null, bags_per_month ?? null, kg_per_bag ?? null, price ?? null, perks ?? null,
+     active === undefined ? null : !!active,
+     extra_bag_price !== undefined,
+     extra_bag_price === undefined || extra_bag_price === '' || extra_bag_price === null ? null : Number(extra_bag_price),
+     req.params.id, req.tenant.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'תוכנית לא נמצאה' });
+  res.json({ plan: rows[0] });
+});
+
+// E2.T4: מנויים פעילים/מושהים + ניצול חודשי
+r.get('/subscriptions', async (req, res) => {
+  const { rows } = await q(
+    `SELECT s.id, s.status, s.period_start, s.period_end, s.bags_used, s.created_at,
+            p.name AS plan_name, p.bags_per_month, p.price AS plan_price,
+            u.name AS customer_name, u.phone AS customer_phone
+     FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id JOIN users u ON u.id=s.user_id
+     WHERE s.tenant_id=$1 AND s.status <> 'cancelled' ORDER BY s.created_at DESC LIMIT 200`, [req.tenant.id]);
+  res.json({ subscriptions: rows });
+});
+
 // דוחות בסיסיים
 r.get('/stats', async (req, res) => {
   const tid = req.tenant.id;
@@ -172,7 +219,12 @@ r.get('/stats', async (req, res) => {
        FROM order_items oi JOIN orders o ON o.id=oi.order_id
        WHERE o.tenant_id=$1 AND o.status <> 'cancelled' GROUP BY 1 ORDER BY revenue DESC LIMIT 5`, [tid]),
   ]);
-  res.json({ byStatus: byStatus.rows, revenue: revenue.rows[0], customers: customers.rows[0], topItems: top.rows });
+  const { rows: subs } = await q(
+    `SELECT count(*) FILTER (WHERE s.status='active')::int AS active,
+            COALESCE(sum(p.price) FILTER (WHERE s.status='active'),0)::numeric(10,2) AS mrr,
+            COALESCE(sum(s.bags_used) FILTER (WHERE s.status='active'),0)::numeric(8,1) AS bags_used
+     FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1`, [tid]);
+  res.json({ byStatus: byStatus.rows, revenue: revenue.rows[0], customers: customers.rows[0], topItems: top.rows, subscriptions: subs[0] });
 });
 
 // לקוחות המכבסה

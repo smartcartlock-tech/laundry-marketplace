@@ -27,11 +27,12 @@ r.get('/laundries', async (req, res) => {
 r.get('/laundries/:slug', async (req, res) => {
   const { rows: t } = await q('SELECT * FROM tenants WHERE slug=$1 AND approved', [req.params.slug]);
   if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
-  const [items, windows, reviews] = await Promise.all([
-    q('SELECT id, name, category, price, unit FROM price_items WHERE tenant_id=$1 AND active ORDER BY sort, category, name', [t[0].id]),
+  const [items, windows, reviews, plans] = await Promise.all([
+    q('SELECT id, name, category, price, unit, subscription_eligible FROM price_items WHERE tenant_id=$1 AND active ORDER BY sort, category, name', [t[0].id]),
     q('SELECT weekday, start_time, end_time, capacity, kind FROM pickup_windows WHERE tenant_id=$1 ORDER BY weekday, start_time', [t[0].id]),
     q(`SELECT r.rating, r.text, r.created_at, u.name AS author FROM reviews r LEFT JOIN users u ON u.id=r.user_id
        WHERE r.tenant_id=$1 AND r.target_courier_id IS NULL ORDER BY r.created_at DESC LIMIT 20`, [t[0].id]),
+    q('SELECT id, name, bags_per_month, kg_per_bag, price, extra_bag_price, perks FROM subscription_plans WHERE tenant_id=$1 AND active ORDER BY sort, price', [t[0].id]),
   ]);
   const ten = t[0]; delete ten.api_key;
   // דירוג אמיתי מהמערכת בלבד
@@ -39,7 +40,7 @@ r.get('/laundries/:slug', async (req, res) => {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
     ten.rating_count = reviews.rows.length;
   } else { ten.rating = null; ten.rating_count = 0; }
-  res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows });
+  res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows });
 });
 
 // קונפיגורציה ציבורית ל-PWA
