@@ -480,7 +480,7 @@ async function vCheckout(slug){
    <label class="lb">כתובת לאיסוף והחזרה</label>
    <input class="inp" id="co-address" placeholder="רחוב, מספר, עיר" oninput="this.style.borderColor='';const e=document.getElementById('co-address-err');if(e)e.remove()">
    <div id="co-save-wrap">
-    <label style="font-size:12.5px"><input type="checkbox" id="co-save-addr"> שמירת הכתובת לפעם הבאה</label>
+    <label style="font-size:12.5px"><input type="checkbox" id="co-save-addr" checked> שמירת הכתובת לפעם הבאה</label>
     <input class="inp" id="co-addr-label" placeholder="תווית לכתובת (בית, עבודה…)" style="margin-top:6px">
    </div>
    <label class="lb">חלון איסוף</label>
