@@ -250,7 +250,7 @@ async function vHome(q){
   <div class="mut" id="hf-count" style="margin:0 2px 8px"></div>
   <div class="home-grid" id="home-grid">
   ${laundries.map((l,i)=>{const dd=distOf(l);return `<a class="card lcard" data-idx="${i}" data-rating="${l.rating||0}" data-rc="${l.rating_count||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" data-fee="${Number(l.delivery_fee||0)}" data-kg="${l.from_kg!=null?Number(l.from_kg):''}" data-price="${l.from_price!=null?Number(l.from_price):''}" data-lat="${l.lat!=null?l.lat:''}" data-lng="${l.lng!=null?l.lng:''}" data-dist="${dd!=null?dd:''}" data-fav="${isFav(l.slug)?1:0}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
-    ${l.has_logo?`<img class="logo" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
+    ${l.has_logo?`<img class="logo" loading="lazy" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}<span class="dist">${dd!=null?' · '+fmtDist(dd):''}</span></div>

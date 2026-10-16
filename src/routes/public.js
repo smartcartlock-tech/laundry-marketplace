@@ -2,6 +2,8 @@ const express = require('express');
 const bwip = require('bwip-js');
 const { q } = require('../db');
 const r = express.Router();
+// ביצועים: מטמון קצר לנתונים ציבוריים (רשימת מכבסות/דף מכבסה) — חוסך חסימות בשרת החינמי
+const pubCache = (res, sec=30) => res.set('Cache-Control', `public, max-age=${sec}`);
 
 // רשימת מכבסות פתוחות ומאושרות למרקטפלייס
 r.get('/laundries', async (req, res) => {
@@ -22,6 +24,7 @@ r.get('/laundries', async (req, res) => {
   const byT = Object.fromEntries(agg.map(a => [a.tenant_id, a]));
   for (const l of rows) { const a = byT[l.id]; l.rating = a ? Number(a.r) : null; l.rating_count = a ? a.n : 0; }
   rows.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  pubCache(res, 30);
   res.json({ laundries: rows });
 });
 
@@ -42,6 +45,7 @@ r.get('/laundries/:slug', async (req, res) => {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
     ten.rating_count = reviews.rows.length;
   } else { ten.rating = null; ten.rating_count = 0; }
+  pubCache(res, 30);
   res.json({ laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows });
 });
 

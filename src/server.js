@@ -12,6 +12,8 @@ app.use((req, res, next) => {
   res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'");
   next();
 });
+// ביצועים: דחיסת gzip/deflate לכל התגובות (app.js לבדו ~165KB → ~35KB)
+app.use(require('compression')());
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/health', async (req, res) => {
