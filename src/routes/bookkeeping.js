@@ -7,6 +7,8 @@ const { requireAuth } = require('../auth');
 const { requireTenantOwner } = require('../authz'); // תשתית משותפת (מפתח C): בעלים/אדמין בלבד
 const { audit } = require('../audit');
 const { encryptField, maskField } = require('../fieldcrypto'); // הצפנת שדות רגישים (מספרי עוסק)
+const multer = require('multer');
+const { fileFilter, verifyFile, IMAGES } = require('../uploads');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantOwner, loadTenant);
@@ -271,5 +273,173 @@ r.get('/bookkeeping/periods', async (req, res) => {
     [req.tenant.id]);
   res.json({ closed_periods: rows });
 });
+
+// --- 091: הוצאות וספקים עם צירוף קובץ חשבונית ספק (PDF/תמונה, אימות magic bytes) ---
+const EXPENSE_FILES = ['application/pdf', ...IMAGES];
+const expenseUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  fileFilter: fileFilter(EXPENSE_FILES),
+});
+
+async function getSupplier(tid, partyId) {
+  const { rows } = await q(
+    `SELECT id, name FROM bk_parties WHERE id=$1 AND tenant_id=$2 AND kind='supplier' AND active`,
+    [partyId, tid]);
+  return rows[0] || null;
+}
+
+async function getExpenseAccount(tid, code) {
+  const { rows } = await q(
+    `SELECT id, code, name_he FROM bk_accounts WHERE tenant_id=$1 AND code=$2 AND type='expense' AND active`,
+    [tid, code]);
+  return rows[0] || null;
+}
+
+// יצירת פקודה בתוך טרנזקציה פתוחה (client) — משמש גם רישום הוצאה וגם סטורנו שלה
+async function insertEntryTx(client, tid, { date, description, source, lines, createdBy }) {
+  const { rows: n } = await client.query(
+    `INSERT INTO bk_entries (tenant_id, entry_no, entry_date, description, source, created_by)
+     SELECT $1, COALESCE((SELECT max(entry_no) FROM bk_entries WHERE tenant_id=$1), 0) + 1, $2, $3, $4, $5
+     RETURNING id, entry_no`,
+    [tid, date, description, source, createdBy]);
+  for (const l of lines) {
+    await client.query(
+      `INSERT INTO bk_lines (tenant_id, entry_id, account_id, party_id, debit, credit, details)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [tid, n[0].id, l.account_id, l.party_id || null, l.debit || 0, l.credit || 0, l.details || null]);
+  }
+  return n[0];
+}
+
+r.post('/bookkeeping/expenses', expenseUpload.single('invoice'), async (req, res) => {
+  const tid = req.tenant.id;
+  const { party_id, expense_date, description, account_code } = req.body || {};
+  const amountNet = Number(req.body.amount_net), vat = Number(req.body.vat_amount || 0);
+  if (!expense_date || !DATE_RE.test(expense_date)) return res.status(400).json({ error: 'תאריך לא תקין (YYYY-MM-DD)' });
+  if (!description || String(description).trim().length < 2) return res.status(400).json({ error: 'תיאור הוצאה חסר' });
+  if (isNaN(amountNet) || amountNet <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
+  if (isNaN(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
+  if (vat > 0 && req.tenant.dealer_type !== 'morasha') {
+    return res.status(400).json({ error: 'עוסק שאינו מורשה אינו מנכה מס תשומות — יש להזין מע"מ 0 ולכלול את מלוא הסכום בהוצאה' });
+  }
+  const party = await getSupplier(tid, party_id);
+  if (!party) return res.status(400).json({ error: 'כרטיס ספק לא נמצא' });
+  const acct = await getExpenseAccount(tid, String(account_code || ''));
+  if (!acct) return res.status(400).json({ error: 'חשבון הוצאה לא קיים או לא פעיל' });
+  if (req.file && !verifyFile(req.file, EXPENSE_FILES)) return res.status(400).json({ error: 'תוכן הקובץ לא תואם לסוג המדווח — מתקבלים PDF/JPG/PNG/WebP בלבד' });
+
+  const { rows } = await q(
+    `INSERT INTO bk_expenses (tenant_id, party_id, expense_date, description, account_code, amount_net, vat_amount,
+                              file_name, file_mime, file_data, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING id, expense_date, status`,
+    [tid, party.id, expense_date, String(description).trim(), acct.code, amountNet.toFixed(2), vat.toFixed(2),
+     req.file ? req.file.originalname : null, req.file ? req.file.mimetype : null, req.file ? req.file.buffer : null, req.user.id]);
+  await audit(req, 'bk_expense_create', 'bk_expense', rows[0].id, { supplier: party.name, total: (amountNet + vat).toFixed(2), has_file: !!req.file });
+  res.status(201).json({ expense: { ...rows[0], has_file: !!req.file } });
+});
+
+r.get('/bookkeeping/expenses', async (req, res) => {
+  let { from, to } = req.query || {};
+  if (from && !DATE_RE.test(from)) return res.status(400).json({ error: 'תאריך from לא תקין' });
+  if (to && !DATE_RE.test(to)) return res.status(400).json({ error: 'תאריך to לא תקין' });
+  const { rows } = await q(
+    `SELECT x.id, x.expense_date, x.description, x.account_code, a.name_he AS account_name,
+            p.name AS supplier, x.amount_net, x.vat_amount, (x.amount_net + x.vat_amount) AS total,
+            x.status, x.entry_id, (x.file_data IS NOT NULL) AS has_file, x.file_name, x.created_at
+     FROM bk_expenses x
+     JOIN bk_parties p ON p.id = x.party_id
+     JOIN bk_accounts a ON a.tenant_id = x.tenant_id AND a.code = x.account_code
+     WHERE x.tenant_id=$1 ${from ? 'AND x.expense_date >= $2' : ''} ${to ? `AND x.expense_date <= $${from ? 3 : 2}` : ''}
+     ORDER BY x.expense_date DESC, x.created_at DESC LIMIT 500`,
+    [req.tenant.id, ...(from ? [from] : []), ...(to ? [to] : [])]);
+  res.json({ expenses: rows });
+});
+
+r.get('/bookkeeping/expenses/:id/file', async (req, res) => {
+  const { rows } = await q(
+    `SELECT file_name, file_mime, file_data FROM bk_expenses WHERE id=$1 AND tenant_id=$2`,
+    [req.params.id, req.tenant.id]);
+  if (!rows[0] || !rows[0].file_data) return res.status(404).json({ error: 'קובץ לא נמצא' });
+  res.setHeader('Content-Type', rows[0].file_mime);
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(rows[0].file_name || 'invoice')}`);
+  res.send(rows[0].file_data);
+});
+
+// רישום הוצאה לספר: חובה הוצאה (נטו) + חובה מע"מ תשומות (מורשה בלבד) / זכות ספקים (ברוטו)
+r.post('/bookkeeping/expenses/:id/post', async (req, res) => {
+  const tid = req.tenant.id;
+  const { rows: xs } = await q(`SELECT * FROM bk_expenses WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  const x = xs[0];
+  if (!x) return res.status(404).json({ error: 'הוצאה לא נמצאה' });
+  if (x.status !== 'draft') return res.status(409).json({ error: `לא ניתן לרשום הוצאה בסטטוס ${x.status}` });
+  if (await periodClosed(tid, x.expense_date.toISOString().slice(0, 10))) return res.status(409).json({ error: 'התקופה סגורה — לא ניתן לרשום' });
+
+  const expAcct = await getExpenseAccount(tid, x.account_code);
+  const vatAcct = x.vat_amount > 0 ? await acctByCode(tid, '2020') : null;
+  const supAcct = await acctByCode(tid, '2000');
+  if (!expAcct || !supAcct || (x.vat_amount > 0 && !vatAcct)) return res.status(400).json({ error: 'חשבון חסר — יש לאתחל את תרשים החשבונות' });
+
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lines = [
+      { account_id: expAcct.id, party_id: x.party_id, debit: Number(x.amount_net), details: x.description },
+    ];
+    if (Number(x.vat_amount) > 0) lines.push({ account_id: vatAcct.id, party_id: x.party_id, debit: Number(x.vat_amount), details: 'מע"מ תשומות' });
+    lines.push({ account_id: supAcct.id, party_id: x.party_id, credit: Number(x.amount_net) + Number(x.vat_amount), details: x.description });
+    const e = await insertEntryTx(client, tid, {
+      date: x.expense_date.toISOString().slice(0, 10), description: `הוצאה: ${x.description}`,
+      source: 'expense', lines, createdBy: req.user.id,
+    });
+    await client.query(`UPDATE bk_expenses SET status='posted', entry_id=$1, updated_at=now() WHERE id=$2`, [e.id, x.id]);
+    await client.query('COMMIT');
+    await audit(req, 'bk_expense_post', 'bk_expense', x.id, { entry_no: e.entry_no });
+    res.json({ posted: true, entry_no: e.entry_no });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally { client.release(); }
+});
+
+// ביטול הוצאה: מטיוטה — סימון בלבד; מרשומה — סטורנו בספר
+r.post('/bookkeeping/expenses/:id/void', async (req, res) => {
+  const tid = req.tenant.id;
+  const { rows: xs } = await q(`SELECT * FROM bk_expenses WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  const x = xs[0];
+  if (!x) return res.status(404).json({ error: 'הוצאה לא נמצאה' });
+  if (x.status === 'void') return res.status(409).json({ error: 'ההוצאה כבר מבוטלת' });
+  if (x.status === 'draft') {
+    await q(`UPDATE bk_expenses SET status='void', updated_at=now() WHERE id=$1`, [x.id]);
+    await audit(req, 'bk_expense_void', 'bk_expense', x.id, { from: 'draft' });
+    return res.json({ voided: true, from: 'draft' });
+  }
+  // posted — סטורנו: שורות הפוכות לפקודה המקורית
+  const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
+  if (await periodClosed(tid, todayIL)) return res.status(409).json({ error: 'התקופה הנוכחית סגורה — לא ניתן לבטל' });
+  const { rows: lines } = await q(`SELECT account_id, party_id, debit, credit, details FROM bk_lines WHERE entry_id=$1`, [x.entry_id]);
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const e = await insertEntryTx(client, tid, {
+      date: todayIL, description: `ביטול הוצאה: ${x.description}`, source: 'reversal',
+      lines: lines.map(l => ({ account_id: l.account_id, party_id: l.party_id, debit: Number(l.credit), credit: Number(l.debit), details: l.details })),
+      createdBy: req.user.id,
+    });
+    await client.query(`UPDATE bk_expenses SET status='void', void_entry_id=$1, updated_at=now() WHERE id=$2`, [e.id, x.id]);
+    await client.query('COMMIT');
+    await audit(req, 'bk_expense_void', 'bk_expense', x.id, { from: 'posted', reversal_entry_no: e.entry_no });
+    res.json({ voided: true, from: 'posted', reversal_entry_no: e.entry_no });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally { client.release(); }
+});
+
+async function acctByCode(tid, code) {
+  const { rows } = await q(`SELECT id, code FROM bk_accounts WHERE tenant_id=$1 AND code=$2 AND active`, [tid, code]);
+  return rows[0] || null;
+}
 
 module.exports = r;
