@@ -4,6 +4,7 @@ const { requireAuth, requireTenantMember } = require('../auth');
 const { notifyUser } = require('../notify');
 const { applyCourierRating } = require('../routes-engine');
 const { issueDocumentsForOrder, creditDocument } = require('../documents');
+const { sendCsv } = require('../csv');
 const { restoreBags } = require('../subscriptions');
 const { buildDocumentPDF, docVerificationImages } = require('../receipt');
 
@@ -522,6 +523,72 @@ r.post('/documents/consolidated', async (req, res) => {
     if (e.status) return res.status(e.status).json({ error: e.error });
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
+});
+
+
+// E11.T1: דוחות מכבסה — הכנסות, פילוח ערוצים, גרף שבועי, לקוחות חוזרים, פריטים מובילים
+r.get('/reports', async (req, res) => {
+  const tid = req.tenant.id;
+  const [totals, weekly, channels, returning, top, subs] = await Promise.all([
+    q(`SELECT COALESCE(sum(total),0)::numeric(10,2) AS revenue, count(*)::int AS orders,
+         COALESCE(avg(total),0)::numeric(10,2) AS avg_order,
+         COALESCE(sum(total) FILTER (WHERE created_at > now() - interval '30 days'),0)::numeric(10,2) AS last30
+       FROM orders WHERE tenant_id=$1 AND status <> 'cancelled'`, [tid]),
+    q(`SELECT date_trunc('week', created_at)::date AS week, count(*)::int AS orders,
+         COALESCE(sum(total),0)::numeric(10,2) AS revenue
+       FROM orders WHERE tenant_id=$1 AND status <> 'cancelled' AND created_at > now() - interval '8 weeks'
+       GROUP BY 1 ORDER BY 1`, [tid]),
+    q(`SELECT source, count(*)::int AS orders, COALESCE(sum(total),0)::numeric(10,2) AS revenue
+       FROM orders WHERE tenant_id=$1 AND status <> 'cancelled' GROUP BY source ORDER BY revenue DESC`, [tid]),
+    q(`SELECT count(DISTINCT customer_id)::int AS customers,
+         count(DISTINCT customer_id) FILTER (WHERE cnt.c > 1)::int AS returning
+       FROM (SELECT customer_id, count(*) AS c FROM orders WHERE tenant_id=$1 AND status <> 'cancelled' GROUP BY 1) cnt`, [tid]),
+    q(`SELECT oi.name, sum(oi.qty)::numeric(8,1) AS qty, sum(oi.qty*oi.price)::numeric(10,2) AS revenue
+       FROM order_items oi JOIN orders o ON o.id=oi.order_id
+       WHERE o.tenant_id=$1 AND o.status <> 'cancelled' GROUP BY 1 ORDER BY revenue DESC LIMIT 8`, [tid]),
+    q(`SELECT count(*) FILTER (WHERE s.status='active')::int AS active,
+         COALESCE(sum(p.price) FILTER (WHERE s.status='active'),0)::numeric(10,2) AS mrr
+       FROM subscriptions s JOIN subscription_plans p ON p.id=s.plan_id WHERE s.tenant_id=$1`, [tid]),
+  ]);
+  res.json({ totals: totals.rows[0], weekly: weekly.rows, channels: channels.rows, customers: returning.rows[0], topItems: top.rows, subscriptions: subs[0] });
+});
+
+// E11.T2: ייצוא CSV (BOM לעברית ב-Excel) — הזמנות, לקוחות, תשלומי שליחים
+r.get('/export/orders.csv', async (req, res) => {
+  const { rows } = await q(
+    `SELECT o.id, o.created_at, u.name AS customer, u.phone, o.status, o.source,
+            o.subtotal, o.delivery_fee, o.discount, o.total, o.payment_method, o.payment_status
+     FROM orders o JOIN users u ON u.id=o.customer_id
+     WHERE o.tenant_id=$1 ORDER BY o.created_at DESC LIMIT 1000`, [req.tenant.id]);
+  const HE = { new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה' };
+  sendCsv(res, 'orders.csv', [
+    ['מספר הזמנה','תאריך','לקוח','טלפון','סטטוס','ערוץ','סכום ביניים','שליחות','הנחה','סה"כ','אמצעי תשלום','סטטוס תשלום'],
+    ...rows.map(o => [o.id.slice(0,8), new Date(o.created_at).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem'}), o.customer||'', o.phone||'', HE[o.status]||o.status, o.source==='bot'?'בוט':'אפליקציה', o.subtotal, o.delivery_fee, o.discount, o.total, o.payment_method==='cash'?'מזומן':'מקוון (דמו)', o.payment_status]),
+  ]);
+});
+r.get('/export/customers.csv', async (req, res) => {
+  const { rows } = await q(
+    `SELECT u.name, u.phone, count(o.id)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS spent, max(o.created_at) AS last_order
+     FROM orders o JOIN users u ON u.id=o.customer_id
+     WHERE o.tenant_id=$1 GROUP BY u.id, u.name, u.phone ORDER BY last_order DESC LIMIT 1000`, [req.tenant.id]);
+  sendCsv(res, 'customers.csv', [
+    ['לקוח','טלפון','הזמנות','סה"כ ₪','הזמנה אחרונה'],
+    ...rows.map(c => [c.name||'', c.phone||'', c.orders, c.spent, c.last_order ? new Date(c.last_order).toLocaleDateString('he-IL',{timeZone:'Asia/Jerusalem'}) : '']),
+  ]);
+});
+r.get('/export/courier-payments.csv', async (req, res) => {
+  const { rows } = await q(
+    `SELECT u.name, u.phone, c.model,
+            count(o.id) FILTER (WHERE o.status='delivered')::int AS delivered,
+            COALESCE(sum(o.total) FILTER (WHERE o.status='delivered'),0)::numeric(10,2) AS value
+     FROM couriers c JOIN users u ON u.id=c.user_id
+     LEFT JOIN orders o ON o.courier_id=c.id AND o.tenant_id=$1
+     WHERE (c.tenant_id=$1 OR c.model='platform' OR c.model='shared')
+     GROUP BY u.name, u.phone, c.model ORDER BY delivered DESC`, [req.tenant.id]);
+  sendCsv(res, 'courier-payments.csv', [
+    ['שליח','טלפון','מודל','משלוחים שבוצעו','שווי הזמנות ₪'],
+    ...rows.map(c => [c.name||'', c.phone||'', c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי', c.delivered, c.value]),
+  ]);
 });
 
 module.exports = r;

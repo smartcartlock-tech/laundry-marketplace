@@ -1,6 +1,7 @@
 const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { sendCsv } = require('../csv');
 const { buildRoutesForDate } = require('../routes-engine');
 
 const r = express.Router();
@@ -312,6 +313,48 @@ r.post('/orders/purge-test', async (req, res) => {
     await client.query('ROLLBACK').catch(() => {});
     console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
+});
+
+
+// E11.T3: דוח פלטפורמה שבועי לאדמין — 7 הימים האחרונים
+async function weeklyReport() {
+  const [totals, byTenant, newUsers, newTenants, couriers] = await Promise.all([
+    q(`SELECT count(*)::int AS orders, COALESCE(sum(total),0)::numeric(10,2) AS gmv,
+        count(*) FILTER (WHERE status='delivered')::int AS delivered,
+        count(*) FILTER (WHERE status='cancelled')::int AS cancelled
+       FROM orders WHERE created_at > now() - interval '7 days'`, []),
+    q(`SELECT t.name, count(o.id)::int AS orders, COALESCE(sum(o.total),0)::numeric(10,2) AS gmv
+       FROM orders o JOIN tenants t ON t.id=o.tenant_id
+       WHERE o.created_at > now() - interval '7 days' AND o.status <> 'cancelled'
+       GROUP BY t.name ORDER BY gmv DESC`, []),
+    q(`SELECT count(*)::int AS n FROM users WHERE created_at > now() - interval '7 days'`, []),
+    q(`SELECT count(*)::int AS n FROM tenants WHERE created_at > now() - interval '7 days'`, []),
+    q(`SELECT count(DISTINCT courier_id)::int AS n FROM orders
+       WHERE courier_id IS NOT NULL AND created_at > now() - interval '7 days'`, []),
+  ]);
+  const { rows: tn } = await q('SELECT count(*)::int AS n FROM tenants WHERE approved');
+  return {
+    period_days: 7,
+    orders: totals.rows[0].orders, gmv: totals.rows[0].gmv,
+    delivered: totals.rows[0].delivered, cancelled: totals.rows[0].cancelled,
+    new_users: newUsers.rows[0].n, new_tenants: newTenants.rows[0].n,
+    active_tenants: tn[0].n, active_couriers: couriers.rows[0].n,
+    by_tenant: byTenant.rows,
+  };
+}
+r.get('/weekly-report', async (req, res) => {
+  res.json({ report: await weeklyReport() });
+});
+r.get('/weekly-report.csv', async (req, res) => {
+  const d = await weeklyReport();
+  sendCsv(res, 'weekly-report.csv', [
+    ['דוח שבועי — 7 ימים אחרונים'],
+    ['הזמנות','מחזור ₪','הושלמו','בוטלו','משתמשים חדשים','מכבסות חדשות','מכבסות פעילות','שליחים פעילים'],
+    [d.orders, d.gmv, d.delivered, d.cancelled, d.new_users, d.new_tenants, d.active_tenants, d.active_couriers],
+    [],
+    ['מכבסה','הזמנות','מחזור ₪'],
+    ...d.by_tenant.map(t => [t.name, t.orders, t.gmv]),
+  ]);
 });
 
 module.exports = r;

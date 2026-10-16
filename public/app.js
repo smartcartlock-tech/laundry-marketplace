@@ -40,6 +40,13 @@ async function openPdf(path){
   const b=await r.blob();window.open(URL.createObjectURL(b),'_blank');
  }catch(e){toast('שגיאה בפתיחת PDF')}
 }
+async function downloadCsv(path,filename){
+ try{
+  const r=await fetch('/api'+path,{headers:{Authorization:'Bearer '+state.token}});
+  if(!r.ok){const d=await r.json().catch(()=>({}));toast(d.error||'שגיאה בייצוא');return}
+  const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+ }catch(e){toast('שגיאה בייצוא')}
+}
 function fmtQ(q){const n=Number(q);return (n%1)?String(n):String(Math.round(n))}
 function unitLbl(u,qty){if(u==='kg')return 'ק״ג';if(u==='bag')return Number(qty)>1?'שקים':'שק';return 'יח׳'}
 const HE={new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
@@ -645,16 +652,29 @@ async function vManage(sub){
   body=`<div class="card"><table class="tbl"><tr><th>לקוח</th><th>הזמנות</th><th>₪</th><th>נקודות</th></tr>
    ${d.customers.map(c=>`<tr><td>${esc(c.name||'') }<div class="mut">${esc(c.phone||'')}</div></td><td>${c.orders}</td><td>${c.spent}</td><td>${c.points}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='stats'){
-  const d=await api(`/t/${slug}/stats`);
+  const d=await api(`/t/${slug}/reports`);
+  const maxRev=Math.max(1,...d.weekly.map(w=>Number(w.revenue)));
+  const CH={app:'אפליקציה',bot:'בוט וואטסאפ'};
   body=`<div class="kpis">
-    <div class="kpi"><b>₪${d.revenue.total}</b>מחזור</div>
-    <div class="kpi"><b>${d.revenue.orders}</b>הזמנות</div>
-    <div class="kpi"><b>${d.customers.customers}</b>לקוחות</div>
-    <div class="kpi"><b>${d.customers.returning}</b>חוזרים</div>
+    <div class="kpi"><b>₪${d.totals.revenue}</b>מחזור</div>
+    <div class="kpi"><b>${d.totals.orders}</b>הזמנות</div>
+    <div class="kpi"><b>₪${d.totals.avg_order}</b>ממוצע</div>
+    <div class="kpi"><b>${d.customers.returning}/${d.customers.customers}</b>חוזרים</div>
     ${d.subscriptions?`<div class="kpi"><b>${d.subscriptions.active}</b>מנויים פעילים</div>
     <div class="kpi"><b>₪${d.subscriptions.mrr}</b>הכנסה חוזרת</div>`:''}</div>
-   <div class="card"><b>הזמנות לפי סטטוס</b>${d.byStatus.map(s=>`<div class="row"><div>${HE[s.status]}</div><div>${s.n}</div></div>`).join('')}</div>
-   <div class="card"><b>פריטים מובילים</b>${d.topItems.map(t=>`<div class="row"><div>${esc(t.name)}</div><div>${t.qty} · ₪${t.revenue}</div></div>`).join('')||'<div class="mut">אין נתונים</div>'}</div>`;
+   <div class="card"><b>הכנסות שבועיות (8 שבועות)</b>
+    ${d.weekly.length?`<div style="display:flex;align-items:flex-end;gap:6px;height:110px;margin-top:12px;direction:ltr">${d.weekly.map(w=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%"><div class="mut" style="font-size:10px">₪${Math.round(w.revenue)}</div><div style="width:70%;background:linear-gradient(180deg,#12869b,#0a4f5c);border-radius:6px 6px 0 0;height:${Math.max(4,Math.round(Number(w.revenue)/maxRev*82))}%"></div><div class="mut" style="font-size:10px;margin-top:3px">${new Date(w.week).toLocaleDateString('he-IL',{day:'numeric',month:'numeric',timeZone:'Asia/Jerusalem'})}</div></div>`).join('')}</div>`:'<div class="mut" style="margin-top:8px">אין עדיין נתונים לגרף</div>'}
+   </div>
+   <div class="card"><b>פילוח ערוצים</b>
+    ${d.channels.map(c=>{const pct=d.totals.orders?Math.round(c.orders/d.totals.orders*100):0;return `<div style="margin-top:8px"><div class="row" style="border:none;padding:0"><div>${CH[c.source]||c.source}</div><div class="mut">${c.orders} הזמנות · ₪${c.revenue} · ${pct}%</div></div><div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div></div>`}).join('')||'<div class="mut">אין נתונים</div>'}
+   </div>
+   <div class="card"><b>פריטים מובילים</b>${d.topItems.map(t=>`<div class="row"><div>${esc(t.name)}</div><div>${t.qty} · ₪${t.revenue}</div></div>`).join('')||'<div class="mut">אין נתונים</div>'}</div>
+   <div class="card"><b>ייצוא (Excel)</b>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/orders.csv','orders.csv')">הזמנות CSV</button>
+     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/customers.csv','customers.csv')">לקוחות CSV</button>
+     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/courier-payments.csv','courier-payments.csv')">תשלומי שליחים CSV</button>
+    </div></div>`;
  } else if(sub==='settings'){
   const d=await api('/laundries/'+slug);
   const l=d.laundry;
@@ -780,7 +800,7 @@ async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'P
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
- const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות']];
+ const tabs=[['overview','תמונת מצב'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי']];
  let body='';
  if(sub==='overview'){
   const d=await api('/admin/overview');
@@ -875,6 +895,13 @@ async function vAdmin(sub){
    <label class="lb">מודל</label><select class="inp" id="rc-model"><option value="platform">שליח פלטפורמה</option><option value="private">שליח מכבסה פרטי</option><option value="shared">שליח משותף</option></select>
    <label class="lb">מכבסה (לשליח פרטי/משותף)</label><select class="inp" id="rc-tenant"><option value="">—</option>${d.tenants.map(t=>`<option value="${t.slug}">${esc(t.name)}</option>`).join('')}</select>
    <button class="btn" onclick="adminRegisterCourier()">רישום</button></div>`;
+ } else if(sub==='weekly'){
+  const d=(await api('/admin/weekly-report')).report;
+  body=`<div class="kpis"><div class="kpi"><b>₪${d.gmv}</b>מחזור שבועי</div><div class="kpi"><b>${d.orders}</b>הזמנות</div><div class="kpi"><b>${d.delivered}</b>הושלמו</div><div class="kpi"><b>${d.cancelled}</b>בוטלו</div></div>
+   <div class="kpis"><div class="kpi"><b>${d.new_users}</b>משתמשים חדשים</div><div class="kpi"><b>${d.new_tenants}</b>מכבסות חדשות</div><div class="kpi"><b>${d.active_tenants}</b>מכבסות פעילות</div><div class="kpi"><b>${d.active_couriers}</b>שליחים פעילים</div></div>
+   <div class="card"><b>לפי מכבסה (7 ימים)</b><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th></tr>
+    ${d.by_tenant.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.orders}</td><td>₪${t.gmv}</td></tr>`).join('')||'<tr><td colspan="3" class="mut">אין הזמנות השבוע</td></tr>'}</table></div>
+   <button class="btn2" onclick="downloadCsv('/admin/weekly-report.csv','weekly-report.csv')">ייצוא הדוח ל-CSV</button>`;
  } else if(sub==='orders'){
   const d=await api('/admin/orders');
   body=`<div class="card"><table class="tbl"><tr><th>הזמנה</th><th>מכבסה</th><th>סטטוס</th><th>₪</th></tr>
