@@ -51,4 +51,9 @@ test('consolidated monthly invoice: PDF + CSV with all orders and total', async 
   // רשימת חשבוניות
   const list = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices`, { token: owner });
   assert.equal(list.json.invoices.length, 1);
+
+  // מצטבר חודשי (E4.T4)
+  const summary = await api(`/api/t/achuza/business-accounts/${acc.id}/summary`, { token: owner });
+  assert.equal(summary.json.summary.orders_count, 2);
+  assert.ok(Math.abs(Number(summary.json.summary.month_total) - sum) < 0.01);
 });

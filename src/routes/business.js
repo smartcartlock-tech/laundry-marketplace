@@ -181,4 +181,15 @@ r.get('/:bid/invoices/:iid/csv', async (req, res) => {
   res.send(toCsv(consolidatedCsv(orders)));
 });
 
+// E4.T4: מצטבר חודשי לחשבון (למסך העסקי)
+r.get('/:bid/summary', async (req, res) => {
+  const acc = await getAccount(req, res); if (!acc) return;
+  const { rows } = await q(
+    `SELECT count(*)::int AS orders_count, COALESCE(sum(o.total),0)::numeric(10,2) AS month_total
+     FROM orders o WHERE o.business_account_id=$1 AND o.status NOT IN ('cancelled')
+       AND date_trunc('month', o.created_at AT TIME ZONE 'Asia/Jerusalem') = date_trunc('month', now() AT TIME ZONE 'Asia/Jerusalem')`,
+    [acc.id]);
+  res.json({ summary: rows[0] });
+});
+
 module.exports = r;
