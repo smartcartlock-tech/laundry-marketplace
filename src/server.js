@@ -6,13 +6,13 @@ require('./async-wrap').installProcessGuards(); // לכידת rejections מ-asyn
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Render proxy — req.ip אמיתי ל-rate limiting פר-משתמש
-// כותרות אבטחה מתונות (בלי תלות חדשה) — SPA עם inline handlers, לכן CSP מתיר inline
+// כותרות אבטחה מתונות (בלי תלות חדשה) — B7: CSP מאכף script-src בלי unsafe-inline (כל ה-handlers עברו ל-delegate.js); style נשאר inline (style attributes ב-templates)
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'DENY');
   res.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains'); // HSTS — https בלבד למשך חצי שנה
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'");
+  res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'; report-uri /api/csp-report");
   // B7 שלב א: מדיניות מחמירה (בלי unsafe-inline בסקריפטים) במצב Report-Only — אוספת הפרות בלי לשבור
   res.set('Content-Security-Policy-Report-Only', "default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob:; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; font-src 'self'; object-src 'none'; base-uri 'self'; report-uri /api/csp-report");
   next();
