@@ -91,6 +91,25 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
     vat: -Math.round(Number(original.vat) * ratio * 100) / 100,
     total: -amt, originalId: original.id, actorId, pdf,
   });
+  // PDF מקור לזיכוי — נבנה ונשמר מיד (כמו שאר המסמכים), עם הפניה למסמך המקור
+  if (!pdf) {
+    const { buildDocumentPDF, collectPdf, docVerificationImages } = require('./receipt');
+    const { rows: custRows } = await client.query('SELECT id, name, phone FROM users WHERE id=$1', [original.customer_id]);
+    const { rows: itemRows } = original.order_id
+      ? await client.query('SELECT * FROM order_items WHERE order_id=$1', [original.order_id]) : { rows: [] };
+    credit.original_number = original.doc_number;
+    credit.original_year = original.doc_year;
+    const codes = await docVerificationImages(credit);
+    const pdfDoc = buildDocumentPDF({
+      doc: credit, order: original.order_id ? { id: original.order_id } : null, items: itemRows, tenant,
+      customer: custRows[0] || { id: original.customer_id }, copy: false, codes,
+      note: `בזיכוי למסמך מספר ${original.doc_number}/${original.doc_year}`,
+    });
+    const buf = await collectPdf(pdfDoc);
+    await client.query('UPDATE documents SET pdf=$2, sha256=$3 WHERE id=$1 AND pdf IS NULL',
+      [credit.id, buf, crypto.createHash('sha256').update(buf).digest('hex')]);
+    credit.pdf = buf;
+  }
   const newCredited = Math.round((Number(original.credited_amount) + amt) * 100) / 100;
   const newStatus = newCredited >= Number(original.total) ? 'credited' : 'partially_credited';
   // עדכון מותר: רק credited_amount ו-status (שאר השדות immutable בטריגר)
@@ -108,7 +127,33 @@ async function setAllocationNumber(client, docId, allocationNumber, actorId) {
   return rows[0];
 }
 
-module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature };
+// מיגרציית שלמות למסמכים קיימים: חתימה מחדש למי שהאלגוריתם/הסוד השתנה לגביו,
+// ו-sha256 מחדש מבייטי ה-PDF כשחסר/שגוי (מחזיר "מקור" אמיתי בלי חותמת "העתק"). כל שינוי מתועד.
+async function migrateDocumentIntegrity() {
+  const { pool } = require('./db');
+  const { rows } = await pool.query('SELECT * FROM documents ORDER BY issued_at');
+  let fixedSig = 0, fixedHash = 0;
+  for (const d of rows) {
+    if (!verifySignature(d)) {
+      await pool.query('UPDATE documents SET signature=$2 WHERE id=$1', [d.id, signDocument(d)]);
+      await pool.query(`INSERT INTO document_events(document_id, action, details) VALUES ($1,'signature_migrated',$2)`,
+        [d.id, JSON.stringify({ reason: 'algorithm drift', demo: true })]);
+      fixedSig++;
+    }
+    if (d.pdf) {
+      const real = crypto.createHash('sha256').update(d.pdf).digest('hex');
+      if (d.sha256 !== real) {
+        await pool.query('UPDATE documents SET sha256=$2 WHERE id=$1', [d.id, real]);
+        await pool.query(`INSERT INTO document_events(document_id, action, details) VALUES ($1,'sha256_migrated',$2)`,
+          [d.id, JSON.stringify({ demo: true })]);
+        fixedHash++;
+      }
+    }
+  }
+  if (fixedSig || fixedHash) console.log(`[documents] integrity migration: ${fixedSig} signatures, ${fixedHash} sha256 fixed`);
+}
+
+module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };
 
 // E12.T2: הנפקה אוטומטית של מסמכים בעת delivered — אידמפוטנטי, לפי סוג העוסק של המכבסה.
 // עוסק מורשה: חשבונית עסקה (מע"מ כלול במחיר) + קבלה על התשלום. עוסק פטור: קבלה בלבד.
@@ -191,7 +236,7 @@ async function issueConsolidatedInvoice(client, { tenant, customer, orders, acto
   const pdf = buildDocumentPDF({
     doc: d, order: null, items, codes,
     tenant, customer, copy: false,
-    note: `חשבונית מרכזת המכסה ${orders.length} הזמנות`,
+    note: orders.length === 1 ? 'חשבונית מרכזת המכסה הזמנה אחת' : `חשבונית מרכזת המכסה ${orders.length} הזמנות`,
   });
   const buf = await collectPdf(pdf);
   await client.query('UPDATE documents SET pdf=$2, sha256=$3 WHERE id=$1 AND pdf IS NULL', [d.id, buf, crypto.createHash('sha256').update(buf).digest('hex')]);

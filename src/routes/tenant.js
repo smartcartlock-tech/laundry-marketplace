@@ -453,7 +453,7 @@ r.get('/documents', async (req, res) => {
             d.status, d.credited_amount, d.order_id, d.issued_at, u.name AS customer_name,
             (SELECT count(*)::int FROM document_orders dor WHERE dor.document_id=d.id) AS orders_count
      FROM documents d LEFT JOIN users u ON u.id=d.customer_id
-     WHERE d.tenant_id=$1 ORDER BY d.doc_year DESC, d.doc_number DESC LIMIT 300`, [req.tenant.id]);
+     WHERE d.tenant_id=$1 ORDER BY d.issued_at DESC LIMIT 300`, [req.tenant.id]);
   const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
   res.json({ documents: rows.map(d => ({ ...d, kind_he: KIND_HE[d.kind] || d.kind })) });
 });

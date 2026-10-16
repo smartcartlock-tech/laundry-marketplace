@@ -198,7 +198,7 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   line(pdf, tenant.name);
   pdf.font('he').fontSize(10).fillColor('#444');
   const dealerBits = [];
-  if (tenant.dealer_id) dealerBits.push(`ח.פ/ע.מ: ${tenant.dealer_id}`);
+  if (tenant.dealer_id) dealerBits.push(`ח.פ/ע.מ: \u2066${tenant.dealer_id}\u2069`);
   if (tenant.dealer_type) dealerBits.push(tenant.dealer_type === 'morasha' ? 'עוסק מורשה' : 'עוסק פטור');
   line(pdf, [tenant.address, tenant.city].filter(Boolean).join(', ') + (dealerBits.length ? ' · ' + dealerBits.join(' · ') : ''));
 
@@ -211,9 +211,9 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   const dt = new Date(d.issued_at);
   line(pdf, `תאריך הפקה: ${dt.toLocaleDateString('he-IL')} ${dt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`);
   if (order) line(pdf, `בגין הזמנה: #${order.id.slice(0, 8)}`);
-  line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח'}${customer && customer.phone ? ' · ' + customer.phone : ''}`);
+  line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח/ה'}${customer && customer.phone ? ' · \u2066' + customer.phone + '\u2069' : ''}`);
   if (note) line(pdf, note);
-  if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.doc_year}`);
+  if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.original_year || d.doc_year}`);
   pdf.moveDown(0.8);
 
   if (items && items.length) {
@@ -228,6 +228,13 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
       pdf.font('he').text(money(Number(it.price) * qn), 50, y, { lineBreak: false });
       pdf.text(`x${qn % 1 ? qn : Math.round(qn)}`, 130, y, { lineBreak: false });
       const h = drawRtl(pdf, it.name, PAGE_RIGHT, y);
+      pdf.y = Math.max(y + h, y + 16);
+    }
+    if (order && Number(order.delivery_fee) > 0) {
+      const y = pdf.y;
+      pdf.font('he').text(money(Number(order.delivery_fee)), 50, y, { lineBreak: false });
+      pdf.text('x1', 130, y, { lineBreak: false });
+      const h = drawRtl(pdf, 'איסוף והחזרה', PAGE_RIGHT, y);
       pdf.y = Math.max(y + h, y + 16);
     }
     pdf.moveDown(0.5);

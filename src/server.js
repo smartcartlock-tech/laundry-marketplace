@@ -61,6 +61,7 @@ app.use((err, req, res, next) => { console.error(err); res.status(500).json({ er
 const PORT = process.env.PORT || 3000;
 (async () => {
   await migrate();
+  await require('./documents').migrateDocumentIntegrity().catch(e => console.error('[documents] integrity migration failed:', e.message));
   if (process.env.SEED_DEMO === 'true') {
     const { rows } = await q('SELECT count(*)::int AS n FROM tenants');
     if (rows[0].n === 0) { await require('./seed').run(); console.log('[db] demo seed done'); }
