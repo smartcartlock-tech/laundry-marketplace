@@ -31,6 +31,13 @@ SEED_DEMO=true npm start   # מגרית, מזריע דמו אם ריק, ומאז
 
 כש-DEMO_OTP=true הקוד מוצג על המסך (ברירת מחדל: פעיל — נועד לסביבת הדמו בלבד; בפרודקשן אמיתי יש להגדיר DEMO_OTP=false כדי שהקוד יישלח רק בוואטסאפ ולא יוצג). הודעות סטטוס נשלחות בוואטסאפ אם Twilio מוגדר (סנדבוקס: רק למספרים שהצטרפו).
 
+### ספק OTP (A4)
+שליחת קוד הכניסה עוברת דרך ממשק מוחלף `sendCode` (src/otp-provider.js). הבחירה נשלטת ב-OTP_PROVIDER:
+- `auto` (ברירת מחדל): וואטסאפ דרך גשר הבוט (BOT_OUTBOUND_URL/BOT_OUTBOUND_KEY) או Twilio אם מוגדרים; אחרת נפילה לקוד דמו מוצג — במצב demo בלבד.
+- `whatsapp` / `bot`: כופה שליחה אמיתית; כשל = 503 (אין נפילה שקטה לדמו).
+- `demo`: עוקף שליחה — חוקי רק ב-APP_MODE=demo. ב-pilot נחסם כדי שלא יוצג קוד על המסך.
+בפיילוט ללא עלות: מגדירים BOT_OUTBOUND_URL/BOT_OUTBOUND_KEY (הקוד יוצא מהבוט הקיים), או משתמשים בכניסת Google (GOOGLE_CLIENT_ID).
+
 ## API לבוט CleanShop
 - `GET /api/bot/pricelist`, `GET /api/bot/windows`
 - `POST /api/bot/orders` {phone, name?, items:[{item_id, qty}], address, pickup_at?, notes?}

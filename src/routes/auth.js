@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { q } = require('../db');
 const { sign, requireAuth } = require('../auth');
-const { sendWhatsApp } = require('../notify');
+const { sendCode } = require('../otp-provider');
 
 const r = express.Router();
 const { limiter } = require('../ratelimit');
@@ -31,14 +31,10 @@ r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000),
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });
     if (kind === 'phone' && !/^\+972\d{8,9}$/.test(target)) return res.status(400).json({ error: 'מספר טלפון ישראלי לא תקין' });
     const code = String(crypto.randomInt(100000, 999999));
-    let channel = 'demo', demoCode;
-    if (kind === 'phone') {
-      const sent = await sendWhatsApp(target, `קוד הכניסה שלך ל״מכבסה בקליק״: ${code}`);
-      if (sent.sent) channel = 'whatsapp';
-    }
-    // email: נדרש ספק דואר (Brevo/SMTP) — לא מוגדר; נופל לדמו
-    if (channel === 'demo' && !DEMO_OTP()) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
-    if (DEMO_OTP()) demoCode = code; // מצב דמו: הקוד מוצג על המסך גם אם נשלח בוואטסאפ
+    // A4: ספק OTP מוחלף (src/otp-provider.js) — whatsapp/בוט אם מוגדר, demo רק במצב demo
+    const delivery = await sendCode(target, code, { kind, demoOtp: DEMO_OTP() });
+    if (!delivery.sent) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
+    const channel = delivery.channel, demoCode = delivery.demoCode; // מצב דמו: הקוד מוצג על המסך גם אם נשלח בוואטסאפ
     await q('INSERT INTO otp_codes(channel, target, code, expires_at) VALUES ($1,$2,$3, now() + interval \'10 minutes\')',
       [channel, target, code]);
     res.json({ ok: true, channel, ...(demoCode ? { demoCode } : {}) });
