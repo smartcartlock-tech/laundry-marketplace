@@ -90,5 +90,16 @@ const PORT = process.env.PORT || 3000;
     const { rows } = await q('SELECT count(*)::int AS n FROM tenants');
     if (rows[0].n === 0) { await require('./seed').run(); console.log('[db] demo seed done'); }
   }
+  // H2: אדמין ראשון בלי זריעת דמו — ADMIN_PHONE ב-env, רק כשעדיין אין אדמין ב-DB
+  if (process.env.ADMIN_PHONE) {
+    const p = String(process.env.ADMIN_PHONE).trim().replace(/[^\d+]/g, '');
+    const phone = p.startsWith('+') ? p : p.startsWith('0') ? '+972' + p.slice(1) : '+' + p;
+    const { rows: hasAdmin } = await q(`SELECT 1 FROM users WHERE role='admin' LIMIT 1`);
+    if (!hasAdmin.length) {
+      await q(`INSERT INTO users(phone, name, role) VALUES ($1,'מנהל פלטפורמה','admin')
+               ON CONFLICT (phone) DO UPDATE SET role='admin'`, [phone]);
+      console.log('[db] admin bootstrap done');
+    }
+  }
   app.listen(PORT, () => console.log(`[server] listening on :${PORT}`));
 })().catch(e => { console.error('boot failed', e); process.exit(1); });
