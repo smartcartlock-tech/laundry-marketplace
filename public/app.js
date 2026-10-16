@@ -1045,13 +1045,15 @@ async function vManageBiz(slug){
  // חשבונית מרוכזת
  const now=new Date();
  html+=`<div class="card"><label class="lb">חשבונית מרוכזת חודשית</label>
-  <div class="mut">הפקה אוטומטית ב-1 לחודש · מסמך דמו — לא חשבונית מס</div>
+  <div class="mut">הפקה אוטומטית ב-1 לחודש · מסמך דמו — לא חשבונית מס · ברירת מחדל מופעלת לחשבון עסקי</div>
+  <label style="display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="bz-cons" ${acc.consolidated_billing!==false?'checked':''} onchange="bizConsToggle('${slug}','${acc.id}',this.checked)"> חשבונית מרכזת חודשית מופעלת</label>
   <button class="btn2 on" onclick="bizInvGen('${slug}','${acc.id}')">הפקה לחודש ${now.getMonth()+1}/${now.getFullYear()}</button>
   ${inv.map(i=>`<div class="row" style="margin-top:6px"><div><b>${i.month}/${i.year}</b> <div class="mut">${i.orders_count} הזמנות · הופק ${fmtDate(i.issued_at)}</div></div>
    <div><b>₪${i.total}</b> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','pdf')">PDF</button> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','csv')">CSV</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין חשבוניות עדיין</div>'}</div>`;
  return html;
 }
 function bizPick(id){bizSel=id;route()}
+async function bizConsToggle(slug,bid,on){try{await api(`/t/${slug}/business-accounts/${bid}`,{method:'PATCH',body:JSON.stringify({consolidated_billing:on})});toast(on?'חשבונית מרכזת הופעלה':'חשבונית מרכזת כובתה')}catch(e){toast(e.message);route()}}
 async function bizCreate(slug){try{await api(`/t/${slug}/business-accounts`,{method:'POST',body:JSON.stringify({name:$('#bz-name').value,company_id:$('#bz-comp').value,contact_name:$('#bz-contact').value,contact_phone:$('#bz-phone').value})});route()}catch(e){toast(e.message)}}
 async function bizAddUser(slug,bid){try{await api(`/t/${slug}/business-accounts/${bid}/users`,{method:'POST',body:JSON.stringify({phone:$('#bz-uphone').value})});route()}catch(e){toast(e.message)}}
 async function bizDelUser(slug,bid,uid){try{await api(`/t/${slug}/business-accounts/${bid}/users/${uid}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}

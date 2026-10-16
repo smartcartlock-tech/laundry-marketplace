@@ -57,3 +57,27 @@ test('consolidated monthly invoice: PDF + CSV with all orders and total', async 
   assert.equal(summary.json.summary.orders_count, 2);
   assert.ok(Math.abs(Number(summary.json.summary.month_total) - sum) < 0.01);
 });
+
+test('consolidated_billing toggle: default on, generate blocked when disabled', async (t) => {
+  const { api } = await startApp(t);
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const acc = (await api('/api/t/achuza/business-accounts', { method: 'POST', token: owner, body: {
+    name: 'קליניקת הדר', company_id: '514000001', payment_terms: 'net30' } })).json.account;
+  assert.equal(acc.consolidated_billing, true, 'ברירת מחדל: מופעל לחשבון עסקי');
+  await api(`/api/t/achuza/business-accounts/${acc.id}/users`, { method: 'POST', token: owner, body: { phone: '+972500000002' } });
+  const item = (await api('/api/laundries/achuza')).json.items[0];
+  await api('/api/orders', { method: 'POST', token: customer, body: { slug: 'achuza', items: [{ item_id: item.id, qty: 1 }], address: 'בדיקה 1' } });
+
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const y = now.getFullYear(), m = now.getMonth() + 1;
+  const off = await api(`/api/t/achuza/business-accounts/${acc.id}`, { method: 'PATCH', token: owner, body: { consolidated_billing: false } });
+  assert.equal(off.status, 200);
+  assert.equal(off.json.account.consolidated_billing, false);
+  const blocked = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices/generate`, { method: 'POST', token: owner, body: { year: y, month: m } });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.json));
+  const on = await api(`/api/t/achuza/business-accounts/${acc.id}`, { method: 'PATCH', token: owner, body: { consolidated_billing: true } });
+  assert.equal(on.json.account.consolidated_billing, true);
+  const ok = await api(`/api/t/achuza/business-accounts/${acc.id}/invoices/generate`, { method: 'POST', token: owner, body: { year: y, month: m } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+});

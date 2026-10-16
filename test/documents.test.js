@@ -117,3 +117,24 @@ test('E12.T1: מספור רציף, אי-שינוי, זיכוי, הקצאה, audi
     assert.ok(actions.filter(a => a === 'credited').length === 2);
   } finally { client.release(); }
 });
+
+test('E12: מספור רציף בלי אתחול שנתי — מונה אחד לכל (מכבסה, סוג), קיפול מונים ישנים', async () => {
+  const { nextDocNumber } = require('../src/documents');
+  const t = await q(`INSERT INTO tenants(slug, name, approved, is_open) VALUES ('docs-seq', 'מכבסת רצף', true, true) RETURNING *`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // מונה ישן מבוסס-שנה עם next_number=5 → אחרי הקיפול המספר הבא הוא 5 (לא 1)
+    await client.query(`INSERT INTO doc_counters(tenant_id, kind, year, next_number) VALUES ($1,'invoice',2026,5)`, [t.rows[0].id]);
+    await client.query(`INSERT INTO doc_counters(tenant_id, kind, year, next_number)
+      SELECT tenant_id, kind, 0, max(next_number) FROM doc_counters WHERE year <> 0 AND tenant_id=$1 GROUP BY tenant_id, kind
+      ON CONFLICT (tenant_id, kind, year) DO UPDATE SET next_number = GREATEST(doc_counters.next_number, EXCLUDED.next_number)`, [t.rows[0].id]);
+    const n1 = await nextDocNumber(client, t.rows[0].id, 'invoice');
+    const n2 = await nextDocNumber(client, t.rows[0].id, 'invoice');
+    const r1 = await nextDocNumber(client, t.rows[0].id, 'receipt');
+    await client.query('COMMIT');
+    assert.equal(n1, 5); // הרצף נשמר, לא התאפס במעבר שנה
+    assert.equal(n2, 6);
+    assert.equal(r1, 1); // סדרה נפרדת לסוג אחר
+  } finally { client.release(); }
+});

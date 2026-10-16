@@ -692,3 +692,12 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 CREATE INDEX IF NOT EXISTS push_subs_user_idx ON push_subscriptions(user_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS issue_reports_one_per_customer ON issue_reports(order_id, customer_id);
+
+-- החלטת משתמש 16.10: מספור רציף ללא פערים לכל סוג מסמך, בלי אתחול שנתי.
+-- מעבר לשורת מונה אחת (year=0) לכל (מכבסה, סוג); הרצף הקיים נשמר.
+INSERT INTO doc_counters(tenant_id, kind, year, next_number)
+SELECT tenant_id, kind, 0, max(next_number) FROM doc_counters WHERE year <> 0 GROUP BY tenant_id, kind
+ON CONFLICT (tenant_id, kind, year) DO UPDATE SET next_number = GREATEST(doc_counters.next_number, EXCLUDED.next_number);
+
+-- החלטת משתמש 16.10: חשבונית מרכזת — ברירת מחדל ללקוחות עסקיים, ניתנת לכיבוי
+ALTER TABLE business_accounts ADD COLUMN IF NOT EXISTS consolidated_billing boolean NOT NULL DEFAULT true;

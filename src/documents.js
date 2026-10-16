@@ -19,14 +19,15 @@ function signDocument(d) {
 function verifySignature(d) { return !!d.signature && d.signature === signDocument(d); }
 const VAT_RATE = 0.18;
 
-// הקצאת מספר רציף לכל (מכבסה, סוג, שנה) — אטומי דרך UPDATE..RETURNING
-async function nextDocNumber(client, tenantId, kind, year) {
+// הקצאת מספר רציף לכל (מכבסה, סוג) — אטומי דרך UPDATE..RETURNING.
+// החלטת משתמש 16.10: רצף ללא פערים ובלי אתחול שנתי — שורת מונה אחת (year=0); doc_year הוא שנת ההפקה לתצוגה בלבד.
+async function nextDocNumber(client, tenantId, kind) {
   await client.query(
-    'INSERT INTO doc_counters(tenant_id, kind, year, next_number) VALUES ($1,$2,$3,1) ON CONFLICT DO NOTHING',
-    [tenantId, kind, year]);
+    'INSERT INTO doc_counters(tenant_id, kind, year, next_number) VALUES ($1,$2,0,1) ON CONFLICT DO NOTHING',
+    [tenantId, kind]);
   const { rows } = await client.query(
-    'UPDATE doc_counters SET next_number = next_number + 1 WHERE tenant_id=$1 AND kind=$2 AND year=$3 RETURNING next_number',
-    [tenantId, kind, year]);
+    'UPDATE doc_counters SET next_number = next_number + 1 WHERE tenant_id=$1 AND kind=$2 AND year=0 RETURNING next_number',
+    [tenantId, kind]);
   return rows[0].next_number - 1;
 }
 
@@ -56,7 +57,7 @@ async function issueDocument(client, opts) {
   }
 
   const year = new Date().getFullYear();
-  const num = await nextDocNumber(client, tenant.id, kind, year);
+  const num = await nextDocNumber(client, tenant.id, kind);
   const { rows } = await client.query(
     `INSERT INTO documents(tenant_id, order_id, customer_id, kind, doc_year, doc_number, allocation_number,
        amount, vat, total, original_id, pdf, verify_code)

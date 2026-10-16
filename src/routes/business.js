@@ -42,14 +42,16 @@ r.get('/:bid', async (req, res) => {
 
 r.patch('/:bid', async (req, res) => {
   const acc = await getAccount(req, res); if (!acc) return;
-  const { name, company_id, contact_name, contact_phone, payment_terms, active } = req.body || {};
+  const { name, company_id, contact_name, contact_phone, payment_terms, active, consolidated_billing } = req.body || {};
   const { rows } = await q(
     `UPDATE business_accounts SET name=COALESCE($3,name), company_id=COALESCE($4,company_id),
        contact_name=COALESCE($5,contact_name), contact_phone=COALESCE($6,contact_phone),
-       payment_terms=COALESCE($7,payment_terms), active=COALESCE($8,active)
+       payment_terms=COALESCE($7,payment_terms), active=COALESCE($8,active),
+       consolidated_billing=COALESCE($9,consolidated_billing)
      WHERE id=$1 AND tenant_id=$2 RETURNING *`,
     [acc.id, req.tenant.id, name ?? null, company_id ?? null, contact_name ?? null, contact_phone ?? null, payment_terms ?? null,
-     typeof active === 'boolean' ? active : null]);
+     typeof active === 'boolean' ? active : null,
+     typeof consolidated_billing === 'boolean' ? consolidated_billing : null]);
   res.json({ account: rows[0] });
 });
 
@@ -157,6 +159,7 @@ r.post('/:bid/invoices/generate', async (req, res) => {
   const acc = await getAccount(req, res); if (!acc) return;
   const year = Number(req.body?.year), month = Number(req.body?.month);
   if (!year || !month || month < 1 || month > 12) return res.status(400).json({ error: 'חודש/שנה לא תקינים' });
+  if (acc.consolidated_billing === false) return res.status(409).json({ error: 'חשבונית מרכזת כבויה עבור חשבון זה — ניתן להפעיל מחדש בהגדרות החשבון' });
   const inv = await issueInvoice(q, acc, req.tenant, year, month);
   if (!inv) return res.status(404).json({ error: 'לא נמצאו הזמנות בחודש זה' });
   res.json({ invoice: inv });

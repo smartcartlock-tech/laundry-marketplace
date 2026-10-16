@@ -97,7 +97,7 @@ async function issueMonthlyInvoices(q) {
   const { rows: accounts } = await q(
     `SELECT DISTINCT ba.*, t.name AS tenant_name, t.color AS tenant_color, t.id AS tid FROM business_accounts ba
      JOIN orders o ON o.business_account_id=ba.id JOIN tenants t ON t.id=ba.tenant_id
-     WHERE ba.active
+     WHERE ba.active AND ba.consolidated_billing
        AND EXTRACT(YEAR FROM o.created_at AT TIME ZONE 'Asia/Jerusalem')=$1
        AND EXTRACT(MONTH FROM o.created_at AT TIME ZONE 'Asia/Jerusalem')=$2`, [y, m]);
   let issued = 0;
