@@ -23,16 +23,88 @@ async function optionalUser(req) {
 
 const DAY_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
-function menuText() {
-  return 'אני בוט להדגמה (סימולציה בלבד — לא נשלחת שום הודעה אמיתית). אפשר לשאול אותי:\n• "מכבסות" — רשימת מכבסות הדמו\n• "מחירון" — מחירון של מכבסת דמו\n• "שעות" — שעות פעילות\n• "איפה ההזמנה <קוד מעקב>" — בדיקת סטטוס לפי קוד\n• "שעות פתיחה של <שם מכבסה>" — שעות לפי מכבסה\n• "סטטוס" — סטטוס ההזמנה האחרונה שלך (בכניסה מחוברת)';
+// N7: אישורים מפורשים ממתינים (ביטול/שינוי חלון) — בזיכרון, תפוגה 2 דקות. סימולציה, לא production-grade state.
+const pending = new Map();
+function pendKey(user, req, code) { return `${user ? user.id : 'anon:' + (req && req.ip || '')}:${code}`; }
+function setPending(k, v) { pending.set(k, { ...v, exp: Date.now() + 2 * 60 * 1000 }); }
+function takePending(k) { const v = pending.get(k); if (!v) return null; if (v.exp < Date.now()) { pending.delete(k); return null; } pending.delete(k); return v; }
+
+const ST_HE = { new: 'חדשה', confirmed: 'אושרה', picked_up: 'נאספה', in_work: 'בעבודה', ready: 'מוכנה', out_for_delivery: 'בדרך אליך', delivered: 'נמסרה', cancelled: 'בוטלה' };
+
+async function findOrderByCode(code) {
+  const { rows } = await q(
+    `SELECT o.id, o.status, o.pickup_at, o.tracking_code, t.name AS tenant_name FROM orders o
+     JOIN tenants t ON t.id=o.tenant_id WHERE o.tracking_code=upper($1)`, [code]);
+  return rows[0] || null;
 }
 
-async function botReply(message, user) {
+function menuText() {
+  return 'אני בוט להדגמה (סימולציה בלבד — לא נשלחת שום הודעה אמיתית). אפשר לשאול אותי:\n• "מכבסות" — רשימת מכבסות הדמו\n• "מחירון" — מחירון של מכבסת דמו\n• "שעות" — שעות פעילות\n• "איפה ההזמנה <קוד מעקב>" — בדיקת סטטוס לפי קוד\n• "שעות פתיחה של <שם מכבסה>" — שעות לפי מכבסה\n• "סטטוס" — סטטוס ההזמנה האחרונה שלך (בכניסה מחוברת)\n• "בטל הזמנה <קוד>" / "שנה חלון איסוף <קוד>" — באישור מפורש\n• "סיכום יומי" — לבעלי מכבסה מחוברים';
+}
+
+async function botReply(message, user, req) {
   const m = String(message || '').trim();
   const low = m.toLowerCase();
   if (!m) return { reply: 'לא קיבלתי הודעה. נסו לכתוב משהו 🙂' };
   if (/^(שלום|היי|הי|אהלן|בוקר טוב|ערב טוב|hello|hi)(?![a-z\u0590-\u05ff])/.test(low)) {
     return { reply: `שלום${user ? ' ' + user.name : ''}! 👋\n` + menuText() };
+  }
+  // N7: ביטול הזמנה / שינוי חלון איסוף — רק לפי קוד מעקב ורק עם אישור מפורש בשני צעדים
+  const codeM = (m.match(/[0-9A-Fa-f]{8}/) || [])[0];
+  if (/^(אישור ביטול|מאשר ביטול)/.test(low) && codeM) {
+    const p = takePending(pendKey(user, req, codeM));
+    if (!p || p.action !== 'cancel') return { reply: `אין בקשת ביטול ממתינה לקוד ${codeM.toUpperCase()}. כתבו "בטל הזמנה ${codeM.toUpperCase()}" כדי להתחיל.` };
+    const o = p.order;
+    if (!['new', 'confirmed'].includes(o.status)) return { reply: `ההזמנה כבר בסטטוס "${ST_HE[o.status] || o.status}" ולא ניתן לבטל אותה בבוט.` };
+    await q("UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1", [o.id]);
+    await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'cancelled',$2,'בוטל דרך סימולציית הבוט באישור מפורש')", [o.id, user ? user.id : null]);
+    return { reply: `ההזמנה אצל ${o.tenant_name} (קוד ${codeM.toUpperCase()}) בוטלה ✅ (סימולציה — נתוני דמו).` };
+  }
+  if (/^(אישור שינוי|מאשר שינוי)/.test(low) && codeM) {
+    const p = takePending(pendKey(user, req, codeM));
+    const pick = (m.match(/([1-3])(?![0-9])/) || [])[1];
+    if (!p || p.action !== 'reschedule' || !pick) return { reply: `אין בקשת שינוי ממתינה לקוד ${codeM.toUpperCase()}. כתבו "שנה חלון איסוף ${codeM.toUpperCase()}" כדי לראות אפשרויות.` };
+    const slot = p.options[Number(pick) - 1];
+    await q('UPDATE orders SET pickup_at=$1, updated_at=now() WHERE id=$2', [slot.at, p.order.id]);
+    await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)", [p.order.id, p.order.status, user ? user.id : null, `חלון איסוף שונה דרך סימולציית הבוט ל-${slot.label}`]);
+    return { reply: `חלון האיסוף להזמנה ${codeM.toUpperCase()} עודכן: ${slot.label} ✅ (סימולציה — נתוני דמו).` };
+  }
+  if (low.includes('בטל') && codeM) {
+    const o = await findOrderByCode(codeM);
+    if (!o) return { reply: `לא מצאתי הזמנה עם קוד מעקב ${codeM.toUpperCase()}.` };
+    if (!['new', 'confirmed'].includes(o.status)) return { reply: `ההזמנה אצל ${o.tenant_name} בסטטוס "${ST_HE[o.status] || o.status}" — אי אפשר לבטל דרך הבוט, רק דרך המכבסה.` };
+    setPending(pendKey(user, req, codeM), { action: 'cancel', order: o });
+    return { reply: `⚠️ ביטול הזמנה אצל ${o.tenant_name} (סטטוס נוכחי: ${ST_HE[o.status] || o.status}). לאישור מפורש שלחו בדיוק: "אישור ביטול ${codeM.toUpperCase()}". הבקשה בתוקף ל-2 דקות.` };
+  }
+  if ((low.includes('שנה') || low.includes('שינוי') || low.includes('חלון')) && codeM && !low.includes('אישור')) {
+    const o = await findOrderByCode(codeM);
+    if (!o) return { reply: `לא מצאתי הזמנה עם קוד מעקב ${codeM.toUpperCase()}.` };
+    if (['delivered', 'cancelled'].includes(o.status)) return { reply: `ההזמנה בסטטוס "${ST_HE[o.status]}" — לא ניתן לשנות חלון איסוף.` };
+    const base = new Date(); const opts = [];
+    for (let d = 1; d <= 3 && opts.length < 3; d++) {
+      const day = new Date(base.getTime() + d * 24 * 3600 * 1000);
+      const label = day.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Jerusalem' });
+      opts.push({ at: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), d % 2 ? 8 : 13)), label: `${label} ${d % 2 ? '08:00–12:00' : '12:00–17:00'}` });
+    }
+    setPending(pendKey(user, req, codeM), { action: 'reschedule', order: o, options: opts });
+    return { reply: `אפשרויות חלון איסוף חדש להזמנה ${codeM.toUpperCase()} אצל ${o.tenant_name}:\n` + opts.map((o2, i) => `${i + 1}) ${o2.label}`).join('\n') + `\nלאישור מפורש שלחו: "אישור שינוי ${codeM.toUpperCase()} <מספר האפשרות>". בתוקף ל-2 דקות.` };
+  }
+  // N7: סיכום יומי לבעל מכבסה (תבנית owner_daily_summary, סימולציה בלבד)
+  if (low.includes('סיכום') && (low.includes('יומי') || low.includes('היום'))) {
+    if (!user) return { reply: 'סיכום יומי זמין לבעלי מכבסה מחוברים בלבד (בסימולציה אפשר להתחבר עם קוד הדמו).' };
+    const { rows: mem } = await q('SELECT tenant_id FROM tenant_members WHERE user_id=$1 LIMIT 1', [user.id]);
+    if (!mem[0]) return { reply: 'החשבון הזה לא משויך למכבסה, אז אין סיכום יומי להציג.' };
+    const { rows: agg } = await q(
+      `SELECT count(*)::int AS n, coalesce(sum(total) FILTER (WHERE status<>'cancelled'),0)::numeric(10,2) AS rev,
+              count(*) FILTER (WHERE status='cancelled')::int AS cancelled
+       FROM orders WHERE tenant_id=$1 AND (created_at AT TIME ZONE 'Asia/Jerusalem')::date = (now() AT TIME ZONE 'Asia/Jerusalem')::date`, [mem[0].tenant_id]);
+    const { renderTemplateByKey, postUserMessage } = require('../usermessages');
+    const dateHe = new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
+    const vars = { 'תאריך': dateHe, 'מספר_הזמנות': agg[0].n, 'הכנסה': agg[0].rev, 'חריגים': agg[0].cancelled ? `${agg[0].cancelled} ביטולים` : 'אין' };
+    const t = await renderTemplateByKey('owner_daily_summary', vars);
+    const body = t ? t.body : `סיכום יומי: ${agg[0].n} הזמנות, ₪${agg[0].rev}.`;
+    await postUserMessage(user.id, { tenantId: mem[0].tenant_id, kind: 'template', title: t ? t.title : 'סיכום יומי', body }).catch(() => {});
+    return { reply: body + '\n(נשמר גם במרכז ההודעות שלך — סימולציה בלבד)' };
   }
   // N6: "איפה ההזמנה שלי" לפי קוד מעקב (tracking_code — 8 תווים hex, מודפס על אישור ההזמנה)
   if (low.includes('איפה') || low.includes('מעקב') || low.includes('track')) {
@@ -94,7 +166,7 @@ async function botReply(message, user) {
 r.post('/chat', limiter('botsim', 30, 10 * 60 * 1000, (req) => req.ip), async (req, res) => {
   try {
     const user = await optionalUser(req);
-    const out = await botReply((req.body || {}).message, user);
+    const out = await botReply((req.body || {}).message, user, req);
     res.json({ simulated: true, reply: out.reply });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });

@@ -24,4 +24,13 @@ async function renderTemplateByKey(key, vars = {}) {
   return { template: t, title: renderTemplate(t.title, vars), body: renderTemplate(t.body, vars) };
 }
 
-module.exports = { renderTemplate, renderTemplateByKey, postUserMessage };
+// N7: כנ"ל אבל מכבד את העדפת order_messages של המשתמש (דף הגדרות ההתראות)
+async function postOrderMessage(userId, msg) {
+  try {
+    const { rows } = await q('SELECT order_messages FROM user_notification_prefs WHERE user_id=$1', [userId]);
+    if (rows[0] && rows[0].order_messages === false) return null;
+  } catch (e) { /* טעות קריאה — לא חוסמים */ }
+  return postUserMessage(userId, msg);
+}
+
+module.exports = { renderTemplate, renderTemplateByKey, postUserMessage, postOrderMessage };

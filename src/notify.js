@@ -70,6 +70,11 @@ async function notifyUser(userId, tenantId, body, phone, title) {
     await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [userId, tenantId, 'muted', body, false]).catch(() => {});
     return;
   }
+  // N7: שקט בשבת וחגים (אופט-אין בדף ההגדרות) — נרשם כ-shabbat-muted, לא נשלח דבר
+  if (await require('./shabbat').shabbatMuted(userId)) {
+    await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [userId, tenantId, 'shabbat-muted', body, false]).catch(() => {});
+    return;
+  }
   // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג רק אם ה-push לא הצליח (ממצא 6: לא דורסים sent מוצלח)
   try { const p = await sendPushToUser(userId, { title: 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
   if (!sent && phone) {
@@ -78,7 +83,7 @@ async function notifyUser(userId, tenantId, body, phone, title) {
   }
   await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)',
     [userId, tenantId, channel, body, sent]);
-  require('./usermessages').postUserMessage(userId, { tenantId, kind: 'order', title: title || 'עדכון מהמכבסה', body }).catch(() => {}); // N6: מראה במרכז ההודעות
+  require('./usermessages').postOrderMessage(userId, { tenantId, kind: 'order', title: title || 'עדכון מהמכבסה', body }).catch(() => {}); // N6+N7: מראה במרכז ההודעות (מכבד העדפת order_messages)
 }
 
 module.exports = { sendWhatsApp, sendViaBot, notifyUser };

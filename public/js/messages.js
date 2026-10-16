@@ -24,7 +24,7 @@ async function vMessages() {
     </div>
    </div>`).join('')
    : '<div class="card mut" style="text-align:center;padding:30px 0">אין הודעות עדיין</div>';
-  return `<div class="hdr"><h2>מרכז הודעות</h2></div><div class="body">
+  return `<div class="hdr"><h2>מרכז הודעות</h2><a href="#/notif-settings" style="color:#fff;font-size:12px">⚙️ הגדרות התראות</a></div><div class="body">
    ${d.unread ? `<div style="text-align:left;margin-bottom:8px"><button class="btn2" data-act="msgReadAll">סמן הכל כנקרא (${d.unread})</button></div>` : ''}
    ${list}
   </div>`;

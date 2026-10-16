@@ -58,6 +58,7 @@ async function route(){
   else if(parts[0]==='join')html=await vJoin();
   else if(parts[0]==='help')html=vHelp(); // D1
   else if(parts[0]==='messages')html=await vMessages(); // N1
+  else if(parts[0]==='notif-settings')html=await vNotifSettings(); // N7
   else if(parts[0]==='bot-sim')html=vBotSim(); // N3
   else if(parts[0]==='pay')html=await vPay(parts[1]);
   else if(parts[0]==='verify')html=await vVerify(parts[1]);

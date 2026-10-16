@@ -74,6 +74,7 @@ app.use('/api/cart', require('./routes/cart')); // E14.T1: עגלה בענן
 app.use('/api', require('./routes/push')); // E9.T3: web push
 app.use('/api', require('./routes/analytics')); // דוחות וניתוח: /t/:slug/analytics, /admin/analytics
 app.use('/api/messages', require('./routes/messages')); // N1: מרכז הודעות פנימי
+app.use('/api/me/notification-settings', require('./routes/notif-settings')); // N7: דף הגדרות התראות
 app.use('/api/admin/message-templates', require('./routes/message-templates')); // N2: תבניות הודעה
 app.use('/api/bot-sim', require('./routes/bot-sim')); // N3: סימולציית צ'אט בוט
 app.use('/api/sim-outbox', require('./routes/sim-outbox')); // N4: דוא"ל/וואטסאפ מדומה
