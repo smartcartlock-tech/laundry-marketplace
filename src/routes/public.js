@@ -12,7 +12,7 @@ r.get('/laundries', async (req, res) => {
   if (service) { params.push(service); where += ` AND $${params.length} = ANY(t.services)`; }
   const { rows } = await q(
     `SELECT t.id, t.slug, t.name, t.letter, t.color, t.city, t.address, t.services, t.rating, t.rating_count,
-            t.delivery_fee, t.min_order, t.is_open, t.lat, t.lng,
+            t.delivery_fee, t.min_order, t.is_open, t.hours, t.lat, t.lng,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active AND i.unit='kg') AS from_kg,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active) AS from_price
      FROM tenants t ${where} ORDER BY t.created_at ASC LIMIT 100`, params);

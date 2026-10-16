@@ -21,6 +21,7 @@ r.post('/otp/request', limiter('otp-request', 5, 10 * 60 * 1000), async (req, re
   try {
     const { kind, target } = normalizeTarget(req.body.target);
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });
+    if (kind === 'phone' && !/^\+972\d{8,9}$/.test(target)) return res.status(400).json({ error: 'מספר טלפון ישראלי לא תקין' });
     const code = String(crypto.randomInt(100000, 999999));
     let channel = 'demo', demoCode;
     if (kind === 'phone') {

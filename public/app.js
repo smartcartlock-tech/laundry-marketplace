@@ -32,6 +32,15 @@ async function applyBrandTheme(slug){
 }
 function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier)}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+/* פתוח כעת: is_open ידני + שעות פעילות (אזור זמן ישראל). בלי שעות מוגדרות — לפי is_open בלבד */
+function openNow(l){
+ if(!l.is_open)return false;
+ const h=l.hours||{};if(!Object.keys(h).length)return true;
+ const now=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Jerusalem'}));
+ const rs=h[now.getDay()];if(!rs||!rs.length)return false;
+ const hm=now.getHours()*60+now.getMinutes();
+ return rs.some(r=>{const m=String(r[0]).match(/(\d+):(\d+)/),n=String(r[1]).match(/(\d+):(\d+)/);if(!m||!n)return false;return hm>=m[1]*60+ +m[2]&&hm<=n[1]*60+ +n[2]});
+}
 let toastTimer=null;
 function toast(m){let t=$('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t)}t.textContent=m;t.classList.add('show');if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400)},4000)}
 /* חלון אישור/קלט פנימי (מחליף confirm/prompt של הדפדפן) */
@@ -110,7 +119,7 @@ function vLogin(){
   }
  }
  return `<div class="hdr" style="text-align:center;padding-top:34px">
-  <div class="big">מכבסה בקליק</div><p>כל המכבסות באזורך — במקום אחד</p></div>
+  <h1 class="big" style="margin:0">מכבסה בקליק</h1><p>כל המכבסות באזורך — במקום אחד</p></div>
  ${ctx?`<div class="body">${ctx}</div>`:''}
  <div class="body"><div class="card">
   <label class="lb">טלפון או אימייל</label>
@@ -164,7 +173,7 @@ async function vHome(q){
  let laundries=[];
  try{const r=await api('/laundries'+(q?'?q='+encodeURIComponent(q):''));laundries=r.laundries}catch(e){toast(e.message)}
  return `<div class="hdr" style="text-align:center;padding-top:26px">
-  <div class="big">מכבסה בקליק</div>
+  <h1 class="big" style="margin:0">מכבסה בקליק</h1>
   <p style="font-size:13px">כל המכבסות באזורך — במקום אחד</p>
   <div class="searchbar" style="margin-top:14px"><input id="q" placeholder="מכבסה, עיר, שירות…" value="${esc(q||'')}" onkeydown="if(event.key==='Enter')go('#/?q='+encodeURIComponent(this.value))"><button class="go" onclick="go('#/?q='+encodeURIComponent($('#q').value))">חיפוש</button></div>
  </div>
@@ -184,10 +193,10 @@ async function vHome(q){
    <label style="display:block;margin:4px 0;font-size:13px"><input type="checkbox" id="hf-open" onchange="homeFilter()"> פתוח עכשיו</label>
   </aside>
   <div class="home-grid" id="home-grid">
-  ${laundries.map(l=>`<a class="card lcard" data-rating="${l.rating||0}" data-open="${l.is_open?1:0}" data-services="${esc((l.services||[]).join('|'))}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
+  ${laundries.map(l=>`<a class="card lcard" data-rating="${l.rating||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
     ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
-     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${l.is_open?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
+     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}</div>
      <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
     </div><span style="color:#8a99a3">‹</span></a>`).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
@@ -227,7 +236,7 @@ async function vLaundry(slug){
   <div style="display:flex;gap:12px;align-items:center">
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
    ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
-   <div><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${l.is_open?'פתוח':'סגור'}</p></div>
+   <div><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
   </div>
  </div>
  <div class="body">
@@ -463,7 +472,7 @@ async function vClub(){
   ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${b.color||'#0e7a8a'}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
   <div class="sec">תנועות אחרונות</div>
-  <div class="card">${d.recent.map(p=>`<div class="row"><div>${esc(p.name)}<div class="mut">${esc(p.reason||'')}</div></div><div style="color:${p.delta>0?'#178a4c':'#c22'};font-weight:700">${p.delta>0?'+':''}${p.delta}</div></div>`).join('')||'<div class="mut">אין תנועות</div>'}</div>
+  <div class="card">${d.recent.map(p=>`<div class="row"><div>${esc(p.name)}<div class="mut">${esc(({review_bonus:'בונוס על ביקורת'})[p.reason]||p.reason||'')}</div></div><div style="color:${p.delta>0?'#178a4c':'#c22'};font-weight:700">${p.delta>0?'+':''}${p.delta}</div></div>`).join('')||'<div class="mut">אין תנועות</div>'}</div>
  </div>`;
 }
 
@@ -940,9 +949,16 @@ async function subUpgrade(id,slug){
  try{
   const d=await api('/subscriptions/plans/'+slug);
   if(!d.plans.length)return toast('אין תוכניות זמינות');
-  const v=await xmodal({title:'שינוי תוכנית',body:d.plans.map((p,i)=>`${i+1}. ${esc(p.name)} — ${p.bags_per_month} שקים, ₪${p.price}/חודש`).join('<br>'),okText:'שינוי',fields:[{id:'idx',label:'מספר תוכנית (1-'+d.plans.length+')'}]});
-  if(!v)return;
-  const p=d.plans[Number(v.idx)-1];if(!p)return toast('בחירה לא תקינה');
+  const p=await new Promise(resolve=>{
+   const ov=document.createElement('div');ov.className='modal-ov';
+   ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>שינוי תוכנית</b><div class="mut" style="margin:8px 0">בחרו תוכנית חדשה:</div>${d.plans.map((p,i)=>`<button class="btn2" style="display:block;width:100%;margin:6px 0;text-align:right" data-i="${i}"><b>${esc(p.name)}</b> · ${p.bags_per_month} שקים · ₪${p.price}/חודש</button>`).join('')}<button class="btn2" id="pl-cancel" style="width:100%;margin-top:8px">ביטול</button></div>`;
+   document.body.appendChild(ov);
+   const done=v=>{ov.remove();resolve(v)};
+   ov.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>done(d.plans[Number(b.dataset.i)]));
+   ov.querySelector('#pl-cancel').onclick=()=>done(null);
+   ov.onclick=e=>{if(e.target===ov)done(null)};
+  });
+  if(!p)return;
   await api('/subscriptions/'+id+'/upgrade',{method:'POST',body:JSON.stringify({plan_id:p.id})});
   toast('התוכנית עודכנה');route();
  }catch(e){toast(e.message)}

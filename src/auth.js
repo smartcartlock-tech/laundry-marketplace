@@ -39,6 +39,7 @@ async function requireTenantMember(req, res, next) {
 async function requireCourier(req, res, next) {
   const { rows } = await q('SELECT * FROM couriers WHERE user_id=$1', [req.user.id]);
   if (!rows[0]) return res.status(403).json({ error: 'נדרשת הרשאת שליח' });
+  if (!rows[0].approved) return res.status(403).json({ error: 'חשבון השליח ממתין לאישור או הושעה' });
   req.courier = rows[0];
   next();
 }

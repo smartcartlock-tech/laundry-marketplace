@@ -114,3 +114,27 @@ test('E5.T2: אישור/דחייה עם סיבה והגשה מחדש', async (t)
   const reg3 = await registerCourier(base, token);
   assert.equal(reg3.status, 409);
 });
+
+test('QA: שליח מושעה/לא מאושר נחסם מנתיבי courier; טלפון לא תקין נדחה ב-OTP', async (t) => {
+  const { base, api } = await startApp(t);
+  const token = await api.login('+972500000030', 'שליח ממתין');
+  const reg = await registerCourier(base, token, { areas: ['חיפה'] });
+  assert.equal(reg.status, 201, JSON.stringify(reg.json));
+  // טרם אושר — כל נתיבי השליח חסומים
+  for (const p of ['/api/courier/offers', '/api/courier/route', '/api/courier/earnings', '/api/courier/profile']) {
+    const r = await api(p, { token });
+    assert.equal(r.status, 403, p + ' -> ' + r.status);
+  }
+  // אבל סטטוס ההרשמה נגיש
+  const st = await api('/api/courier/registration', { token });
+  assert.equal(st.status, 200);
+
+  // OTP: מספר עם ספרה מיותרת נדחה
+  for (const bad of ['+9725000000034', '05000000034', '+1234']) {
+    const r = await api('/api/auth/otp/request', { method: 'POST', body: { target: bad } });
+    assert.equal(r.status, 400, bad + ' -> ' + r.status);
+  }
+  // מספר תקין מתקבל ומנורמל
+  const ok = await api('/api/auth/otp/request', { method: 'POST', body: { target: '0500000031' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+});
