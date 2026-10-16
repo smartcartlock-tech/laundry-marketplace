@@ -80,14 +80,6 @@
  }
  Object.keys(FORMS).forEach(wrapForm);
 
- /* Esc סוגר את המודאל הפנימי */
- document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){
-   const ov=document.querySelector('.modal-ov');
-   if(ov){const c=ov.querySelector('#xm-cancel');if(c)c.click()}
-  }
- });
-
  /* קישור דילוג לתוכן */
  if(!document.querySelector('.skip-link')){
   const sk=document.createElement('a');

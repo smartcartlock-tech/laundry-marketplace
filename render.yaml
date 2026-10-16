@@ -16,8 +16,8 @@ services:
         value: "true"   # לסביבת הדמו בלבד — לכבות בפרודקשן אמיתי
       - key: DEMO_OTP
         value: "true"
-      - key: DEMO_NOTIFY_ALLOWLIST   # G5: בדמו יוצאות הודעות אמיתיות רק למספרים האלה (מספר חיים)
-        value: "+972503500750"
+      - key: DEMO_NOTIFY_ALLOWLIST   # G5: בדמו יוצאות הודעות אמיתיות רק למספרים האלה; הערך (מספר אמיתי) מוזן ידנית ב-Render בלבד — לא נשמר בריפו
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL   # Neon free Postgres (eu-central-1) — connection string מלא
@@ -30,3 +30,7 @@ services:
         sync: false
       - key: TWILIO_WHATSAPP_FROM
         value: whatsapp:+14155238886
+      - key: FIELD_ENC_KEY   # 32 בתים base64 — הצפנת שדות רגישים (src/fieldcrypto.js); fail-fast בלעדיו
+        sync: false
+      - key: BACKUP_KEY      # 32 בתים base64 — הצפנת הגיבוי היומי (src/backup-crypto.js); נופל ל-FIELD_ENC_KEY אם ריק
+        sync: false

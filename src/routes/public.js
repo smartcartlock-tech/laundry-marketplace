@@ -168,8 +168,8 @@ ${t.logo ? `<img src="/api/laundries/${req.params.slug}/logo" style="width:70px;
 <div class="u">${escH(brandedUrl(req))}</div>
 <div class="s" style="margin-top:10px">סרקו להזמנת כביסה באפליקציה שלנו</div>
 <div class="pw">מופעל ע״י מכבסה בקליק</div>
-</div><div class="np" style="margin-top:16px"><button onclick="print()">הדפסה</button></div>
-</body></html>`);
+</div><div class="np" style="margin-top:16px"><button id="cardPrint" type="button">הדפסה</button></div>
+<script src="/js/branch-card.js"></script></body></html>`);
 });
 
 // קונפיגורציה ציבורית ל-PWA
