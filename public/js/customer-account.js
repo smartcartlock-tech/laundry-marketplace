@@ -71,14 +71,36 @@
   };
 
   window.vJoinFamily = function(token){
+    if (!state.token){
+      return `<div class="hdr"><h2>הצטרפות למנוי משפחתי</h2></div>
+      <div class="body"><div class="card" style="text-align:center">
+        <div style="font-size:40px">🧺</div>
+        <b>הוזמנת להצטרף כבן/בת משפחה למנוי</b>
+        <div class="mut" style="margin:8px 0">כדי לאשר את ההצטרפות צריך להתחבר או להירשם — ואז נחזיר אתכם לכאן</div>
+        <button class="btn" id="fam-login" data-token="${esc(token||'')}">התחברות והצטרפות</button>
+      </div></div>`;
+    }
     return `<div class="hdr"><h2>הצטרפות למנוי משפחתי</h2></div>
     <div class="body"><div class="card" style="text-align:center">
       <div style="font-size:40px">🧺</div>
-      <b>הוזמנת להצטרף כבן/בת משפחה למנוי</div></b>
+      <b>הוזמנת להצטרף כבן/בת משפחה למנוי</b>
       <div class="mut" style="margin:8px 0">סביבת דמו — ההצטרפות להמחשה בלבד</div>
       <button class="btn" id="fam-join" data-token="${esc(token||'')}">אישור הצטרפות</button>
     </div></div>`;
   };
+
+  /* חזרה לקישור הצטרפות אחרי התחברות */
+  if (typeof window.route === 'function'){
+    const origR = window.route;
+    window.route = function(){
+      const out = origR.apply(this, arguments);
+      try{
+        const pend = sessionStorage.getItem('wlm_family_join');
+        if (pend && state.token){ sessionStorage.removeItem('wlm_family_join'); setTimeout(()=>go('#/join-family/'+pend), 50); }
+      }catch(e){}
+      return out;
+    };
+  }
 
   /* ---------- B4: חיפוש וסינון בהיסטוריית הזמנות ---------- */
   const STATUS_HE = {new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_progress:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
@@ -249,6 +271,10 @@
         inp.select();
         try{ await navigator.clipboard.writeText(inp.value); toast('הקישור הועתק'); }
         catch(e){ document.execCommand('copy'); toast('הקישור הועתק'); }
+      }
+      else if (id === 'fam-login'){
+        try{ sessionStorage.setItem('wlm_family_join', t.dataset.token || ''); }catch(e){}
+        go('#/');
       }
       else if (id === 'fam-join'){
         const d = await api('/family/join', {method:'POST', body:JSON.stringify({token: t.dataset.token})});
