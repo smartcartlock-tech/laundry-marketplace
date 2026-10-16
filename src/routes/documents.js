@@ -43,14 +43,15 @@ async function sendPdf(res, d, copy) {
   const customer = { name: d.customer_name, phone: d.customer_phone };
   let order = null;
   if (d.order_id) {
-    const { rows: orow } = await q('SELECT id, delivery_fee FROM orders WHERE id=$1', [d.order_id]);
+    const { rows: orow } = await q('SELECT id, delivery_fee, discount FROM orders WHERE id=$1', [d.order_id]);
     order = orow[0] || { id: d.order_id };
   }
   // זיכוי: הפניה למסמך המקור ברינדור חוזר
   let creditNote = null;
   if (d.kind === 'credit' && d.original_id) {
-    const { rows: orig } = await q('SELECT doc_number, doc_year FROM documents WHERE id=$1', [d.original_id]);
+    const { rows: orig } = await q('SELECT doc_number, doc_year, total FROM documents WHERE id=$1', [d.original_id]);
     if (orig[0]) { d.original_number = orig[0].doc_number; d.original_year = orig[0].doc_year;
+      d.credit_full = Math.abs(Number(d.total)) >= Number(orig[0].total) - 0.001;
       creditNote = `בזיכוי למסמך מספר ${orig[0].doc_number}/${orig[0].doc_year}`; }
   }
   // מקור: הבייטים המקוריים, בלתי משתנים. מסמך מדור קדם-רצועת-אימות (sha256 חסר)

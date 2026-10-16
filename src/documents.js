@@ -56,7 +56,8 @@ async function issueDocument(client, opts) {
     throw { status: 409, error: 'עוסק פטור אינו רשאי לגבות מע"מ' };
   }
 
-  const year = new Date().getFullYear();
+  // שנת ההפקה בשעון ישראל — לא UTC של השרת (ליל 31.12)
+  const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()));
   const num = await nextDocNumber(client, tenant.id, kind);
   const { rows } = await client.query(
     `INSERT INTO documents(tenant_id, order_id, customer_id, kind, doc_year, doc_number, allocation_number,
@@ -69,6 +70,18 @@ async function issueDocument(client, opts) {
   rows[0].signature = sig;
   await audit(client, rows[0].id, 'issued', opts.actorId, { kind, number: num, total, demo: true });
   return rows[0];
+}
+
+// פיצול סכום זיכוי ל-amount/vat: amount מחושב כהפרש יתרות יחסיות מעוגלות (בזיכוי סוגר נסגרת
+// השארית בדיוק), ו-vat תמיד משלים ל-total כדי ש-amount+vat=total גם באגורות שבורות.
+function creditSplit(original, amt) {
+  const r2 = x => Math.round(x * 100) / 100;
+  const total = Number(original.total), credited = Number(original.credited_amount);
+  const amountBefore = r2(Number(original.amount) * (credited / total));
+  const amountAfter = r2(Number(original.amount) * ((credited + amt) / total));
+  const amount = -(amountAfter - amountBefore);
+  const vat = r2(-amt - amount);
+  return { amount, vat };
 }
 
 // הנפקת זיכוי מול מסמך מקור. amount=null → זיכוי מלא של היתרה.
@@ -84,11 +97,10 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
   const amt = amount === null || amount === undefined ? remaining : Math.round(Number(amount) * 100) / 100;
   if (!(amt > 0)) throw { status: 400, error: 'סכום זיכוי לא תקין' };
   if (amt > remaining) throw { status: 409, error: `לא ניתן לזכות מעל יתרת המסמך (₪${remaining})` };
-  const ratio = amt / Number(original.total);
+  const split = creditSplit(original, amt);
   const credit = await issueDocument(client, {
     tenant, kind: 'credit', order: { id: original.order_id }, customer: { id: original.customer_id },
-    amount: -Math.round(Number(original.amount) * ratio * 100) / 100,
-    vat: -Math.round(Number(original.vat) * ratio * 100) / 100,
+    amount: split.amount, vat: split.vat,
     total: -amt, originalId: original.id, actorId, pdf,
   });
   // PDF מקור לזיכוי — נבנה ונשמר מיד (כמו שאר המסמכים), עם הפניה למסמך המקור
@@ -99,6 +111,7 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
       ? await client.query('SELECT * FROM order_items WHERE order_id=$1', [original.order_id]) : { rows: [] };
     credit.original_number = original.doc_number;
     credit.original_year = original.doc_year;
+    credit.credit_full = Math.round((Number(original.credited_amount) + amt) * 100) / 100 >= Number(original.total);
     const codes = await docVerificationImages(credit);
     const pdfDoc = buildDocumentPDF({
       doc: credit, order: original.order_id ? { id: original.order_id } : null, items: itemRows, tenant,
@@ -119,10 +132,12 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
 }
 
 // עדכון מספר הקצאה (9 ספרות) — השדה היחיד הניתן לעדכון מחוץ לזיכוי
-async function setAllocationNumber(client, docId, allocationNumber, actorId) {
+async function setAllocationNumber(client, docId, tenantId, allocationNumber, actorId) {
   if (!/^\d{9}$/.test(String(allocationNumber))) throw { status: 400, error: 'מספר הקצאה חייב להיות 9 ספרות' };
+  const { rows: cur } = await client.query('SELECT id, tenant_id, allocation_number FROM documents WHERE id=$1 FOR UPDATE', [docId]);
+  if (!cur[0] || (tenantId && cur[0].tenant_id !== tenantId)) throw { status: 404, error: 'מסמך לא נמצא' };
+  if (cur[0].allocation_number) throw { status: 409, error: 'מספר הקצאה כבר הוגדר — לא ניתן לדרוס' };
   const { rows } = await client.query('UPDATE documents SET allocation_number=$2 WHERE id=$1 RETURNING *', [docId, String(allocationNumber)]);
-  if (!rows[0]) throw { status: 404, error: 'מסמך לא נמצא' };
   await audit(client, docId, 'allocation_set', actorId, { allocation_number: String(allocationNumber) });
   return rows[0];
 }
@@ -153,7 +168,7 @@ async function migrateDocumentIntegrity() {
   if (fixedSig || fixedHash) console.log(`[documents] integrity migration: ${fixedSig} signatures, ${fixedHash} sha256 fixed`);
 }
 
-module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };
+module.exports = { issueDocument, creditDocument, creditSplit, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };
 
 // E12.T2: הנפקה אוטומטית של מסמכים בעת delivered — אידמפוטנטי, לפי סוג העוסק של המכבסה.
 // עוסק מורשה: חשבונית עסקה (מע"מ כלול במחיר) + קבלה על התשלום. עוסק פטור: קבלה בלבד.
@@ -161,6 +176,8 @@ module.exports = { issueDocument, creditDocument, setAllocationNumber, nextDocNu
 async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
   if (!tenant.dealer_type) return [];
   if (tenant.invoice_mode === 'consolidated') return []; // במצב חשבונית מרכזת ההפקה ידנית ומרוכזת
+  // נעילת שורת ההזמנה — שני מעברי delivered מקבילים מסתדרים ולא מונפק מסמך כפול
+  await client.query('SELECT id FROM orders WHERE id=$1 FOR UPDATE', [order.id]);
   const { rows: existing } = await client.query(
     `SELECT id FROM documents WHERE order_id=$1 AND kind<>'credit' LIMIT 1`, [order.id]);
   if (existing.length) return []; // כבר הונפק — לא משכפלים

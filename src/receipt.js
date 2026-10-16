@@ -216,7 +216,23 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.original_year || d.doc_year}`);
   pdf.moveDown(0.8);
 
-  if (items && items.length) {
+  if (d.kind === 'credit') {
+    // זיכוי: שורת זיכוי אחת (חלקי/מלא) — לא פירוט הזמנת המקור במלואו
+    pdf.font('heb').fontSize(11).fillColor('#0e7a8a');
+    line(pdf, 'פירוט');
+    pdf.moveTo(50, pdf.y).lineTo(PAGE_RIGHT, pdf.y).strokeColor('#0e7a8a').lineWidth(1).stroke();
+    pdf.moveDown(0.3);
+    pdf.font('he').fontSize(10).fillColor('#111');
+    const y = pdf.y;
+    pdf.text(money(Number(d.total)), 50, y, { lineBreak: false });
+    pdf.text('x1', 130, y, { lineBreak: false });
+    const label = `זיכוי ${d.credit_full ? 'מלא' : 'חלקי'}${d.original_number ? ` בגין מסמך מספר ${d.original_number}/${d.original_year || d.doc_year}` : ''}`;
+    const h = drawRtl(pdf, label, PAGE_RIGHT, y);
+    pdf.y = Math.max(y + h, y + 16);
+    pdf.moveDown(0.5);
+    pdf.moveTo(50, pdf.y).lineTo(PAGE_RIGHT, pdf.y).strokeColor('#ccc').lineWidth(0.5).stroke();
+    pdf.moveDown(0.4);
+  } else if (items && items.length) {
     pdf.font('heb').fontSize(11).fillColor('#0e7a8a');
     line(pdf, 'פירוט');
     pdf.moveTo(50, pdf.y).lineTo(PAGE_RIGHT, pdf.y).strokeColor('#0e7a8a').lineWidth(1).stroke();
@@ -235,6 +251,13 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
       pdf.font('he').text(money(Number(order.delivery_fee)), 50, y, { lineBreak: false });
       pdf.text('x1', 130, y, { lineBreak: false });
       const h = drawRtl(pdf, 'איסוף והחזרה', PAGE_RIGHT, y);
+      pdf.y = Math.max(y + h, y + 16);
+    }
+    if (order && Number(order.discount) > 0) {
+      const y = pdf.y;
+      pdf.font('he').text('-' + money(Number(order.discount)), 50, y, { lineBreak: false });
+      pdf.text('x1', 130, y, { lineBreak: false });
+      const h = drawRtl(pdf, 'הנחה (נקודות/קופון)', PAGE_RIGHT, y);
       pdf.y = Math.max(y + h, y + 16);
     }
     pdf.moveDown(0.5);

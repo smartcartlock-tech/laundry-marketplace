@@ -63,10 +63,12 @@ test('E12.T1: מספור רציף, אי-שינוי, זיכוי, הקצאה, audi
     await assert.rejects(q(`UPDATE ${SCHEMA}.documents SET total=1 WHERE id='${d1.id}'`), /immutable/);
     await assert.rejects(q(`DELETE FROM ${SCHEMA}.documents WHERE id='${d1.id}'`), /immutable/);
 
-    // מספר הקצאה: 9 ספרות בלבד, עדכון מותר
+    // מספר הקצאה: 9 ספרות בלבד, בעלות tenant נבדקת, דריסה חסומה
     await client.query('BEGIN');
-    await assert.rejects(setAllocationNumber(client, d1.id, '123', null));
-    const upd = await setAllocationNumber(client, d1.id, '000123456', null);
+    await assert.rejects(setAllocationNumber(client, d1.id, tenantM.id, '123', null));
+    await assert.rejects(setAllocationNumber(client, d1.id, tenantP.id, '000123456', null)); // tenant זר
+    const upd = await setAllocationNumber(client, d1.id, tenantM.id, '000123456', null);
+    await assert.rejects(setAllocationNumber(client, d1.id, tenantM.id, '000999888', null)); // דריסה
     await client.query('COMMIT');
     assert.strictEqual(upd.allocation_number, '000123456');
 
