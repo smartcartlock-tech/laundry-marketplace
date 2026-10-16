@@ -36,7 +36,11 @@ async function opsPauseToggle(slug, pause){
 }
 async function opsClosureAdd(slug){
  const inp=document.getElementById('ops-closure-day');if(!inp||!inp.value)return;
- try{await api(`/t/${slug}/ops/closures`,{method:'POST',body:JSON.stringify({day:inp.value})});toast('יום הסגירה נוסף');route()}catch(e){toast(e.message)}
+ /* קלט dd/mm/yyyy עברי → YYYY-MM-DD לשרת */
+ const m=inp.value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+ if(!m){toast('פורמט תאריך: dd/mm/yyyy');return}
+ const day=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+ try{await api(`/t/${slug}/ops/closures`,{method:'POST',body:JSON.stringify({day})});toast('יום הסגירה נוסף');route()}catch(e){toast(e.message)}
 }
 async function opsClosureDel(slug,day){
  try{await api(`/t/${slug}/ops/closures/${day}`,{method:'DELETE'});toast('יום הסגירה הוסר');route()}catch(e){toast(e.message)}
@@ -57,7 +61,7 @@ async function opsClosureDel(slug,day){
          <span class="st-pill ${paused?'st-cancelled':'st-delivered'}">${paused?'מושהה עד '+new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'פעיל'}</span>
          <button class="btn2" onclick="opsPauseToggle('${m.slug}',${!paused})">${paused?'חידוש קבלת הזמנות':'השהיה לשעתיים'}</button></div>
         <div class="sec" style="font-size:13px;margin-top:8px">ימי סגירה/חגים</div>
-        <div style="display:flex;gap:6px;align-items:center"><input type="date" class="inp" id="ops-closure-day" style="max-width:170px"><button class="btn2" onclick="opsClosureAdd('${m.slug}')">הוספה</button></div>
+        <div style="display:flex;gap:6px;align-items:center"><input type="text" class="inp" id="ops-closure-day" placeholder="dd/mm/yyyy" inputmode="numeric" style="max-width:170px"><button class="btn2" onclick="opsClosureAdd('${m.slug}')">הוספה</button></div>
         ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" onclick="opsClosureDel('${m.slug}','${c.day}')">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</div>`;
       return html.replace('<div class="body">', '<div class="body">' + card);
     }catch(e){ return html; }

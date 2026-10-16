@@ -42,8 +42,8 @@ function vHelp(){
       if (!nav || nav.querySelector('a[href$="#/help"]')) return;
       const a = document.createElement('a');
       a.href = '#/help';
-      a.style.cssText = 'color:#fff;text-decoration:none;text-align:center;font-size:11px';
-      a.innerHTML = '<div style="font-size:18px">?</div>עזרה';
+      /* בלי צבע inline — יורש את עיצוב שאר הקישורים (מובייל=כהה על לבן, דסקטופ=לבן על כהה) */
+      a.innerHTML = '<span class="ic">?</span>עזרה';
       (nav.querySelector('.in') || nav).appendChild(a);
     }catch(e){}
   }
