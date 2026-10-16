@@ -25,7 +25,7 @@ const DAY_HE = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי'
 
 // N7: אישורים מפורשים ממתינים (ביטול/שינוי חלון) — בזיכרון, תפוגה 2 דקות. סימולציה, לא production-grade state.
 const pending = new Map();
-function pendKey(user, req, code) { return `${user ? user.id : 'anon:' + (req && req.ip || '')}:${code}`; }
+function pendKey(user, req, code) { return `${user ? user.id : 'anon'}:${code}`; } // הקוד עצמו הוא גורם האימות — לא תלוי IP (פרוקسي משתנה)
 function setPending(k, v) { pending.set(k, { ...v, exp: Date.now() + 2 * 60 * 1000 }); }
 function takePending(k) { const v = pending.get(k); if (!v) return null; if (v.exp < Date.now()) { pending.delete(k); return null; } pending.delete(k); return v; }
 
