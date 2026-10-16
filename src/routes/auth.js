@@ -5,6 +5,7 @@ const { sign, requireAuth } = require('../auth');
 const { sendWhatsApp } = require('../notify');
 
 const r = express.Router();
+const { limiter } = require('../ratelimit');
 const DEMO_OTP = () => process.env.DEMO_OTP !== 'false'; // ברירת מחדל: מצב דמו פעיל
 
 function normalizeTarget(raw) {
@@ -16,7 +17,7 @@ function normalizeTarget(raw) {
   return { kind: 'phone', target: p };
 }
 
-r.post('/otp/request', async (req, res) => {
+r.post('/otp/request', limiter('otp-request', 5, 10 * 60 * 1000), async (req, res) => {
   try {
     const { kind, target } = normalizeTarget(req.body.target);
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });
@@ -35,7 +36,7 @@ r.post('/otp/request', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-r.post('/otp/verify', async (req, res) => {
+r.post('/otp/verify', limiter('otp-verify', 10, 10 * 60 * 1000), async (req, res) => {
   try {
     const { target } = normalizeTarget(req.body.target);
     const code = String(req.body.code || '').trim();
