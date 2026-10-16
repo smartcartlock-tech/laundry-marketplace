@@ -25,7 +25,7 @@ function vCourierRegister(user,courier){
   <label class="lb">ביטוח (רשות)</label><input class="inp" id="cr-insurance" type="file" accept="image/*,application/pdf">
   <label class="lb">תמונה אישית (רשות)</label><input class="inp" id="cr-photo" type="file" accept="image/*">
  </div>
- <button class="btn" onclick="courierRegister()">שליחת בקשה לאישור</button>
+ <button class="btn" data-act="courierRegister">שליחת בקשה לאישור</button>
  </div>`;
 }
 async function courierRegister(){
@@ -48,3 +48,7 @@ async function courierRegister(){
   toast('הבקשה נשלחה לאישור');route();
  }catch(e){toast(e.message)}
 }
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ courierRegister:()=>courierRegister()
+});

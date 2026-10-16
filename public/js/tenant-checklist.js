@@ -18,7 +18,7 @@
           ? `<div class="mut" style="margin-top:6px">✅ הסכם שירות (גרסה ${esc(ag.accepted_version)}) אושר ב-${fmtDT(ag.accepted_at)}</div>`
           : `<details style="margin-top:8px"><summary style="cursor:pointer;color:#0e7a8a;font-weight:600">📄 יש לקרוא ולאשר את הסכם השירות (גרסה ${esc(ag.version)})</summary>
              <div style="white-space:pre-wrap;background:#f6f9fa;border-radius:8px;padding:10px;margin-top:6px;font-size:13px;max-height:220px;overflow:auto">${esc(ag.text)}</div>
-             <button class="btn2 on" style="margin-top:8px" onclick="acceptAgreement('${m.slug}','${esc(ag.version)}',this)">קראתי ואני מסכים/ה</button></details>`;
+             <button class="btn2 on" style="margin-top:8px" data-act="acceptAgreement" data-a="${m.slug}" data-b="${esc(ag.version)}">קראתי ואני מסכים/ה</button></details>`;
       }catch(e){ /* ההסכם לא חוסם את הכרטיס */ }
       const color = d.complete ? '#178a4c' : '#0e7a8a';
       const rows = d.items.map(i =>
@@ -43,3 +43,7 @@
     }catch(e){ btn.disabled = false; toast(e.message); }
   };
 })();
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ acceptAgreement:t=>acceptAgreement(t.dataset.a,t.dataset.b,t)
+});

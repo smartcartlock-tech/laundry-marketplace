@@ -19,14 +19,14 @@
      <div class="kpis"><div class="kpi"><b>${m(h.avg_to_confirm_min)}</b>עד אישור</div><div class="kpi"><b>${m(h.avg_to_pickup_min)}</b>עד איסוף</div><div class="kpi"><b>${m(h.avg_to_delivery_min)}</b>עד מסירה</div></div>
      <b>לפי שליח</b><table class="tbl"><tr><th>שליח</th><th>הזמנות</th><th>נמסרו</th><th>שווי</th><th>איסוף→מסירה</th></tr>
      ${o.couriers.map(c=>`<tr><td>${esc(c.courier)}</td><td>${c.orders}</td><td>${c.delivered}</td><td>₪${c.value}</td><td>${m(c.avg_pickup_to_delivery_min)}</td></tr>`).join('')||'<tr><td colspan="5" class="mut">אין נתונים</td></tr>'}</table>
-     <button class="btn2" style="margin-top:8px" onclick="downloadCsv('${csvPath}?days=${days()}','analytics-couriers.csv')">ייצוא שליחים וזמנים CSV</button></div>`;
+     <button class="btn2" style="margin-top:8px" data-act="anDownloadCsv" data-a="${csvPath}?days=${days()}" data-b="analytics-couriers.csv">ייצוא שליחים וזמנים CSV</button></div>`;
   }
   function card(a,csvPath,csvName,scope,ops,opsCsvPath){
     const T=a.totals, C=a.customers;
     const maxS=Math.max(1,...a.services.map(s=>Number(s.revenue)));
     const pct=C.repeat_pct||0;
     return `<div class="card" id="an-card"><div class="sec">אנליטיקה${scope?' — '+esc(scope):''} <span class="mut" style="font-weight:400">(נתוני דמו)</span></div>
-     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${RANGES.map(r=>`<button class="btn2 ${days()===r[0]?'on':''}" onclick="anRange(${r[0]})">${r[1]}</button>`).join('')}</div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${RANGES.map(r=>`<button class="btn2 ${days()===r[0]?'on':''}" data-act="anRange" data-a="${r[0]}">${r[1]}</button>`).join('')}</div>
      <div class="kpis">
       <div class="kpi"><b>₪${T.revenue}</b>הכנסות</div><div class="kpi"><b>${T.orders}</b>הזמנות</div>
       <div class="kpi"><b>₪${T.avg_order}</b>ממוצע להזמנה</div><div class="kpi"><b>${T.cancelled}</b>בוטלו</div></div>
@@ -40,7 +40,7 @@
         ${C.top.length?`<div>המובילים: ${C.top.map(c=>esc(c.name||'לקוח')+' ('+c.orders+')').join(', ')}</div>`:''}</div></div></div>
      ${a.by_tenant.length?`<div style="margin-top:14px"><b>לפי מכבסה</b><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>הכנסות</th></tr>${a.by_tenant.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.orders}</td><td>₪${t.revenue}</td></tr>`).join('')}</table></div>`:''}
      ${opsBlock(ops,opsCsvPath)}
-     <button class="btn2" style="margin-top:12px" onclick="downloadCsv('${csvPath}?days=${days()}','${csvName}')">ייצוא אנליטיקה CSV</button></div>`;
+     <button class="btn2" style="margin-top:12px" data-act="anDownloadCsv" data-a="${csvPath}?days=${days()}" data-b="${csvName}">ייצוא אנליטיקה CSV</button></div>`;
   }
   function inject(html,c){const i=html.lastIndexOf('</div>');return i<0?html+c:html.slice(0,i)+c+html.slice(i)}
   window.anRange=function(d){store.set('anDays',d);route()};
@@ -69,3 +69,7 @@
     };
   }
 })();
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ anRange:t=>anRange(Number(t.dataset.a)), anDownloadCsv:t=>downloadCsv(t.dataset.a,t.dataset.b)
+});

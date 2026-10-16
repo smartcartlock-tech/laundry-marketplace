@@ -14,7 +14,7 @@
         <label class="lb">טלפון</label><input class="inp" id="ap-phone" dir="ltr" inputmode="tel" placeholder="050-1234567">
         <label class="lb">הזמנות משוערות בחודש (רשות)</label><input class="inp" id="ap-est" dir="ltr" inputmode="numeric" type="number" min="0">
         <div style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"><label>אתר<input id="ap-website" tabindex="-1" autocomplete="off"></label></div>
-        <button class="btn" onclick="submitApplication()">שליחת בקשת הצטרפות</button>
+        <button class="btn" data-act="submitApplication">שליחת בקשת הצטרפות</button>
         <div class="note" style="margin-top:8px">הבקשה נשמרת בתור הטיפול של צוות הפלטפורמה.</div>
        </div>
        <div class="card" style="text-align:center"><span class="mut">כבר יש לך חשבון?</span> <a href="#/login" style="color:#0e7a8a">להתחברות והקמה עצמית עם AI</a></div>
@@ -31,7 +31,7 @@
       $('#app').innerHTML = `<div class="hdr"><h2>הבקשה התקבלה</h2></div>
        <div class="body"><div class="card" style="text-align:center"><div style="font-size:36px">🧺</div>
        <b>תודה, ${esc(body.name)}!</b><div class="mut" style="margin:6px 0">הבקשה נקלטה בתור ההצטרפות של צוות הפלטפורמה.</div>
-       <button class="btn" onclick="go('#/')">חזרה לדף הבית</button></div></div>`;
+       <button class="btn" data-act="goHome">חזרה לדף הבית</button></div></div>`;
     }catch(e){ toast(e.message); }
   };
 
@@ -51,8 +51,8 @@
            <div><b>${esc(a.laundry_name)}</b> · ${esc(a.city)} · <span dir="ltr">${esc(a.phone)}</span>${a.est_orders ? ` · ~${a.est_orders} הזמנות/חודש` : ''}
             <div class="mut">${fmtDT(a.created_at)} · ${ST[a.status] || a.status}${a.tenant_slug ? ` · <a href="#/admin/tenant/${a.tenant_id}">מכבסה: ${esc(a.tenant_slug)}</a>` : ''}</div></div>
            ${a.status === 'pending' ? `<div style="display:flex;gap:6px;align-items:start">
-            <button class="btn2 on" onclick="applicationConvert('${a.id}',this)">המרה למכבסה</button>
-            <button class="btn2" onclick="applicationReject('${a.id}')">דחייה</button></div>` : ''}
+            <button class="btn2 on" data-act="applicationConvert" data-a="${a.id}">המרה למכבסה</button>
+            <button class="btn2" data-act="applicationReject" data-a="${a.id}">דחייה</button></div>` : ''}
           </div></div>`).join('') || '<div class="card mut">אין בקשות הצטרפות</div>';
         return frame.replace(/<div class="body">[\s\S]*$/, `<div class="body">${tabs}${body}</div>`);
       }
@@ -70,3 +70,8 @@
     catch(e){ toast(e.message); }
   };
 })();
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ applicationConvert:t=>applicationConvert(t.dataset.a,t), applicationReject:t=>applicationReject(t.dataset.a),
+ goHome:()=>go('#/'), submitApplication:()=>submitApplication()
+});

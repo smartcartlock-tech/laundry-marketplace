@@ -59,10 +59,10 @@ async function opsClosureDel(slug,day){
       const card = `<div class="card"><div class="sec">זמינות לקבלת הזמנות</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
          <span class="st-pill ${paused?'st-cancelled':'st-delivered'}">${paused?'מושהה עד '+new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'פעיל'}</span>
-         <button class="btn2" onclick="opsPauseToggle('${m.slug}',${!paused})">${paused?'חידוש קבלת הזמנות':'השהיה לשעתיים'}</button></div>
+         <button class="btn2" data-act="opsPauseToggle" data-a="${m.slug}" data-b="${!paused}">${paused?'חידוש קבלת הזמנות':'השהיה לשעתיים'}</button></div>
         <div class="sec" style="font-size:13px;margin-top:8px">ימי סגירה/חגים</div>
-        <div style="display:flex;gap:6px;align-items:center"><input type="text" class="inp" id="ops-closure-day" placeholder="dd/mm/yyyy" inputmode="numeric" style="max-width:170px"><button class="btn2" onclick="opsClosureAdd('${m.slug}')">הוספה</button></div>
-        ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" onclick="opsClosureDel('${m.slug}','${c.day}')">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</div>`;
+        <div style="display:flex;gap:6px;align-items:center"><input type="text" class="inp" id="ops-closure-day" placeholder="dd/mm/yyyy" inputmode="numeric" style="max-width:170px"><button class="btn2" data-act="opsClosureAdd" data-a="${m.slug}">הוספה</button></div>
+        ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" data-act="opsClosureDel" data-a="${m.slug}" data-b="${c.day}">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</div>`;
       return html.replace('<div class="body">', '<div class="body">' + card);
     }catch(e){ return html; }
   };
@@ -87,3 +87,8 @@ async function opsClosureDel(slug,day){
     };
   }
 })();
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ opsClosureAdd:t=>opsClosureAdd(t.dataset.a), opsClosureDel:t=>opsClosureDel(t.dataset.a,t.dataset.b),
+ opsPauseToggle:t=>opsPauseToggle(t.dataset.a,t.dataset.b==='true')
+});

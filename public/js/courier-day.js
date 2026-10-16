@@ -35,9 +35,9 @@ async function vCourierDay(dayDate){
    </div>
    ${st.done&&st.order.confirmation?`<div class="mut" style="margin-top:6px">✅ אושרה מסירה (${st.order.confirmation.method==='code'?'קוד לקוח':'צילום'})${st.order.confirmation.has_photo?` · <a href="/api/delivery-confirmations/${st.order.confirmation.id}/photo" target="_blank" style="color:#0e7a8a">צילום אישור</a>`:''}</div>`:''}
    ${!st.done?`<div style="display:flex;gap:8px;margin-top:8px">
-     ${st.kind==='pickup'?`<button class="btn2 on" onclick="markOrder('${o.id}','picked_up')">סימון נאסף</button>`:''}
-     ${st.kind==='collect'?`<button class="btn2 on" onclick="markOrder('${o.id}','out_for_delivery')">אספתי — יציאה ללקוח</button>`:''}
-     ${st.kind==='deliver'?`<button class="btn2 green" onclick="courierConfirmDelivery('${o.id}')">מסירה עם אישור לקוח</button><button class="btn2" onclick="courierPhotoDelivery('${o.id}')">אישור בצילום</button>`:''}
+     ${st.kind==='pickup'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="picked_up">סימון נאסף</button>`:''}
+     ${st.kind==='collect'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="out_for_delivery">אספתי — יציאה ללקוח</button>`:''}
+     ${st.kind==='deliver'?`<button class="btn2 green" data-act="courierConfirmDelivery" data-a="${o.id}">מסירה עם אישור לקוח</button><button class="btn2" data-act="courierPhotoDelivery" data-a="${o.id}">אישור בצילום</button>`:''} (B7 שלב ב: הוצאת כל ה-inline event handlers מקבצי הניהול/מכבסה/שליח (admin, courier, courier-day, join, apply, tenant-ops, tenant-checklist, manage, analytics) — תשתית delegate.js עם data-act והאזנה מרכזת)
     </div>`:`<div class="mut" style="margin-top:6px">✓ הושלם · ${fmtDT(st.when)}</div>`}
   </div>`}).join('')}
  ${t.tasks.in_laundry.length?`<div class="sec">אצל המכבסה (${t.counts.in_laundry})</div>
@@ -78,3 +78,8 @@ function courierPhotoDelivery(orderId){
   }catch(e){toast(e.message)}
  };
 }
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ courierConfirmDelivery:t=>courierConfirmDelivery(t.dataset.a),
+ courierPhotoDelivery:t=>courierPhotoDelivery(t.dataset.a)
+});

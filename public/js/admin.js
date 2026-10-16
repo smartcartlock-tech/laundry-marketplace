@@ -1,4 +1,16 @@
 /* ---- admin ---- */
+onAct({ adminOnboardStage:t=>adminOnboardStage(t.dataset.a,t.dataset.b),
+ adminSlaHandle:t=>adminSlaHandle(t.dataset.a), adminSlaReopen:t=>adminSlaReopen(t.dataset.a),
+ openIssuePhoto:t=>openIssuePhoto(t.dataset.a), adminIssueHandle:t=>adminIssueHandle(t.dataset.a),
+ adminTenant:t=>adminTenant(t.dataset.a,t.dataset.b), addCoupon:t=>addCoupon(t.dataset.a),
+ toggleCoupon:t=>toggleCoupon(t.dataset.a,t.dataset.b,t.dataset.c==='true'),
+ consolidatedModal:t=>consolidatedModal(t.dataset.a), openPdf:t=>openPdf(t.dataset.a),
+ creditDoc:t=>creditDoc(t.dataset.a,t.dataset.b,Number(t.dataset.c),Number(t.dataset.d)),
+ adminResolveDispute:t=>adminResolveDispute(t.dataset.a,t.dataset.b), viewCourierDoc:t=>viewCourierDoc(t.dataset.a),
+ adminCourier:t=>adminCourier(t.dataset.a,t.dataset.b), adminRejectCourier:t=>adminRejectCourier(t.dataset.a),
+ adminAddCluster:()=>adminAddCluster(), adminToggleCluster:t=>adminToggleCluster(t.dataset.a),
+ adminAddFixedRoute:t=>adminAddFixedRoute(t.dataset.a), adminAutoBuild:()=>adminAutoBuild(),
+ adminRegisterCourier:()=>adminRegisterCourier(), downloadCsv:t=>downloadCsv(t.dataset.a,t.dataset.b)});
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
@@ -28,7 +40,7 @@ async function vAdmin(sub){
   body=`<div class="kpis">${d.stages.map(s=>`<div class="kpi"><b>${d.pipeline[s]}</b>${ST[s]}</div>`).join('')}</div>
   ${d.tenants.map(t=>`<div class="card"><b>${esc(t.name)}</b> <span class="mut">${esc(t.city||'')}</span>${t.approved?'':' <span class="tag ta">ממתינה לאישור</span>'}
    <div class="mut">נפתחה ${fmtDate(t.created_at)} · פריטי מחירון: ${t.price_items}${t.notes?' · '+esc(t.notes):''}</div>
-   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${d.stages.map(st=>`<button class="btn2 ${t.stage===st?'green':''}" onclick="adminOnboardStage('${t.id}','${st}')">${ST[st]}</button>`).join('')}</div></div>`).join('')}`;
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${d.stages.map(st=>`<button class="btn2 ${t.stage===st?'green':''}" data-act="adminOnboardStage" data-a="${t.id}" data-b="${st}">${ST[st]}</button>`).join('')}</div></div>`).join('')}`;
  } else if(sub==='sla'){
   // E7.T3: תור התראות SLA ומחלוקות
   await api('/admin/sla/sync',{method:'POST',body:'{}'});
@@ -39,10 +51,10 @@ async function vAdmin(sub){
     <div class="mut">${esc(a.details||'')}</div>
     ${a.order_address?`<div class="mut">${esc(a.order_address)} · סטטוס הזמנה: ${({new:'חדשה',confirmed:'אושרה',picked_up:'נאספה',out_for_delivery:'בדרך ללקוח',delivered:'נמסרה',cancelled:'בוטלה'})[a.order_status]||esc(a.order_status||'')} · לקוח: ${esc(a.customer_name||'')} <span dir="ltr">${esc(a.customer_phone||'')}</span></div>`:''}
     <div class="mut">נוצרה ${fmtDT(a.created_at)}</div>
-    <div style="margin-top:6px"><button class="btn2 green" onclick="adminSlaHandle('${a.id}')">סימון כטופלה</button></div></div>`).join(''):'<div class="card mut">אין התראות פתוחות ✓</div>')
+    <div style="margin-top:6px"><button class="btn2 green" data-act="adminSlaHandle" data-a="${a.id}">סימון כטופלה</button></div></div>`).join(''):'<div class="card mut">אין התראות פתוחות ✓</div>')
    +(done.length?`<div class="sec">טופלו (${done.length})</div>`+done.map(a=>`<div class="card" style="opacity:.7"><b>${KIND[a.kind]||a.kind}</b> — ${esc(a.tenant_name||'—')}
     <div class="mut">${esc(a.details||'')}</div><div class="mut">טופלה ע"י ${esc(a.handled_by_name||'')} · ${fmtDT(a.handled_at)}${a.handle_note?' · '+esc(a.handle_note):''}</div>
-    <div style="margin-top:6px"><button class="btn2" onclick="adminSlaReopen('${a.id}')">פתיחה מחדש</button></div></div>`).join(''):'');
+    <div style="margin-top:6px"><button class="btn2" data-act="adminSlaReopen" data-a="${a.id}">פתיחה מחדש</button></div></div>`).join(''):'');
   // E9.T1: דיווחי תקלות שהוסלמו לגישור אדמין
   const med=await api('/admin/issues?mediation=1').catch(()=>({issues:[]}));
   if(med.issues&&med.issues.length){
@@ -52,8 +64,8 @@ async function vAdmin(sub){
     <div>${esc(i.text)}</div>
     <div class="mut">לקוח: ${esc(i.customer_name||'')} <span dir="ltr">${esc(i.customer_phone||'')}</span> · ${fmtDT(i.created_at)}${i.resolution_note?' · תיעוד מכבסה: '+esc(i.resolution_note):''}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" onclick="openIssuePhoto('${pid}')">📷</button>`).join('')}
-     ${i.status!=='resolved'?`<button class="btn2 green" onclick="adminIssueHandle('${i.id}')">סיום גישור</button>`:''}
+     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" data-act="openIssuePhoto" data-a="${pid}">📷</button>`).join('')}
+     ${i.status!=='resolved'?`<button class="btn2 green" data-act="adminIssueHandle" data-a="${i.id}">סיום גישור</button>`:''}
     </div></div>`).join('');
   }
  } else if(sub==='overview'){
@@ -65,7 +77,7 @@ async function vAdmin(sub){
   const d=await api('/admin/tenants');
   body=`<div class="card"><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th><th></th></tr>
    ${d.tenants.map(t=>`<tr><td><a href="#/admin/tenant/${t.id}" style="color:#0e7a8a;font-weight:600">${esc(t.name)}</a>${t.approved?'':' <span class="tag ta">ממתינה</span>'}<div class="mut">${esc(t.city||'')}</div></td><td>${t.orders}</td><td>₪${t.gmv}</td>
-    <td>${t.approved?`<button class="btn2" onclick="adminTenant('${t.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminTenant('${t.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
+    <td>${t.approved?`<button class="btn2" data-act="adminTenant" data-a="${t.id}" data-b="suspend">השעיה</button>`:`<button class="btn2 green" data-act="adminTenant" data-a="${t.id}" data-b="approve">אישור</button>`}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='coupons'){
   const d=await api(`/t/${slug}/coupons`);
   body=`<div class="card">
@@ -79,21 +91,21 @@ async function vAdmin(sub){
      <input class="inp" id="cp-peruser" type="number" placeholder="מגבלה ללקוח" style="flex:1">
      <input class="inp" id="cp-exp" type="date" style="flex:1">
     </div>
-    <button class="btn2 on" onclick="addCoupon('${slug}')">יצירת קופון</button></div>
+    <button class="btn2 on" data-act="addCoupon" data-a="${slug}">יצירת קופון</button></div>
    <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
     <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
-    <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
+    <button class="btn2" data-act="toggleCoupon" data-a="${slug}" data-b="${c.id}" data-c="${!c.active}">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
-  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" onclick="consolidatedModal('${slug}')">🧾 הפק חשבונית מרכזת</button>`;
+  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" data-act="consolidatedModal" data-a="${slug}">🧾 הפק חשבונית מרכזת</button>`;
   body=consBtn+(d.documents.length?`<div class="card docs-list">${d.documents.map(dc=>`<div class="row"><div>
     <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
     <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${dc.orders_count?' · מכסה '+dc.orders_count+' הזמנות':''}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
     <div class="docs-actions">
-     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
-     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
-     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
+     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf">מקור</button>
+     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf?copy=1">העתק</button>
+     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" data-act="creditDoc" data-a="${slug}" data-b="${dc.id}" data-c="${dc.total}" data-d="${dc.credited_amount}">זיכוי</button>`:''}
     </div></div>`).join('')}</div>`
    :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
@@ -109,32 +121,32 @@ async function vAdmin(sub){
   ${net.coverage.length?`<div class="card"><div class="sec">כיסוי אזורי</div><div style="display:flex;gap:6px;flex-wrap:wrap">${net.coverage.map(x=>`<span class="tag tb">${esc(x.area)}: ${x.couriers}</span>`).join('')}</div></div>`:''}
   ${net.late_alerts.length?`<div class="warn">⚠ ${net.late_alerts.length} הזמנות באיחור חריג (מעל שעתיים מחלון האיסוף):</div>`+net.late_alerts.map(x=>`<div class="card"><b dir="ltr">#${x.id.slice(0,8)}</b> ${esc(x.tenant_name)}<div class="mut">${esc(x.address)} · איסוף תוכנן ${fmtDT(x.pickup_at)}</div></div>`).join(''):''}
   ${net.disputes.length?`<div class="sec">מחלוקות תשלום</div>`+net.disputes.map(x=>`<div class="card"><b>${esc(x.courier_name)}</b> מול ${esc(x.tenant_name||'—')}<div class="mut">שבוע ${fmtDate(x.week_start)} · ברוטו ₪${x.gross} · נטו ₪${x.net}</div>
-   <div style="display:flex;gap:6px;margin-top:6px"><button class="btn2 green" onclick="adminResolveDispute('${x.id}','approve')">אישור התשלום</button><button class="btn2" onclick="adminResolveDispute('${x.id}','reject')">דחיית החיוב</button></div></div>`).join(''):''}
+   <div style="display:flex;gap:6px;margin-top:6px"><button class="btn2 green" data-act="adminResolveDispute" data-a="${x.id}" data-b="approve">אישור התשלום</button><button class="btn2" data-act="adminResolveDispute" data-a="${x.id}" data-b="reject">דחיית החיוב</button></div></div>`).join(''):''}
   ${pd.pending.length?`<div class="sec">ממתינים לאישור (${pd.pending.length})</div>`+pd.pending.map(c=>`<div class="card">
     <b>${esc(c.name||'')}</b> · <span dir="ltr">${esc(c.phone||'')}</span>
     <div class="mut">${c.model==='shared'?'שליח משותף':'שליח פלטפורמה'} · ${esc(c.vehicle||'')} · אזורים: ${(c.areas||[]).map(esc).join(', ')}</div>
     <div class="mut">זמינות: ${Object.keys(c.availability||{}).length?Object.keys(c.availability||{}).map(d=>WD[+d]).join(', '):'לא צוינה'} · נרשם ${fmtDate(c.created_at)}</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${(c.documents||[]).map(doc=>`<button class="btn2" onclick="viewCourierDoc('${doc.id}')">${doc.kind==='license'?'רישיון':doc.kind==='insurance'?'ביטוח':'תמונה'}</button>`).join('')||'<span class="mut">אין מסמכים</span>'}</div>
-    <div style="display:flex;gap:8px"><button class="btn2 green" style="flex:1" onclick="adminCourier('${c.id}','approve')">אישור</button><button class="btn2" style="flex:1" onclick="adminRejectCourier('${c.id}')">דחייה</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${(c.documents||[]).map(doc=>`<button class="btn2" data-act="viewCourierDoc" data-a="${doc.id}">${doc.kind==='license'?'רישיון':doc.kind==='insurance'?'ביטוח':'תמונה'}</button>`).join('')||'<span class="mut">אין מסמכים</span>'}</div>
+    <div style="display:flex;gap:8px"><button class="btn2 green" style="flex:1" data-act="adminCourier" data-a="${c.id}" data-b="approve">אישור</button><button class="btn2" style="flex:1" data-act="adminRejectCourier" data-a="${c.id}">דחייה</button></div>
    </div>`).join(''):''}
   <div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
    ${d.couriers.map(c=>`<tr><td>${esc(c.name)}<div class="mut">${esc(c.phone||'')}</div></td><td>${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</td><td>${esc(c.tenant_name||'—')}</td>
-    <td>${c.approved?`<button class="btn2" onclick="adminCourier('${c.id}','suspend')">השעיה</button>`:`<button class="btn2 green" onclick="adminCourier('${c.id}','approve')">אישור</button>`}</td></tr>`).join('')}</table></div>`;
+    <td>${c.approved?`<button class="btn2" data-act="adminCourier" data-a="${c.id}" data-b="suspend">השעיה</button>`:`<button class="btn2 green" data-act="adminCourier" data-a="${c.id}" data-b="approve">אישור</button>`}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='routes'){
   const d=await api('/admin/routes');
   const cl=await api('/admin/clusters');
   const cr=await api('/admin/couriers');
   body=`<div class="sec">קלאסטרים ומסלולים קבועים</div>
   <div class="card"><div style="display:flex;gap:6px"><input class="inp" id="cl-name" placeholder="שם קלאסטר" style="flex:2"><input class="inp" id="cl-area" placeholder="אזור" style="flex:1"><input class="inp" id="cl-fee" type="number" placeholder="דמי ניהול ₪/חודש" style="flex:1"></div>
-   <button class="btn2 on" onclick="adminAddCluster()">יצירת קלאסטר</button></div>
+   <button class="btn2 on" data-act="adminAddCluster">יצירת קלאסטר</button></div>
   ${cl.clusters.map(c=>`<div class="card"><div class="row"><div><b>${esc(c.name)}</b> · ${esc(c.area)} ${c.active?'':'<span class="tag ta">מושבת</span>'}
     <div class="mut">${c.members}/5 מכבסות${c.member_names?': '+c.member_names.map(m=>esc(m.name)).join(', '):''} · דמי ניהול (דמו): ₪${c.mgmt_fee_monthly}/חודש</div>
     ${(c.fixed_routes||[]).map(f=>`<div class="mut">מסלול קבוע: ${WD[f.weekday]} — ${esc(f.courier)}</div>`).join('')}</div>
-    <button class="btn2" onclick="adminToggleCluster('${c.id}')">${c.active?'השבתה':'הפעלה'}</button></div>
+    <button class="btn2" data-act="adminToggleCluster" data-a="${c.id}">${c.active?'השבתה':'הפעלה'}</button></div>
    <div style="display:flex;gap:6px;margin-top:6px"><select class="inp" id="fr-c-${c.id}" style="flex:2">${cr.couriers.filter(x=>x.approved).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
     <select class="inp" id="fr-w-${c.id}" style="flex:1">${WD.map((w,i)=>`<option value="${i}">${w}</option>`).join('')}</select>
-    <button class="btn2" onclick="adminAddFixedRoute('${c.id}')">+ מסלול קבוע</button></div></div>`).join('')||'<div class="card mut">אין קלאסטרים</div>'}`;
-  body+=`<button class="btn" onclick="adminAutoBuild()">בניית מסלולים אוטומטית להיום</button>
+    <button class="btn2" data-act="adminAddFixedRoute" data-a="${c.id}">+ מסלול קבוע</button></div></div>`).join('')||'<div class="card mut">אין קלאסטרים</div>'}`;
+  body+=`<button class="btn" data-act="adminAutoBuild">בניית מסלולים אוטומטית להיום</button>
   <div class="note">המנוע מאחד הזמנות לא משובצות לפי אזור, משבץ שליח פלטפורמה/משותף ומסדר נקודות (nearest neighbor).</div>
   ${d.routes.length?d.routes.map(r=>`<div class="card"><b>${esc(r.courier_name)}</b> ${r.combined?'<span class="tag tb">מסלול משולב</span>':'<span class="tag">רגיל</span>'}
    <div class="mut">${r.stops} נקודות · ${r.tenants} מכבסות</div>
@@ -148,14 +160,14 @@ async function vAdmin(sub){
    <label class="lb">כלי רכב</label><input class="inp" id="rc-vehicle" placeholder="אופנוע / רכב">
    <label class="lb">מודל</label><select class="inp" id="rc-model"><option value="platform">שליח פלטפורמה</option><option value="private">שליח מכבסה פרטי</option><option value="shared">שליח משותף</option></select>
    <label class="lb">מכבסה (לשליח פרטי/משותף)</label><select class="inp" id="rc-tenant"><option value="">—</option>${d.tenants.map(t=>`<option value="${t.slug}">${esc(t.name)}</option>`).join('')}</select>
-   <button class="btn" onclick="adminRegisterCourier()">רישום</button></div>`;
+   <button class="btn" data-act="adminRegisterCourier">רישום</button></div>`;
  } else if(sub==='weekly'){
   const d=(await api('/admin/weekly-report')).report;
   body=`<div class="kpis"><div class="kpi"><b>₪${d.gmv}</b>מחזור שבועי</div><div class="kpi"><b>${d.orders}</b>הזמנות</div><div class="kpi"><b>${d.delivered}</b>הושלמו</div><div class="kpi"><b>${d.cancelled}</b>בוטלו</div></div>
    <div class="kpis"><div class="kpi"><b>${d.new_users}</b>משתמשים חדשים</div><div class="kpi"><b>${d.new_tenants}</b>מכבסות חדשות</div><div class="kpi"><b>${d.active_tenants}</b>מכבסות פעילות</div><div class="kpi"><b>${d.active_couriers}</b>שליחים פעילים</div></div>
    <div class="card"><b>לפי מכבסה (7 ימים)</b><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th></tr>
     ${d.by_tenant.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.orders}</td><td>₪${t.gmv}</td></tr>`).join('')||'<tr><td colspan="3" class="mut">אין הזמנות השבוע</td></tr>'}</table></div>
-   <button class="btn2" onclick="downloadCsv('/admin/weekly-report.csv','weekly-report.csv')">ייצוא הדוח ל-CSV</button>`;
+   <button class="btn2" data-act="downloadCsv" data-a="/admin/weekly-report.csv" data-b="weekly-report.csv">ייצוא הדוח ל-CSV</button>`;
  } else if(sub==='orders'){
   const d=await api('/admin/orders');
   body=`<div class="card"><table class="tbl"><tr><th>הזמנה</th><th>מכבסה</th><th>סטטוס</th><th>₪</th></tr>
@@ -177,8 +189,8 @@ async function vAdminTenant(id){
  const hoursTxt=Object.entries(t.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>');
  const winTxt=(d.windows||[]).map(w=>`${WD[w.weekday]} <span dir="ltr">${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</span> (${w.kind==='pickup'?'איסוף':'החזרה'})`).join('<br>');
  const actions=t.approved
-  ?`<button class="btn2" onclick="adminTenant('${t.id}','suspend')">השעיית המכבסה</button>`
-  :`<button class="btn green" onclick="adminTenant('${t.id}','approve')">אישור המכבסה</button> <button class="btn2" style="color:#c00" onclick="adminTenant('${t.id}','reject')">דחייה ומחיקה</button>`;
+  ?`<button class="btn2" data-act="adminTenant" data-a="${t.id}" data-b="suspend">השעיית המכבסה</button>`
+  :`<button class="btn green" data-act="adminTenant" data-a="${t.id}" data-b="approve">אישור המכבסה</button> <button class="btn2" style="color:#c00" data-act="adminTenant" data-a="${t.id}" data-b="reject">דחייה ומחיקה</button>`;
  return `<div class="hdr"><h2>${esc(t.name)}</h2><p><a href="#/admin/tenants" style="color:#fff">← חזרה לרשימת המכבסות</a></p></div>
  <div class="body">
   <div class="card"><b>פרטים</b>

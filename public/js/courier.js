@@ -17,8 +17,8 @@ async function vCourier(sub){
     <div class="mut">איסוף מ: ${esc(o.tenant_address||'')}${o.tenant_city?', '+esc(o.tenant_city):''}</div>
     ${o.items&&o.items.length?`<div class="mut">פריטים: ${o.items.map(x=>esc(x.name)+' ×'+x.qty).join(', ')}</div>`:''}
     <div style="display:flex;gap:8px;margin-top:8px">
-     <button class="btn2 green" onclick="offerAction('${o.offer_id}','accept')">אישור</button>
-     <button class="btn2" onclick="offerAction('${o.offer_id}','decline')">דחייה</button>
+     <button class="btn2 green" data-act="offerAction" data-a="${o.offer_id}" data-b="accept">אישור</button>
+     <button class="btn2" data-act="offerAction" data-a="${o.offer_id}" data-b="decline">דחייה</button>
     </div></div>`).join('')}`:''}
   <div class="sec">מסלול פעיל</div>
   ${route.route.map(o=>`<div class="card">
@@ -32,10 +32,10 @@ async function vCourier(sub){
      <a class="btn2" href="https://waze.com/ul?q=${encodeURIComponent(o.address)}" target="_blank">ניווט</a>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
-     ${o.status==='confirmed'?`<button class="btn2 on" onclick="markOrder('${o.id}','picked_up')">סימון נאסף מהמכבסה</button>`:''}
-     ${o.status==='ready'?`<button class="btn2 on" onclick="markOrder('${o.id}','out_for_delivery')">יצאתי לדרך אל הלקוח</button>`:''}
+     ${o.status==='confirmed'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="picked_up">סימון נאסף מהמכבסה</button>`:''}
+     ${o.status==='ready'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="out_for_delivery">יצאתי לדרך אל הלקוח</button>`:''}
      ${o.status==='picked_up'||o.status==='in_work'?`<div class="mut">הכביסה אצל המכבסה — החזרה תתאפשר כשההזמנה תסומנה ״מוכנה״</div>`:''}
-     ${o.status==='out_for_delivery'?`<button class="btn2 green" onclick="markOrder('${o.id}','delivered')">מסרתי ללקוח</button>`:''}
+     ${o.status==='out_for_delivery'?`<button class="btn2 green" data-act="markOrder" data-a="${o.id}" data-b="delivered">מסרתי ללקוח</button>`:''}
     </div>
    </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="javascript:route()" style="color:#0e7a8a">רענון</a></div>'}
  </div>`;
@@ -58,12 +58,12 @@ async function vCourierEarnings(me){
   ${d.by_tenant.length?`<table class="tbl"><tr><th>מכבסה</th><th>נקודות</th><th>ברוטו</th><th>עמלה</th><th>נטו</th></tr>
    ${d.by_tenant.map(x=>`<tr><td>${esc(x.tenant_name)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>₪${x.net}</td></tr>`).join('')}</table>`:'<div class="mut">עוד אין רווחים השבוע — נקודות נצברות על כל איסוף ומסירה</div>'}
  </div>
- ${Number(t.accrued_net)>0?`<button class="btn" onclick="courierPayout()">משיכת ₪${t.accrued_net} (תשלום דמו)</button>`:Number(t.paid_net)>0?`<div class="card mut">✓ שולם (דמו): ₪${t.paid_net}</div>`:''}
+ ${Number(t.accrued_net)>0?`<button class="btn" data-act="courierPayout">משיכת ₪${t.accrued_net} (תשלום דמו)</button>`:Number(t.paid_net)>0?`<div class="card mut">✓ שולם (דמו): ₪${t.paid_net}</div>`:''}
  <div class="card">
   <div class="sec">רשומות אחרונות</div>
   ${d.rows.slice(0,20).map(x=>`<div class="row"><div>${x.kind==='pickup'?'איסוף':x.kind==='delivery'?'מסירה':'התאמה'} · ${esc(x.tenant_name||'—')}
     <div class="mut">${fmtDate(x.created_at)} · ₪${x.net} נטו</div></div>
-    <div style="display:flex;gap:4px">${x.kind==='delivery'&&x.order_id?`<button class="btn2" onclick="courierRateTenant('${x.order_id}','${esc(x.tenant_name||'')}')">דירוג</button>`:''}${x.status==='paid_demo'?'<span class="tag tg">שולם</span>':x.status==='disputed'?'<span class="tag ta">במחלוקת</span>':`<button class="btn2" onclick="courierDispute('${x.id}')">מחלוקת</button>`}</div></div>`).join('')||'<div class="mut">אין רשומות</div>'}
+    <div style="display:flex;gap:4px">${x.kind==='delivery'&&x.order_id?`<button class="btn2" data-act="courierRateTenant" data-a="${x.order_id}" data-b="${esc(x.tenant_name||'')}">דירוג</button>`:''}${x.status==='paid_demo'?'<span class="tag tg">שולם</span>':x.status==='disputed'?'<span class="tag ta">במחלוקת</span>':`<button class="btn2" data-act="courierDispute" data-a="${x.id}">מחלוקת</button>`}</div></div>`).join('')||'<div class="mut">אין רשומות</div>'}
  </div>
  </div>`;
 }
@@ -76,4 +76,9 @@ async function courierPayout(){try{const r=await api('/courier/earnings/payout',
 async function courierDispute(id){if(!await xconfirm('הרשומה תסומן כמחלוקת ותטופל מול מנהל הפלטפורמה.',{title:'פתיחת מחלוקת',okText:'פתיחת מחלוקת'}))return;try{await api('/courier/earnings/'+id+'/dispute',{method:'POST',body:'{}'});toast('המחלוקת נפתחה');route()}catch(e){toast(e.message)}}
 async function offerAction(id,a){try{await api(`/courier/offers/${id}/${a}`,{method:'POST',body:'{}'});toast(a==='accept'?'שובצת!':'נדחה');route()}catch(e){toast(e.message)}}
 async function markOrder(id,a){try{const r=await api(`/courier/orders/${id}/mark`,{method:'POST',body:JSON.stringify({action:a})});toast(a==='picked_up'?'סומן כנאסף':'סומן כהוחזר');if(r.window_violation)setTimeout(()=>toast('שים לב: הסימון בוצע מחוץ לחלון האיסוף ונרשם כחריגה'),600);route()}catch(e){toast(e.message)}}
-
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ courierDispute:t=>courierDispute(t.dataset.a), courierPayout:()=>courierPayout(),
+ courierRateTenant:t=>courierRateTenant(t.dataset.a,t.dataset.b),
+ markOrder:t=>markOrder(t.dataset.a,t.dataset.b), offerAction:t=>offerAction(t.dataset.a,t.dataset.b)
+});
