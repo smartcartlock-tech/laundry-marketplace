@@ -377,17 +377,17 @@ r.get('/couriers/overview', async (req, res) => {
   });
 });
 // E5.T7: מכבסה מדרגת שליח (איסוף בזמן, מסירה)
-r.post('/couriers/:cid/rate', async (req, res) => {
+r.post('/couriers/:cid/rate', uuidParams('cid'), async (req, res) => {
   const rt = Number((req.body || {}).rating);
   if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });
   const tags = Array.isArray((req.body || {}).tags) ? req.body.tags.map(String).slice(0, 5) : null;
+  // הרשאות: דירוג חייב הזמנה קונקרטית ששובצה לשליח זה במכבסה זו — בלי דירוג חופשי שמזיז priority
   const orderId = (req.body || {}).order_id || null;
-  if (orderId) {
-    const { rows: o } = await q('SELECT id, courier_id FROM orders WHERE id=$1 AND tenant_id=$2', [orderId, req.tenant.id]);
-    if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
-    if (o[0].courier_id !== req.params.cid) return res.status(400).json({ error: 'ההזמנה לא שובצה לשליח זה' });
-  }
-  const { rows: dup } = orderId ? await q('SELECT 1 FROM reviews WHERE order_id=$1 AND target_courier_id=$2 AND user_id=$3', [orderId, req.params.cid, req.user.id]) : { rows: [] };
+  if (!orderId || !/^[0-9a-fA-F-]{36}$/.test(String(orderId))) return res.status(400).json({ error: 'נדרש order_id של הזמנה ששובצה לשליח' });
+  const { rows: o } = await q('SELECT id, courier_id, status FROM orders WHERE id=$1 AND tenant_id=$2', [orderId, req.tenant.id]);
+  if (!o[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  if (o[0].courier_id !== req.params.cid) return res.status(400).json({ error: 'ההזמנה לא שובצה לשליח זה' });
+  const { rows: dup } = await q('SELECT 1 FROM reviews WHERE order_id=$1 AND target_courier_id=$2 AND user_id=$3', [orderId, req.params.cid, req.user.id]);
   if (dup[0]) return res.status(409).json({ error: 'כבר דירגת את השליח על הזמנה זו' });
   await q('INSERT INTO reviews(tenant_id, order_id, user_id, target_courier_id, rating, tags) VALUES ($1,$2,$3,$4,$5,$6)',
     [req.tenant.id, orderId, req.user.id, req.params.cid, rt, tags]);

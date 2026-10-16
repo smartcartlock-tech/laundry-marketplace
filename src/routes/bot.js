@@ -81,9 +81,15 @@ r.post('/orders', async (req, res) => {
 });
 
 r.get('/orders/:id', uuidParams('id'), async (req, res) => {
-  const { rows } = await q(
-    `SELECT o.id, o.status, o.total, o.pickup_at, o.delivery_at, o.created_at FROM orders o
-     WHERE o.id=$1 AND o.tenant_id=$2`, [req.params.id, req.tenant.id]);
+  // הרשאות: בסשן בוט מרכזי מותר לראות רק הזמנות של הטלפון שאיתו נוצר הסשן
+  const { rows } = req.botPhone
+    ? await q(
+      `SELECT o.id, o.status, o.total, o.pickup_at, o.delivery_at, o.created_at FROM orders o
+       JOIN users u ON u.id=o.customer_id
+       WHERE o.id=$1 AND o.tenant_id=$2 AND u.phone=$3`, [req.params.id, req.tenant.id, req.botPhone])
+    : await q(
+      `SELECT o.id, o.status, o.total, o.pickup_at, o.delivery_at, o.created_at FROM orders o
+       WHERE o.id=$1 AND o.tenant_id=$2`, [req.params.id, req.tenant.id]);
   if (!rows[0]) return res.status(404).json({ error: 'not found' });
   res.json({ order: { ...rows[0], status_he: STATUS_HE[rows[0].status] || rows[0].status } });
 });
@@ -92,6 +98,8 @@ r.get('/orders/:id', uuidParams('id'), async (req, res) => {
 r.get('/customers/:phone/latest-order', async (req, res) => {
   let p = String(req.params.phone).replace(/[^\d+]/g, '');
   if (p.startsWith('0')) p = '+972' + p.slice(1);
+  // הרשאות: סשן בוט מרכזי מוגבל לטלפון שאיתו נוצר — לא חושפים הזמנות של לקוח אחר
+  if (req.botPhone && p !== req.botPhone) return res.status(403).json({ error: 'מפתח השיחה מוגבל לטלפון שאיתו נוצר' });
   const { rows } = await q(
     `SELECT o.id, o.status, o.total, o.created_at FROM orders o JOIN users u ON u.id=o.customer_id
      WHERE o.tenant_id=$1 AND u.phone=$2 ORDER BY o.created_at DESC LIMIT 1`, [req.tenant.id, p]);

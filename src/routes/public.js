@@ -12,8 +12,11 @@ async function optionalUser(req) {
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return null;
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-insecure-secret');
-    const { rows } = await q('SELECT id FROM users WHERE id=$1', [payload.uid]);
-    return rows[0] || null;
+    const { rows } = await q('SELECT id, token_version FROM users WHERE id=$1', [payload.uid]);
+    if (!rows[0]) return null;
+    // הרשאות: טוקן שבוטל (logout/ביטול גלובלי) לא מזכה יותר במחיר הסכם — בדיקת token_version כמו ב-requireAuth
+    if ((payload.tv ?? -1) !== rows[0].token_version) return null;
+    return rows[0];
   } catch (e) { return null; }
 }
 // ביצועים: מטמון קצר לנתונים ציבוריים (רשימת מכבסות/דף מכבסה) — חוסך חסימות בשרת החינמי
@@ -75,7 +78,9 @@ r.get('/laundries/:slug', async (req, res) => {
   // D2: ETag על כל המטען — טעינה חוזרת של דף מכבסה מקבלת 304 בלי גוף (חוסך את רוב התעבורה)
   const payload = { laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows };
   const etag = 'W/"' + crypto.createHash('sha256').update(JSON.stringify(payload)).digest('base64url') + '"';
-  pubCache(res, 30);
+  // הרשאות: קטלוג עם מחיר הסכם אישי (או בקשה מזוהה בכלל) — לא נשמר במטמון ציבורי משותף
+  if (ten.agreement_pricing || req.headers.authorization) res.set('Cache-Control', 'private, no-store');
+  else pubCache(res, 30);
   res.set('ETag', etag);
   if (req.headers['if-none-match'] === etag) return res.status(304).end();
   res.json(payload);
