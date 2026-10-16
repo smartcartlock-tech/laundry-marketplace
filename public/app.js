@@ -409,7 +409,7 @@ async function vOrder(id){
    ${myReports.length?'':'<div class="mut" style="margin:6px 0">משהו לא בסדר עם ההזמנה? דווחו ונפתח פנייה מול המכבסה</div>'}
    <button class="btn2" onclick="openReportModal('${o.id}')">📷 דיווח על תקלה</button>
   </div>`:''}
-  ${isMine&&o.status==='delivered'?`<div class="card"><label class="lb">דרגו את ההזמנה</label>
+  ${isMine&&o.status==='delivered'&&!d.reviewed?`<div class="card"><label class="lb">דרגו את ההזמנה</label>
     <select class="inp" id="rv-rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
     <input class="inp" id="rv-text" placeholder="איך היה?">
     ${o.courier_id?`<label class="lb" style="margin-top:8px">דרגו את השליח</label>
@@ -1165,7 +1165,7 @@ async function vAdmin(sub){
   if(med.issues&&med.issues.length){
    const KIND2={damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'};
    body+=`<div class="sec">גישור תקלות (${med.issues.length})</div>`+med.issues.map(i=>`<div class="card">
-    <b>${KIND2[i.kind]||i.kind}</b> — ${esc(i.tenant_name||'—')} <span class="st-pill ${i.status==='resolved'?'st-delivered':'st-new'}">${i.status}</span>
+    <b>${KIND2[i.kind]||i.kind}</b> — ${esc(i.tenant_name||'—')} <span class="st-pill ${i.status==='resolved'?'st-delivered':'st-new'}">${{open:'פתוח',in_progress:'בטיפול',resolved:'טופל'}[i.status]||i.status}</span>
     <div>${esc(i.text)}</div>
     <div class="mut">לקוח: ${esc(i.customer_name||'')} <span dir="ltr">${esc(i.customer_phone||'')}</span> · ${fmtDT(i.created_at)}${i.resolution_note?' · תיעוד מכבסה: '+esc(i.resolution_note):''}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
