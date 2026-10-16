@@ -59,3 +59,16 @@ test('אחידות precache: כל סקריפט ב-index.html נכלל ב-precach
   const missing = [...idx.matchAll(/src="\/js\/([^"]+)"/g)].map(x => x[1]).filter(f => !precached.has(f));
   assert.deepStrictEqual(missing, [], 'סקריפטים חסרים ב-precache: ' + missing.join(', '));
 });
+
+test('sw.js: ריכוך עדכון — אסורים skipWaiting ו-clients.claim (מניעת קפיאת טאבים ב-deploy)', () => {
+  const src = fs.readFileSync(SW, 'utf8');
+  assert.ok(!src.includes('skipWaiting'), 'skipWaiting אסור — הגרסה החדשה נכנסת רק בסגירת כל הטאבים');
+  assert.ok(!/clients\s*\.\s*claim\s*\(/.test(src), 'clients.claim אסור — network-first מבטיח תוכן טרי');
+});
+
+test('sw.js: precache אטומי — ה-install מסתמך על דחיית addAll בלי לבלוע שגיאה', () => {
+  const src = fs.readFileSync(SW, 'utf8');
+  assert.match(src, /caches\.open\(C\)\.then\(c=>c\.addAll\(A\)\)/, 'install חייב caches.open(C)+addAll(A)');
+  const installLine = src.split('\n').find(l => l.includes("addEventListener('install'"));
+  assert.ok(!/catch\s*\(/.test(installLine), 'אסור catch ב-install — שגיאה חייבת לדחות את ההתקנה');
+});
