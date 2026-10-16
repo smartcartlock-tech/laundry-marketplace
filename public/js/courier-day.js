@@ -12,8 +12,8 @@ async function vCourierDay(dayDate){
  <div class="body">
  <div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip on" href="#/courier/day">מסלול יום</a><a class="chip" href="#/courier/earnings">רווחים</a></div>
  <div style="display:flex;gap:8px;align-items:center;margin:8px 0">
-  <input type="date" class="inp" id="courier-day-date" value="${d.date}" style="max-width:170px" onchange="go('#/courier/day?date='+this.value)">
-  ${d.date!==new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'})?`<button class="btn2" onclick="go('#/courier/day')">חזרה להיום</button>`:''}
+  <input type="date" class="inp" id="courier-day-date" value="${d.date}" style="max-width:170px" data-actc="courierDayDate">
+  ${d.date!==new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'})?`<button class="btn2" data-act="courierDayToday">חזרה להיום</button>`:''}
  </div>
  <div class="kpis">
   <div class="kpi"><b>${s.remaining}</b>נותרו</div>
@@ -81,5 +81,6 @@ function courierPhotoDelivery(orderId){
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
  courierConfirmDelivery:t=>courierConfirmDelivery(t.dataset.a),
- courierPhotoDelivery:t=>courierPhotoDelivery(t.dataset.a)
+ courierPhotoDelivery:t=>courierPhotoDelivery(t.dataset.a),
+ courierDayDate:t=>go('#/courier/day?date='+t.value), courierDayToday:()=>go('#/courier/day')
 });
