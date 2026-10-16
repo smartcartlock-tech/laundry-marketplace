@@ -89,10 +89,12 @@
     </div></div>`;
   };
 
-  /* חזרה לקישור הצטרפות אחרי התחברות */
-  if (typeof window.route === 'function'){
+  /* חזרה לקישור הצטרפות אחרי התחברות (הקובץ נטען לפני router.js — עטיפה עצלנית) */
+  (function installRouteWrap(){
+    if (typeof window.route !== 'function'){ setTimeout(installRouteWrap, 50); return; }
+    if (window.route.__famWrapped) return;
     const origR = window.route;
-    window.route = function(){
+    const wrapped = function(){
       const out = origR.apply(this, arguments);
       try{
         const pend = sessionStorage.getItem('wlm_family_join');
@@ -100,7 +102,9 @@
       }catch(e){}
       return out;
     };
-  }
+    wrapped.__famWrapped = true;
+    window.route = wrapped;
+  })();
 
   /* ---------- B4: חיפוש וסינון בהיסטוריית הזמנות ---------- */
   const STATUS_HE = {new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_progress:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
