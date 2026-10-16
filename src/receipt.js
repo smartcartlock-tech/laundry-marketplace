@@ -251,15 +251,15 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   pdf.moveDown(1);
   // אימות מסמך: QR לסריקה + ברקוד + קוד ידני (מערכות מתקדמות — סריקה לאימות קבלות/חשבוניות)
   if (codes && codes.qr && d.verify_code) {
-    if (pdf.y > 660) pdf.addPage();
+    if (pdf.y > 650) pdf.addPage();
     const vy = pdf.y + 4;
-    pdf.image(codes.qr, 50, vy, { width: 56 });
-    if (codes.barcode) pdf.image(codes.barcode, 116, vy + 10, { width: 130 });
     pdf.font('he').fontSize(9).fillColor('#333');
-    drawRtl(pdf, `אימות מסמך: סרקו את ה-QR או הזינו את הקוד ${d.verify_code} בעמוד האימות`, PAGE_RIGHT, vy + 14);
+    drawRtl(pdf, `אימות מסמך: סרקו את ה-QR או הזינו את הקוד ${d.verify_code} בעמוד האימות`, PAGE_RIGHT, vy);
+    pdf.image(codes.qr, 50, vy + 14, { width: 56 });
+    if (codes.barcode) pdf.image(codes.barcode, 120, vy + 26, { width: 130 });
     pdf.fontSize(8).fillColor('#999');
-    drawRtl(pdf, codes.verifyUrl, PAGE_RIGHT, vy + 28);
-    pdf.y = vy + 58;
+    drawRtl(pdf, codes.verifyUrl, PAGE_RIGHT, vy + 16);
+    pdf.y = vy + 78;
   }
   pdf.font('he').fontSize(9).fillColor('#999');
   line(pdf, 'הופק אוטומטית על ידי מערכת מכבסה בקליק — מסמך דמו, אינו חשבונית מס לצורכי מע"מ.');
