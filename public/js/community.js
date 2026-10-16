@@ -11,7 +11,7 @@ async function vCommunity(sub,id){
   const cat=new URLSearchParams(location.hash.split('?')[1]||'').get('cat')||'';
   const d=await api('/community/forum/posts'+(cat?'?category='+cat:''));
   body=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><a class="chip ${!cat?'on':''}" href="#/community/forum">הכל</a>${FORUM_CATS.map(c=>`<a class="chip ${cat===c[0]?'on':''}" href="#/community/forum?cat=${c[0]}">${c[1]}</a>`).join('')}
-   <button class="btn2 on" style="margin-right:auto" onclick="forumNewPost()">+ פוסט חדש</button></div>
+   <button class="btn2 on" style="margin-right:auto" data-act="forumNewPost">+ פוסט חדש</button></div>
   ${d.posts.map(p=>`<a href="#/community/post/${p.id}" style="text-decoration:none;color:inherit"><div class="card">
     <b>${esc(p.title)}</b> <span class="tag tb">${(FORUM_CATS.find(c=>c[0]===p.category)||['',''])[1]}</span>
     <div class="mut">${esc(p.excerpt)}${p.excerpt&&p.excerpt.length>=200?'…':''}</div>
@@ -23,13 +23,13 @@ async function vCommunity(sub,id){
   <div class="card"><b style="font-size:17px">${esc(p.title)}</b> <span class="tag tb">${(FORUM_CATS.find(c=>c[0]===p.category)||['',''])[1]}</span>
    <div class="mut">${esc(p.author_name||'')} · <b>${esc(p.tenant_name)}</b> ✓ · ${fmtDT(p.created_at)}</div>
    <div style="margin:10px 0;white-space:pre-wrap">${esc(p.body)}</div>
-   <button class="btn2" onclick="forumUseful('${p.id}')">👍 שימושי (${p.useful})${p.voted?' ✓':''}</button></div>
+   <button class="btn2" data-act="forumUseful" data-a="${p.id}">👍 שימושי (${p.useful})${p.voted?' ✓':''}</button></div>
   <div class="sec">תגובות (${d.comments.length})</div>
   ${d.comments.map(c=>`<div class="card"><div class="mut"><b>${esc(c.author_name||'')}</b> · ${esc(c.tenant_name)} ✓ · ${fmtDT(c.created_at)}</div><div style="white-space:pre-wrap">${esc(c.body)}</div></div>`).join('')}
-  <div class="card"><input class="inp" id="fc-body" placeholder="כתבו תגובה…"><button class="btn2 on" onclick="forumComment('${p.id}')">פרסום תגובה</button></div>`;
+  <div class="card"><input class="inp" id="fc-body" placeholder="כתבו תגובה…"><button class="btn2 on" data-act="forumComment" data-a="${p.id}">פרסום תגובה</button></div>`;
  } else if(sub==='tenders'){
   const d=await api('/community/tenders');
-  body=`<button class="btn2 on" onclick="tenderNew()">+ פרסום מכרז</button>
+  body=`<button class="btn2 on" data-act="tenderNew">+ פרסום מכרז</button>
   ${d.tenders.map(t=>`<a href="#/community/tender/${t.id}" style="text-decoration:none;color:inherit"><div class="card">
     <b>${esc(t.title)}</b> <span class="tag ${t.status==='open'?'tg':t.status==='awarded'?'tb':'ta'}">${t.status==='open'?'פתוח':t.status==='awarded'?'נבחר זוכה':'סגור'}</span>
     <div class="mut">${esc(t.poster_name)}${t.volume_kg?' · '+t.volume_kg+' ק"ג':''}${t.frequency?' · '+esc(t.frequency):''}${t.budget?' · תקציב ₪'+t.budget:''} · הגשה עד ${fmtDT(t.deadline)} · ${t.bids} הצעות</div></div></a>`).join('')||'<div class="card mut">אין מכרזים</div>'}`;
@@ -44,28 +44,28 @@ async function vCommunity(sub,id){
   <div class="sec">הצעות (${d.bids_count})</div>
   ${d.bids.map(b=>`<div class="card"><div class="row"><div><b>₪${b.price_per_kg}</b> לק"ג ${b.is_winner?'<span class="tag tg">זוכה ✓</span>':''}
     <div class="mut">${esc(b.bidder_name)} · ${fmtDT(b.created_at)}${b.notes?' · '+esc(b.notes):''}</div></div>
-    ${d.is_poster&&t.status==='open'?`<button class="btn2 green" onclick="tenderAward('${t.id}','${b.id}')">בחירה כזוכה</button>`:''}</div></div>`).join('')||'<div class="card mut">אין הצעות עדיין</div>'}
+    ${d.is_poster&&t.status==='open'?`<button class="btn2 green" data-act="tenderAward" data-a="${t.id}" data-b="${b.id}">בחירה כזוכה</button>`:''}</div></div>`).join('')||'<div class="card mut">אין הצעות עדיין</div>'}
   ${!d.is_poster&&t.status==='open'?`<div class="card"><label class="lb">הגשת הצעה — מחיר לק"ג</label>
    <div style="display:flex;gap:6px"><input class="inp" id="tb-price" type="number" step="0.1" placeholder="₪" style="flex:1"><input class="inp" id="tb-notes" placeholder="הערות" style="flex:2"></div>
-   <button class="btn2 on" onclick="tenderBid('${t.id}')">הגשת הצעה</button></div>`:''}`;
+   <button class="btn2 on" data-act="tenderBid" data-a="${t.id}">הגשת הצעה</button></div>`:''}`;
  } else if(sub==='groups'){
   const d=await api('/community/groups');
-  body=`<button class="btn2 on" onclick="groupNew()">+ קבוצת רכש חדשה</button>
+  body=`<button class="btn2 on" data-act="groupNew">+ קבוצת רכש חדשה</button>
   ${d.groups.map(g=>`<div class="card"><b>${esc(g.product)}</b> ${g.status!=='open'?'<span class="tag ta">נסגר</span>':g.participants>=g.target_participants?'<span class="tag tg">היעד הושג!</span>':''}
    <div class="mut">${esc(g.creator_name)}${g.supplier?' · ספק: '+esc(g.supplier):''} · מחיר רגיל ₪${g.unit_price} → <b>מחיר קבוצה ₪${g.group_price}</b></div>
    <div class="mut">${g.participants}/${g.target_participants} משתתפים · ${g.total_qty} יח' · חיסכון משוער: <b>₪${Math.round(g.est_savings)}</b> · סגירה ${fmtDate(g.deadline)}</div>
-   <div style="display:flex;gap:6px;margin-top:6px">${g.status==='open'?(g.joined?`<button class="btn2" onclick="groupLeave('${g.id}')">עזיבה</button>`:`<input class="inp" id="gq-${g.id}" type="number" value="10" style="width:80px"><button class="btn2 green" onclick="groupJoin('${g.id}')">הצטרפות</button>`):''}</div></div>`).join('')||'<div class="card mut">אין קבוצות רכש</div>'}`;
+   <div style="display:flex;gap:6px;margin-top:6px">${g.status==='open'?(g.joined?`<button class="btn2" data-act="groupLeave" data-a="${g.id}">עזיבה</button>`:`<input class="inp" id="gq-${g.id}" type="number" value="10" style="width:80px"><button class="btn2 green" data-act="groupJoin" data-a="${g.id}">הצטרפות</button>`):''}</div></div>`).join('')||'<div class="card mut">אין קבוצות רכש</div>'}`;
  } else if(sub==='capacity'){
   const d=await api('/community/capacity');
-  body=`<button class="btn2 on" onclick="capacityNew()">+ מודעת קיבולת</button>
+  body=`<button class="btn2 on" data-act="capacityNew">+ מודעת קיבולת</button>
   ${d.posts.map(p=>`<div class="card"><b>${p.kind==='request'?'מבוקש':'מוצע'}: ${esc(p.equipment)}</b> <span class="tag ${p.status==='open'?'tg':p.status==='engaged'?'tb':'ta'}">${p.status==='open'?'פתוח':p.status==='engaged'?'בהתקשרות':'נסגר'}</span>
    <div class="mut">${esc(p.tenant_name)} (${esc(p.tenant_city||'')})${p.kg_per_day?' · '+p.kg_per_day+' ק"ג/יום':''}${p.days?' · '+p.days+' ימים':''}${p.area?' · '+esc(p.area):''}${p.price?' · ₪'+p.price:''}</div>
    ${p.notes?`<div class="mut">${esc(p.notes)}</div>`:''}
-   ${(p.engagements||[]).map(e=>`<div class="mut">התקשרות עם ${esc(e.tenant)} — ${e.status==='done'?`הושלם ✓${e.payment_demo?' · תשלום דמו ₪'+e.payment_demo:''}`:'פעילה'} ${e.status==='active'?`<button class="btn2" onclick="capacityDone('${e.id}')">סימון הושלם + תשלום דמו</button>`:''}</div>`).join('')}
-   ${p.status==='open'?`<button class="btn2 green" style="margin-top:6px" onclick="capacityEngage('${p.id}','${p.kind}')">${p.kind==='request'?'הצעת קיבולת':'בקשת קיבולת'}</button>`:''}</div>`).join('')||'<div class="card mut">אין מודעות קיבולת</div>'}`;
+   ${(p.engagements||[]).map(e=>`<div class="mut">התקשרות עם ${esc(e.tenant)} — ${e.status==='done'?`הושלם ✓${e.payment_demo?' · תשלום דמו ₪'+e.payment_demo:''}`:'פעילה'} ${e.status==='active'?`<button class="btn2" data-act="capacityDone" data-a="${e.id}">סימון הושלם + תשלום דמו</button>`:''}</div>`).join('')}
+   ${p.status==='open'?`<button class="btn2 green" style="margin-top:6px" data-act="capacityEngage" data-a="${p.id}" data-b="${p.kind}">${p.kind==='request'?'הצעת קיבולת':'בקשת קיבולת'}</button>`:''}</div>`).join('')||'<div class="card mut">אין מודעות קיבולת</div>'}`;
  } else if(sub==='content'){
   const d=await api('/community/content');
-  body=(state.me&&state.me.role==='admin'?`<button class="btn2 on" onclick="contentNew()">+ פרסום תוכן</button>`:'')+
+  body=(state.me&&state.me.role==='admin'?`<button class="btn2 on" data-act="contentNew">+ פרסום תוכן</button>`:'')+
   `${d.articles.map(a=>`<a href="#/community/article/${a.id}" style="text-decoration:none;color:inherit"><div class="card">
     <b>${esc(a.title)}</b> <span class="tag tb">${CONTENT_CATS[a.category]||a.category}</span>
     <div class="mut">${esc(a.excerpt)}${a.excerpt&&a.excerpt.length>=200?'…':''}</div>
@@ -151,9 +151,9 @@ async function vManage(sub){
       ${o.delivery_confirmation?`<div class="mut">✅ אושרה מסירה (${o.delivery_confirmation.method==='code'?'קוד לקוח':'צילום'}) · ${fmtDT(o.delivery_confirmation.at)}${o.delivery_confirmation.has_photo?` · <a href="/api/delivery-confirmations/${o.delivery_confirmation.id}/photo" target="_blank" style="color:#0e7a8a">צילום אישור</a>`:''}</div>`:''}
      </div>
      <div style="display:flex;gap:6px">
-      ${NEXT[o.status]?`<button class="btn2 on" onclick="setStatus('${slug}','${o.id}','${NEXT[o.status]}')">העבר ל״${HE[NEXT[o.status]]}״</button>`:''}
-      ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" onclick="setStatus('${slug}','${o.id}','cancelled')">ביטול</button>`:''}
-      ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" onclick="assignCourier('${slug}','${o.id}',this)">שיבוץ שליח</button>`):''}
+      ${NEXT[o.status]?`<button class="btn2 on" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="${NEXT[o.status]}">העבר ל״${HE[NEXT[o.status]]}״</button>`:''}
+      ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="cancelled">ביטול</button>`:''}
+      ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" data-act="assignCourier" data-a="${slug}" data-b="${o.id}">שיבוץ שליח</button>`):''}
      </div>
     </div></div>`).join('')||'<div class="card mut">אין הזמנות</div>';
  } else if(sub==='issues'){
@@ -169,8 +169,8 @@ async function vManage(sub){
      ${i.resolution_note?`<div class="mut">תיעוד: ${esc(i.resolution_note)}</div>`:''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
-     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" onclick="openIssuePhoto('${pid}')">📷</button>`).join('')}
-     ${i.status!=='resolved'?`<button class="btn2 on" onclick="tenantIssueHandle('${slug}','${i.id}')">עדכון טיפול</button>`:''}
+     ${(i.photo_ids||[]).map(pid=>`<button class="btn2" data-act="openIssuePhoto" data-a="${pid}">📷</button>`).join('')}
+     ${i.status!=='resolved'?`<button class="btn2 on" data-act="tenantIssueHandle" data-a="${slug}" data-b="${i.id}">עדכון טיפול</button>`:''}
     </div>
    </div></div>`).join('')||'<div class="card mut">אין פניות תקלות ✓</div>';
  } else if(sub==='items'){
@@ -181,9 +181,9 @@ async function vManage(sub){
     <div style="display:flex;gap:8px"><input class="inp" id="it-price" type="number" placeholder="מחיר ₪" style="flex:1">
     <select class="inp" id="it-unit" style="flex:1"><option value="item">ליחידה</option><option value="kg">לק״ג</option><option value="bag">לשק</option></select>
     <select class="inp" id="it-cat" style="flex:1"><option>כביסה</option><option>ניקוי יבש</option><option>גיהוץ</option><option>שטיחים</option><option>אחר</option></select></div>
-    <button class="btn2 on" onclick="addItem('${slug}')">הוספה</button></div>
+    <button class="btn2 on" data-act="addItem" data-a="${slug}">הוספה</button></div>
    <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='item'?'ליחידה':'ל'+unitLbl(i.unit)}</div></div>
-    <div>₪${i.price} <button class="btn2" ${i.subscription_eligible?'style="border-color:#0e7a8a;color:#0e7a8a"':''} title="פריט מכוסה במנוי" onclick="toggleItemSub('${slug}','${i.id}',${!i.subscription_eligible})">${i.subscription_eligible?'✓ במנוי':'למנוי'}</button> <button class="btn2" onclick="editItem('${slug}','${i.id}',this)" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" onclick="delItem('${slug}','${i.id}')">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
+    <div>₪${i.price} <button class="btn2" ${i.subscription_eligible?'style="border-color:#0e7a8a;color:#0e7a8a"':''} title="פריט מכוסה במנוי" data-act="toggleItemSub" data-a="${slug}" data-b="${i.id}" data-c="${!i.subscription_eligible}">${i.subscription_eligible?'✓ במנוי':'למנוי'}</button> <button class="btn2" data-act="editItem" data-a="${slug}" data-b="${i.id}" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" data-act="delItem" data-a="${slug}" data-b="${i.id}">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
  } else if(sub==='windows'){
   const d=await api(`/t/${slug}/windows`);
   body=`<div class="card">
@@ -193,8 +193,8 @@ async function vManage(sub){
      <input class="inp" id="w-start" type="time" style="flex:1"><input class="inp" id="w-end" type="time" style="flex:1">
      <select class="inp" id="w-kind" style="flex:1"><option value="pickup">איסוף</option><option value="delivery">החזרה</option></select>
     </div>
-    <button class="btn2 on" onclick="addWindow('${slug}')">הוספה</button></div>
-   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}<div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" onclick="delWindow('${slug}','${w.id}')">מחיקה</button></div>`).join('')}</div>`;
+    <button class="btn2 on" data-act="addWindow" data-a="${slug}">הוספה</button></div>
+   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}<div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')}</div>`;
  } else if(sub==='coupons'){
   const d=await api(`/t/${slug}/coupons`);
   body=`<div class="card">
@@ -208,10 +208,10 @@ async function vManage(sub){
      <input class="inp" id="cp-peruser" type="number" placeholder="מגבלה ללקוח" style="flex:1">
      <input class="inp" id="cp-exp" type="date" style="flex:1">
     </div>
-    <button class="btn2 on" onclick="addCoupon('${slug}')">יצירת קופון</button></div>
+    <button class="btn2 on" data-act="addCoupon" data-a="${slug}">יצירת קופון</button></div>
    <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
     <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
-    <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
+    <button class="btn2" data-act="toggleCoupon" data-a="${slug}" data-b="${c.id}" data-c="${!c.active}">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
  } else if(sub==='subs'){
   const d=await api(`/t/${slug}/plans`);
   const sb=await api(`/t/${slug}/subscriptions`);
@@ -227,11 +227,11 @@ async function vManage(sub){
     <input class="inp" id="pl-extra" type="number" placeholder="שק חורג ₪ (רשות)" style="flex:1" min="0">
    </div>
    <input class="inp" id="pl-perks" placeholder="הטבות (טקסט חופשי, רשות)">
-   <button class="btn2 on" onclick="addPlan('${slug}')">יצירת תוכנית</button></div>
+   <button class="btn2 on" data-act="addPlan" data-a="${slug}">יצירת תוכנית</button></div>
   <div class="sec">תוכניות (${d.plans.length})</div>
   <div class="card">${d.plans.map(p=>`<div class="row"><div style="${p.active?'':'opacity:.4'}"><b>${esc(p.name)}</b> — ₪${p.price}/חודש
     <div class="mut">${p.bags_per_month} שקים · ${fmtQ(p.kg_per_bag)} ק״ג לשק${p.extra_bag_price?' · שק חורג ₪'+p.extra_bag_price:''}${p.perks?' · '+esc(p.perks):''} · ${p.active_subs} מנויים פעילים</div></div>
-    <button class="btn2" onclick="togglePlan('${slug}','${p.id}',${!p.active})">${p.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין תוכניות מנוי עדיין</div>'}</div>
+    <button class="btn2" data-act="togglePlan" data-a="${slug}" data-b="${p.id}" data-c="${!p.active}">${p.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין תוכניות מנוי עדיין</div>'}</div>
   <div class="sec">מנויים (${sb.subscriptions.length})</div>
   <div class="card">${sb.subscriptions.map(x=>`<div class="row"><div><b>${esc(x.customer_name||'')}</b> · ${esc(x.plan_name)} ${x.status==='paused'?'<span class="tag tb">מושהה</span>':''}
     <div class="mut">${esc(x.customer_phone||'')} · נוצלו ${fmtQ(x.bags_used)}/${x.bags_per_month} שקים החודש · מתחדש ${fmtDate(x.period_end)}</div></div><div>₪${x.plan_price}</div></div>`).join('')||'<div class="mut">אין מנויים עדיין — שתפו עם הלקוחות את דף המכבסה</div>'}</div>`;
@@ -240,14 +240,14 @@ async function vManage(sub){
  } else if(sub==='documents'){
   const d=await api(`/t/${slug}/documents`);
   const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
-  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" onclick="consolidatedModal('${slug}')">🧾 הפק חשבונית מרכזת</button>`;
+  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" data-act="consolidatedModal" data-a="${slug}">🧾 הפק חשבונית מרכזת</button>`;
   body=consBtn+(d.documents.length?`<div class="card docs-list">${d.documents.map(dc=>`<div class="row"><div>
     <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
     <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${dc.orders_count?' · מכסה '+dc.orders_count+' הזמנות':''}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
     <div class="docs-actions">
-     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
-     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
-     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
+     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf">מקור</button>
+     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf?copy=1">העתק</button>
+     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" data-act="creditDoc" data-a="${slug}" data-b="${dc.id}" data-c="${dc.total}" data-d="${dc.credited_amount}">זיכוי</button>`:''}
     </div></div>`).join('')}</div>`
    :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
@@ -260,10 +260,10 @@ async function vManage(sub){
   ${d.couriers.map(c=>{const onPct=c.pickups_30d?Math.round(100*c.ontime_30d/c.pickups_30d):null;return `<div class="card"><div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
     <div class="mut">${esc(c.phone||'')} · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
     <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div>
-    <button class="btn2" onclick="tenantRateCourier('${slug}','${c.id}','${esc(c.name)}')">דירוג</button></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
+    <button class="btn2" data-act="tenantRateCourier" data-a="${slug}" data-b="${c.id}" data-c="${esc(c.name)}">דירוג</button></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
   ${d.clusters&&d.clusters.length?`<div class="card"><div class="sec">קלאסטרים אזוריים (מסלולים משותפים קבועים)</div>
    ${d.clusters.map(cl=>`<div class="row"><div><b>${esc(cl.name)}</b> · ${esc(cl.area)}<div class="mut">${cl.members} מכבסות · דמי ניהול חודשיים (דמו): ₪${cl.mgmt_fee_monthly}${cl.fixed_routes&&cl.fixed_routes.length?' · מסלול קבוע: '+cl.fixed_routes.map(f=>WD[f.weekday]+' — '+esc(f.courier)).join(', '):''}</div></div>
-    <button class="btn2 ${cl.joined?'':'green'}" onclick="tenantCluster('${slug}','${cl.id}','${cl.joined?'leave':'join'}')">${cl.joined?'עזיבה':'הצטרפות'}</button></div>`).join('')}</div>`:''}
+    <button class="btn2 ${cl.joined?'':'green'}" data-act="tenantCluster" data-a="${slug}" data-b="${cl.id}" data-c="${cl.joined?'leave':'join'}">${cl.joined?'עזיבה':'הצטרפות'}</button></div>`).join('')}</div>`:''}
   ${d.payments.length?`<div class="card"><div class="sec">היסטוריית תשלומים לשליחים (דרך הפלטפורמה)</div><table class="tbl"><tr><th>שבוע</th><th>נקודות</th><th>ברוטו</th><th>עמלת פלטפורמה</th><th>סטטוס</th></tr>
    ${d.payments.map(x=>`<tr><td>${fmtDate(x.week_start)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>${x.statuses.includes('paid_demo')?'שולם (דמו)':x.statuses.includes('disputed')?'במחלוקת':'נצבר'}</td></tr>`).join('')}</table></div>`:''}`;
  } else if(sub==='customers'){
@@ -293,9 +293,9 @@ async function vManage(sub){
    <div class="card"><b>פריטים מובילים</b>${d.topItems.map(t=>`<div class="row"><div>${esc(t.name)}</div><div>${t.qty} · ₪${t.revenue}</div></div>`).join('')||'<div class="mut">אין נתונים</div>'}</div>
    <div class="card"><b>ייצוא (Excel)</b>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/orders.csv','orders.csv')">הזמנות CSV</button>
-     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/customers.csv','customers.csv')">לקוחות CSV</button>
-     <button class="btn2" onclick="downloadCsv('/t/${slug}/export/courier-payments.csv','courier-payments.csv')">תשלומי שליחים CSV</button>
+     <button class="btn2" data-act="downloadCsv" data-a="/t/${slug}/export/orders.csv" data-b="orders.csv">הזמנות CSV</button>
+     <button class="btn2" data-act="downloadCsv" data-a="/t/${slug}/export/customers.csv" data-b="customers.csv">לקוחות CSV</button>
+     <button class="btn2" data-act="downloadCsv" data-a="/t/${slug}/export/courier-payments.csv" data-b="courier-payments.csv">תשלומי שליחים CSV</button>
     </div></div>`;
  } else if(sub==='settings'){
   const d=await api('/laundries/'+slug);
@@ -321,14 +321,14 @@ async function vManage(sub){
    <label class="lb">סלוגן</label><input class="inp" id="s-slogan" value="${esc(l.slogan||'')}">
    <label class="lb">וואטסאפ עסקי</label><input class="inp" id="s-wa" value="${esc(l.whatsapp||'')}" dir="ltr">
    <label class="lb">לוגו (PNG/JPG/WebP עד 2MB)</label>
-   ${l.has_logo?`<div style="margin-bottom:6px"><img src="/api/laundries/${slug}/logo" style="height:48px;border:1px solid #e2eaee;border-radius:8px;padding:4px;background:#fff"> <button class="btn2" onclick="delLogo('${slug}')">הסרת לוגו</button></div>`:''}
+   ${l.has_logo?`<div style="margin-bottom:6px"><img src="/api/laundries/${slug}/logo" style="height:48px;border:1px solid #e2eaee;border-radius:8px;padding:4px;background:#fff"> <button class="btn2" data-act="delLogo" data-a="${slug}">הסרת לוגו</button></div>`:''}
    <input class="inp" id="s-logo" type="file" accept="image/png,image/jpeg,image/webp">
-   <button class="btn2 on" onclick="uploadLogo('${slug}')">העלאת לוגו</button></div>
+   <button class="btn2 on" data-act="uploadLogo" data-a="${slug}">העלאת לוגו</button></div>
    <label class="lb">תקנון</label><textarea class="inp" id="s-terms" rows="3">${esc(l.terms||'')}</textarea>
-   <button class="btn" onclick="saveSettings('${slug}')">שמירה</button></div>`;
+   <button class="btn" data-act="saveSettings" data-a="${slug}">שמירה</button></div>`;
  }
  store.set('lastTenant',slug);
- const switcher=mems.length>1?`<select class="sel" style="margin-top:8px" onchange="store.set('lastTenant',this.value);route()">${mems.map(x=>`<option value="${x.slug}" ${x.slug===slug?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:'';
+ const switcher=mems.length>1?`<select class="sel" style="margin-top:8px" data-actc="commTenantSwitch">${mems.map(x=>`<option value="${x.slug}" ${x.slug===slug?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:'';
  return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="javascript:logout()" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
  <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
 }
@@ -387,7 +387,7 @@ async function assignCourier(slug,oid,el){
   const box=document.createElement('div');box.className='assignbox';box.style.cssText='margin-top:8px;display:flex;gap:6px';
   box.innerHTML=`<div class="mut" style="margin-bottom:4px">עלות משוערת: ₪${(d.estimate&&d.estimate.per_order)||''} (${(d.estimate&&d.estimate.stops_per_order)||2} נקודות × ₪${(d.estimate&&d.estimate.rate_per_stop)||''})</div>
    <select class="inp" id="as-${oid}" style="flex:1">${d.couriers.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'} · ${c.active_orders} פעילות</option>`).join('')}</select>
-   <button class="btn2 on" onclick="doAssign('${slug}','${oid}',this)">שליחת הצעה</button>`;
+   <button class="btn2 on" data-act="doAssign" data-a="${slug}" data-b="${oid}">שליחת הצעה</button>`;
   card.appendChild(box);
  }catch(e){toast(e.message)}
 }
@@ -413,10 +413,10 @@ async function vManageBiz(slug){
    <input class="inp" id="bz-contact" placeholder="איש קשר" style="flex:1;min-width:100px">
    <input class="inp" id="bz-phone" placeholder="טלפון איש קשר" style="flex:1;min-width:110px">
   </div>
-  <button class="btn2 on" onclick="bizCreate('${slug}')">יצירת חשבון</button></div>`;
+  <button class="btn2 on" data-act="bizCreate" data-a="${slug}">יצירת חשבון</button></div>`;
  html+=`<div class="card">${d.accounts.map(a=>`<div class="row"><div style="${a.active?'':'opacity:.4'}"><b>${esc(a.name)}</b>${a.active?'':' (מושבת)'}
    <div class="mut">${a.company_id?'ח״פ '+esc(a.company_id)+' · ':''}${a.users_count} משתמשים · ${a.prices_count} מחירים הסכמיים · ${a.payment_terms==='net30'?'שוטף+30':esc(a.payment_terms)}</div></div>
-   <button class="btn2 ${bizSel===a.id?'on':''}" onclick="bizPick('${a.id}')">${bizSel===a.id?'נבחר':'ניהול'}</button></div>`).join('')||'<div class="mut">אין חשבונות עסקיים עדיין</div>'}</div>`;
+   <button class="btn2 ${bizSel===a.id?'on':''}" data-act="bizPick" data-a="${a.id}">${bizSel===a.id?'נבחר':'ניהול'}</button></div>`).join('')||'<div class="mut">אין חשבונות עסקיים עדיין</div>'}</div>`;
  if(!acc)return html;
  const det=await api(`/t/${slug}/business-accounts/${acc.id}`);
  const sum=(await api(`/t/${slug}/business-accounts/${acc.id}/summary`)).summary;
@@ -431,7 +431,7 @@ async function vManageBiz(slug){
    <input class="inp" id="bz-oqty" type="number" value="1" min="1" style="width:70px">
   </div>
   <input class="inp" id="bz-oaddr" placeholder="כתובת איסוף">
-  <button class="btn2 on" onclick="bizOrder('${slug}','${acc.id}')">יצירת הזמנה</button></div>`;
+  <button class="btn2 on" data-act="bizOrder" data-a="${slug}" data-b="${acc.id}">יצירת הזמנה</button></div>`;
  // הזמנה חוזרת
  const DAYS=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
  html+=`<div class="card"><label class="lb">הזמנה חוזרת</label>
@@ -443,31 +443,31 @@ async function vManageBiz(slug){
    <input class="inp" id="bz-rtime" type="time" value="09:00" style="width:100px">
   </div>
   <input class="inp" id="bz-raddr" placeholder="כתובת קבועה לאיסוף">
-  <button class="btn2 on" onclick="bizRecCreate('${slug}','${acc.id}')">יצירת תבנית</button>
+  <button class="btn2 on" data-act="bizRecCreate" data-a="${slug}" data-b="${acc.id}">יצירת תבנית</button>
   ${rec.map(t=>`<div class="row" style="margin-top:8px"><div style="${t.active?'':'opacity:.4'}"><b>${esc(t.user_name||'')}</b> · ימים ${(t.days||[]).map(d=>DAYS[d]).join(' ')}${t.pickup_time?' · '+t.pickup_time.slice(0,5):''}
     <div class="mut">${(t.items||[]).map(i=>{const it=items.find(x=>x.id===i.item_id);return (it?esc(it.name):'פריט')+' ×'+fmtQ(i.qty)}).join(', ')} · ${esc(t.address)}${t.last_run_on?' · הופק לאחרונה '+fmtDate(t.last_run_on):''}</div></div>
-    <button class="btn2" onclick="bizRecToggle('${slug}','${acc.id}','${t.id}',${!t.active})">${t.active?'השהיה':'הפעלה'}</button></div>`).join('')}</div>`;
+    <button class="btn2" data-act="bizRecToggle" data-a="${slug}" data-b="${acc.id}" data-c="${t.id}" data-d="${!t.active}">${t.active?'השהיה':'הפעלה'}</button></div>`).join('')}</div>`;
  // מחירון הסכמי
  html+=`<div class="card"><label class="lb">מחירון הסכמי</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
    <select class="inp" id="bz-pitem" style="flex:2;min-width:140px">${items.map(i=>`<option value="${i.id}">${esc(i.name)} (רגיל ₪${i.price})</option>`).join('')}</select>
    <input class="inp" id="bz-pprice" type="number" placeholder="מחיר הסכמי ₪" style="flex:1;min-width:110px">
-   <button class="btn2 on" onclick="bizSetPrice('${slug}','${acc.id}')">קביעה</button>
+   <button class="btn2 on" data-act="bizSetPrice" data-a="${slug}" data-b="${acc.id}">קביעה</button>
   </div>
   ${det.prices.map(p=>`<div class="row" style="margin-top:6px"><div>${esc(p.name)} <div class="mut">רגיל ₪${p.regular_price}</div></div>
-   <div><b>₪${p.price}</b> <button class="btn2" onclick="bizDelPrice('${slug}','${acc.id}','${p.item_id}')">הסרה</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין דריסות מחיר — ההזמנות במחירון הרגיל</div>'}</div>`;
+   <div><b>₪${p.price}</b> <button class="btn2" data-act="bizDelPrice" data-a="${slug}" data-b="${acc.id}" data-c="${p.item_id}">הסרה</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין דריסות מחיר — ההזמנות במחירון הרגיל</div>'}</div>`;
  // משתמשים
  html+=`<div class="card"><label class="lb">משתמשים משויכים</label>
-  <div style="display:flex;gap:8px"><input class="inp" id="bz-uphone" placeholder="טלפון משתמש רשום" style="flex:1"><button class="btn2 on" onclick="bizAddUser('${slug}','${acc.id}')">שיוך</button></div>
-  ${det.users.map(u=>`<div class="row" style="margin-top:6px"><div>${esc(u.name||'')} <span class="mut" dir="ltr">${esc(u.phone)}</span></div><button class="btn2" onclick="bizDelUser('${slug}','${acc.id}','${u.id}')">הסרה</button></div>`).join('')||'<div class="mut" style="margin-top:6px">אין משתמשים משויכים</div>'}</div>`;
+  <div style="display:flex;gap:8px"><input class="inp" id="bz-uphone" placeholder="טלפון משתמש רשום" style="flex:1"><button class="btn2 on" data-act="bizAddUser" data-a="${slug}" data-b="${acc.id}">שיוך</button></div>
+  ${det.users.map(u=>`<div class="row" style="margin-top:6px"><div>${esc(u.name||'')} <span class="mut" dir="ltr">${esc(u.phone)}</span></div><button class="btn2" data-act="bizDelUser" data-a="${slug}" data-b="${acc.id}" data-c="${u.id}">הסרה</button></div>`).join('')||'<div class="mut" style="margin-top:6px">אין משתמשים משויכים</div>'}</div>`;
  // חשבונית מרוכזת
  const now=new Date();
  html+=`<div class="card"><label class="lb">חשבונית מרוכזת חודשית</label>
   <div class="mut">הפקה אוטומטית ב-1 לחודש · מסמך דמו — לא חשבונית מס · ברירת מחדל מופעלת לחשבון עסקי</div>
-  <label style="display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="bz-cons" ${acc.consolidated_billing!==false?'checked':''} onchange="bizConsToggle('${slug}','${acc.id}',this.checked)"> חשבונית מרכזת חודשית מופעלת</label>
-  <button class="btn2 on" onclick="bizInvGen('${slug}','${acc.id}')">הפקה לחודש ${now.getMonth()+1}/${now.getFullYear()}</button>
+  <label style="display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer"><input type="checkbox" id="bz-cons" ${acc.consolidated_billing!==false?'checked':''} data-actc="bizConsToggle" data-a="${slug}" data-b="${acc.id}"> חשבונית מרכזת חודשית מופעלת</label>
+  <button class="btn2 on" data-act="bizInvGen" data-a="${slug}" data-b="${acc.id}">הפקה לחודש ${now.getMonth()+1}/${now.getFullYear()}</button>
   ${inv.map(i=>`<div class="row" style="margin-top:6px"><div><b>${i.month}/${i.year}</b>${i.regenerated_count>0?' <span class="tag tb">הופק מחדש ×'+i.regenerated_count+'</span>':''} <div class="mut">${i.orders_count} הזמנות · הופק ${fmtDate(i.issued_at)}${i.regenerated_at?' · עודכן '+fmtDate(i.regenerated_at):''}</div></div>
-   <div><b>₪${i.total}</b> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','pdf')">PDF</button> <button class="btn2" onclick="bizDoc('${slug}','${acc.id}','${i.id}','csv')">CSV</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין חשבוניות עדיין</div>'}</div>`;
+   <div><b>₪${i.total}</b> <button class="btn2" data-act="bizDoc" data-a="${slug}" data-b="${acc.id}" data-c="${i.id}" data-d="pdf">PDF</button> <button class="btn2" data-act="bizDoc" data-a="${slug}" data-b="${acc.id}" data-c="${i.id}" data-d="csv">CSV</button></div></div>`).join('')||'<div class="mut" style="margin-top:6px">אין חשבוניות עדיין</div>'}</div>`;
  return html;
 }
 function bizPick(id){bizSel=id;route()}
@@ -534,4 +534,27 @@ async function toggleCoupon(slug,id,active){try{await api(`/t/${slug}/coupons/${
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
 async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
 async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value,dealer_type:$('#s-dealer-type').value||null,dealer_id:$('#s-dealer-id').value||null,invoice_mode:$('#s-invoice-mode').value})});toast('נשמר')}catch(e){toast(e.message)}}
-
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ bizConsToggle:t=>bizConsToggle(t.dataset.a,t.dataset.b,t.checked),
+ commTenantSwitch:t=>{store.set('lastTenant',t.value);route()},
+ addItem:t=>addItem(t.dataset.a), addPlan:t=>addPlan(t.dataset.a), addWindow:t=>addWindow(t.dataset.a),
+ assignCourier:t=>assignCourier(t.dataset.a,t.dataset.b,t), doAssign:t=>doAssign(t.dataset.a,t.dataset.b,t),
+ bizAddUser:t=>bizAddUser(t.dataset.a,t.dataset.b), bizCreate:t=>bizCreate(t.dataset.a),
+ bizDelPrice:t=>bizDelPrice(t.dataset.a,t.dataset.b,t.dataset.c), bizDelUser:t=>bizDelUser(t.dataset.a,t.dataset.b,t.dataset.c),
+ bizDoc:t=>bizDoc(t.dataset.a,t.dataset.b,t.dataset.c,t.dataset.d), bizInvGen:t=>bizInvGen(t.dataset.a,t.dataset.b),
+ bizOrder:t=>bizOrder(t.dataset.a,t.dataset.b), bizPick:t=>bizPick(t.dataset.a),
+ bizRecCreate:t=>bizRecCreate(t.dataset.a,t.dataset.b), bizRecToggle:t=>bizRecToggle(t.dataset.a,t.dataset.b,t.dataset.c,t.dataset.d==='true'),
+ bizSetPrice:t=>bizSetPrice(t.dataset.a,t.dataset.b), capacityDone:t=>capacityDone(t.dataset.a),
+ capacityEngage:t=>capacityEngage(t.dataset.a,t.dataset.b), capacityNew:()=>capacityNew(), contentNew:()=>contentNew(),
+ delItem:t=>delItem(t.dataset.a,t.dataset.b), delLogo:t=>delLogo(t.dataset.a), delWindow:t=>delWindow(t.dataset.a,t.dataset.b),
+ editItem:t=>editItem(t.dataset.a,t.dataset.b,t), forumComment:t=>forumComment(t.dataset.a),
+ forumNewPost:()=>forumNewPost(), forumUseful:t=>forumUseful(t.dataset.a),
+ groupJoin:t=>groupJoin(t.dataset.a), groupLeave:t=>groupLeave(t.dataset.a), groupNew:()=>groupNew(),
+ saveSettings:t=>saveSettings(t.dataset.a), setStatus:t=>setStatus(t.dataset.a,t.dataset.b,t.dataset.c),
+ tenantCluster:t=>tenantCluster(t.dataset.a,t.dataset.b,t.dataset.c), tenantIssueHandle:t=>tenantIssueHandle(t.dataset.a,t.dataset.b),
+ tenantRateCourier:t=>tenantRateCourier(t.dataset.a,t.dataset.b,t.dataset.c),
+ tenderAward:t=>tenderAward(t.dataset.a,t.dataset.b), tenderBid:t=>tenderBid(t.dataset.a), tenderNew:()=>tenderNew(),
+ toggleItemSub:t=>toggleItemSub(t.dataset.a,t.dataset.b,t.dataset.c==='true'),
+ togglePlan:t=>togglePlan(t.dataset.a,t.dataset.b,t.dataset.c==='true'), uploadLogo:t=>uploadLogo(t.dataset.a)
+});

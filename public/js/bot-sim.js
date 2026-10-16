@@ -10,29 +10,29 @@ function vBotSim() {
   </div>
   <div class="card">
    <div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">
-    <button class="btn2 on" id="bs-tab-chat" onclick="botSimTab('chat')">צ'אט מדומה</button>
-    <button class="btn2" id="bs-tab-out" onclick="botSimTab('out')">דוא"ל/וואטסאפ מדומה</button>
+    <button class="btn2 on" id="bs-tab-chat" data-act="botSimTab" data-a="chat">צ'אט מדומה</button>
+    <button class="btn2" id="bs-tab-out" data-act="botSimTab" data-a="out">דוא"ל/וואטסאפ מדומה</button>
    </div>
    <div id="bs-chat">
     <div id="bs-log" style="min-height:120px;max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
      ${botSimLog.length ? botSimLog.map(b => botSimBubble(b.who, b.text)).join('') : '<div class="mut" style="text-align:center">כתבו "שלום" כדי להתחיל — נסו גם "מכבסות", "מחירון", "שעות", "סטטוס"</div>'}
     </div>
     <div style="display:flex;gap:6px">
-     <input id="bs-in" class="inp" style="flex:1" placeholder="הקלידו הודעה לבוט…" onkeydown="if(event.key==='Enter')botSimSend()">
-     <button class="btn" onclick="botSimSend()">שלח</button>
+     <input id="bs-in" class="inp" style="flex:1" placeholder="הקלידו הודעה לבוט…" data-actk="botSimEnter">
+     <button class="btn" data-act="botSimSend">שלח</button>
     </div>
    </div>
    <div id="bs-out" style="display:none">
     ${state.token ? `
     <div class="mut" style="margin-bottom:6px">ה"שליחה" נרשמת בתיבת דואר יוצא מדומה בלבד (מסמך דמו).</div>
-    <select id="bo-ch" class="inp" style="margin-bottom:6px" onchange="document.getElementById('bo-subj').style.display=this.value==='email'?'block':'none'">
+    <select id="bo-ch" class="inp" style="margin-bottom:6px" data-actc="botOutKind">
      <option value="whatsapp">וואטסאפ (מדומה)</option>
      <option value="email">דוא"ל (מדומה)</option>
     </select>
     <input id="bo-to" class="inp" style="margin-bottom:6px" placeholder="נמען (טלפון או מייל)">
     <input id="bo-subj" class="inp" style="margin-bottom:6px;display:none" placeholder="נושא (לדוא&quot;ל)">
     <textarea id="bo-body" class="inp" rows="3" style="margin-bottom:6px" placeholder="תוכן ההודעה"></textarea>
-    <button class="btn" onclick="botOutSend()">שלח (סימולציה)</button>
+    <button class="btn" data-act="botOutSend">שלח (סימולציה)</button>
     <div id="bo-list" style="margin-top:10px"></div>` :
     `<div class="mut" style="text-align:center">כדי להשתמש בתיבת הדואר המדומה צריך <a href="#/login">להתחבר</a> (קוד דמו מוצג במסך הכניסה).</div>`}
    </div>
@@ -98,3 +98,9 @@ async function botOutList() {
      || '<div class="mut">עוד לא נרשמו הודעות מדומות</div>';
   } catch (e) { el.innerHTML = `<div class="mut">${esc(e.message)}</div>`; }
 }
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ botOutKind:t=>{document.getElementById('bo-subj').style.display=t.value==='email'?'block':'none'},
+ botOutSend:()=>botOutSend(), botSimSend:()=>botSimSend(), botSimTab:t=>botSimTab(t.dataset.a),
+ botSimEnter:(t,e)=>{if(e.key==='Enter')botSimSend()}
+});

@@ -17,14 +17,14 @@ async function vClub(){
    </div>
    <div class="mut" style="margin:8px 0 2px">נוצלו ${fmtQ(sb.bags_used)} מתוך ${sb.bags_per_month} שקים החודש</div>
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-    <button class="btn2" onclick="subUsage('${sb.id}')">היסטוריית ניצול</button>
-    ${sb.status==='active'?`<button class="btn2" onclick="subUpgrade('${sb.id}','${sb.slug}')">שינוי תוכנית</button><button class="btn2" onclick="subAct('${sb.id}','pause')">השהיה</button>`:''}
-    ${sb.status==='paused'?`<button class="btn2 on" onclick="subAct('${sb.id}','resume')">חידוש מנוי</button>`:''}
-    <button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="subCancel('${sb.id}')">ביטול מנוי</button>
+    <button class="btn2" data-act="subUsage" data-a="${sb.id}">היסטוריית ניצול</button>
+    ${sb.status==='active'?`<button class="btn2" data-act="subUpgrade" data-a="${sb.id}" data-b="${sb.slug}">שינוי תוכנית</button><button class="btn2" data-act="subAct" data-a="${sb.id}" data-b="pause">השהיה</button>`:''}
+    ${sb.status==='paused'?`<button class="btn2 on" data-act="subAct" data-a="${sb.id}" data-b="resume">חידוש מנוי</button>`:''}
+    <button class="btn2" style="border-color:#f3c2c2;color:#c22" data-act="subCancel" data-a="${sb.id}">ביטול מנוי</button>
    </div>
   </div>`).join(''):''}
   <div class="card"><b>התראות דחיפה</b><div class="mut" style="margin:4px 0">עדכון מיידי בכל שינוי סטטוס בהזמנה — גם כשהאפליקציה סגורה</div>
-   <button class="btn2 on" id="push-btn" onclick="pushSubscribe()">🔔 הפעלת התראות</button></div>
+   <button class="btn2 on" id="push-btn" data-act="pushSubscribe">🔔 הפעלת התראות</button></div>
   <div class="sec">נקודות</div>
   ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${cssColor(b.color)}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
@@ -32,4 +32,8 @@ async function vClub(){
   <div class="card">${d.recent.map(p=>`<div class="row"><div>${esc(p.name)}<div class="mut">${esc(({review_bonus:'בונוס על ביקורת'})[p.reason]||p.reason||'')}</div></div><div style="color:${p.delta>0?'#178a4c':'#c22'};font-weight:700">${p.delta>0?'+':''}${p.delta}</div></div>`).join('')||'<div class="mut">אין תנועות</div>'}</div>
  </div>`;
 }
-
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ pushSubscribe:()=>pushSubscribe(), subAct:t=>subAct(t.dataset.a,t.dataset.b),
+ subCancel:t=>subCancel(t.dataset.a), subUpgrade:t=>subUpgrade(t.dataset.a,t.dataset.b), subUsage:t=>subUsage(t.dataset.a)
+});

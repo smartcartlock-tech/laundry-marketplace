@@ -18,7 +18,7 @@ function vLogin(){
  <div class="body"><div class="card">
   <label class="lb">טלפון או אימייל</label>
   <input class="inp" id="login-target" placeholder="05x-xxxxxxx או name@mail.com" inputmode="tel">
-  <button class="btn" onclick="requestOtp()">שלחו לי קוד כניסה</button>
+  <button class="btn" data-act="requestOtp">שלחו לי קוד כניסה</button>
   <div id="otp-area"></div>
   ${gbtn}${demoNote}
  </div></div>`;
@@ -33,7 +33,7 @@ async function requestOtp(){
    <input class="inp" id="login-code" inputmode="numeric" maxlength="6" placeholder="הקוד שהתקבל" autocomplete="one-time-code">
    <label class="lb">שם (בהרשמה ראשונה)</label>
    <input class="inp" id="login-name" placeholder="השם שלך">
-   <button class="btn" onclick="verifyOtp()">כניסה</button>`;
+   <button class="btn" data-act="verifyOtp">כניסה</button>`;
  }catch(e){toast(e.message)}
 }
 async function verifyOtp(){
@@ -61,4 +61,7 @@ function initGoogle(){
  if(el)google.accounts.id.renderButton(el,{theme:'outline',size:'large',width:320,text:'signin_with',locale:'he'});
 }
 function logout(){state.token=null;state.me=null;state.memberships=[];state.courier=null;store.del('token');store.del('me');store.del('memberships');store.del('courier');go('#/login')}
-
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ requestOtp:()=>requestOtp(), verifyOtp:()=>verifyOtp()
+});

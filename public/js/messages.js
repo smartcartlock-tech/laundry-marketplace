@@ -17,12 +17,12 @@ async function vMessages() {
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
       <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${new Date(m.created_at).toLocaleString('he-IL')}</div>
      </div>
-     ${m.read_at ? '' : `<button class="btn2" style="font-size:11px" onclick="msgMarkRead('${m.id}')">נקרא</button>`}
+     ${m.read_at ? '' : `<button class="btn2" style="font-size:11px" data-act="msgMarkRead" data-a="${m.id}">נקרא</button>`}
     </div>
    </div>`).join('')
    : '<div class="card mut" style="text-align:center;padding:30px 0">אין הודעות עדיין</div>';
   return `<div class="hdr"><h2>מרכז הודעות</h2></div><div class="body">
-   ${d.unread ? `<div style="text-align:left;margin-bottom:8px"><button class="btn2" onclick="msgReadAll()">סמן הכל כנקרא (${d.unread})</button></div>` : ''}
+   ${d.unread ? `<div style="text-align:left;margin-bottom:8px"><button class="btn2" data-act="msgReadAll">סמן הכל כנקרא (${d.unread})</button></div>` : ''}
    ${list}
   </div>`;
 }
@@ -79,3 +79,7 @@ async function msgRefreshBadge() {
   window.addEventListener('hashchange', () => setTimeout(msgRefreshBadge, 300));
   setTimeout(msgRefreshBadge, 1500);
 })();
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ msgMarkRead:t=>msgMarkRead(t.dataset.a), msgReadAll:()=>msgReadAll()
+});

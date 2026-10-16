@@ -7,4 +7,5 @@
  document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(t&&REG[t.dataset.act])REG[t.dataset.act](t,e)});
  document.addEventListener('change',e=>{const t=e.target.closest('[data-actc]');if(t&&REG[t.dataset.actc])REG[t.dataset.actc](t,e)});
  document.addEventListener('input',e=>{const t=e.target.closest('[data-acti]');if(t&&REG[t.dataset.acti])REG[t.dataset.acti](t,e)});
+ document.addEventListener('keydown',e=>{const t=e.target.closest('[data-actk]');if(t&&REG[t.dataset.actk])REG[t.dataset.actk](t,e)});
 })();

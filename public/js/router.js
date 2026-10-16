@@ -16,7 +16,7 @@ async function vVerify(code){
     <div class="mut">הופק ב-${new Date(d.issued_at).toLocaleDateString('he-IL')}${d.orders_count?` · מכסה ${d.orders_count} הזמנות`:''}</div>
     <div class="mut" style="margin-top:6px">${d.signature_valid?'חתימה דיגיטלית תקינה (HMAC-SHA256)':'⚠️ החתימה הדיגיטלית אינה תואמת'}${d.sha256?' · גיבוב מסמך נשמר':''}</div>
     <div class="mut" style="margin-top:10px;color:#b00">מסמך דמו — לא לצורכי מע"מ (טרם רישום תוכנה ברשות המסים)</div>`}
-   <div style="margin-top:12px"><button class="btn2" onclick="go('#/');route()">לדף הבית</button></div>
+   <div style="margin-top:12px"><button class="btn2" data-act="goHomeRoute">לדף הבית</button></div>
   </div></div>`;
 }
 
@@ -52,7 +52,7 @@ async function route(){
   else if(parts[0]==='bot-sim')html=vBotSim(); // N3
   else if(parts[0]==='pay')html=await vPay(parts[1]);
   else if(parts[0]==='verify')html=await vVerify(parts[1]);
-  else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" onclick="go('#/')">חזרה לדף הבית</button></div></div>`;
+  else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" data-act="goHome">חזרה לדף הבית</button></div></div>`;
  }catch(e){
   if(e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();html=vLogin()}
   else html=`<div class="body"><div class="card warn">${esc(e.message)}</div></div>`;
@@ -78,4 +78,7 @@ window.addEventListener('storage',e=>{
  if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save();await adoptCloudCart()}catch(e){state.token=null;state.me=null;save()}}
  route();
 })();
-
+/* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
+onAct({
+ goHome:()=>go('#/'), goHomeRoute:()=>{go('#/');route()}
+});
