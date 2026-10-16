@@ -8,7 +8,7 @@ async function vClub(){
   ${subs.subscriptions.length?`<div class="sec">המנויים שלי</div>`+subs.subscriptions.map(sb=>`
   <div class="card">
    <div style="display:flex;gap:10px;align-items:center">
-    <span class="logo sm" style="background:${sb.color||'#0e7a8a'}">${esc(sb.letter||'מ')}</span>
+    <span class="logo sm" style="background:${cssColor(sb.color)}">${esc(sb.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(sb.tenant_name)}</b> · ${esc(sb.plan_name)} ${sb.status==='paused'?'<span class="tag tb">מושהה</span>':''}
      <div class="mut">₪${sb.plan_price}/חודש · מתחדש ${fmtDate(sb.period_end)}</div>
      ${sb.perks?`<div class="mut">${esc(sb.perks)}</div>`:''}
@@ -26,7 +26,7 @@ async function vClub(){
   <div class="card"><b>התראות דחיפה</b><div class="mut" style="margin:4px 0">עדכון מיידי בכל שינוי סטטוס בהזמנה — גם כשהאפליקציה סגורה</div>
    <button class="btn2 on" id="push-btn" onclick="pushSubscribe()">🔔 הפעלת התראות</button></div>
   <div class="sec">נקודות</div>
-  ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${b.color||'#0e7a8a'}">${esc(b.letter||'מ')}</span>
+  ${d.balances.map(b=>`<div class="card lcard"><span class="logo sm" style="background:${cssColor(b.color)}">${esc(b.letter||'מ')}</span>
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
   <div class="sec">תנועות אחרונות</div>
   <div class="card">${d.recent.map(p=>`<div class="row"><div>${esc(p.name)}<div class="mut">${esc(({review_bonus:'בונוס על ביקורת'})[p.reason]||p.reason||'')}</div></div><div style="color:${p.delta>0?'#178a4c':'#c22'};font-weight:700">${p.delta>0?'+':''}${p.delta}</div></div>`).join('')||'<div class="mut">אין תנועות</div>'}</div>

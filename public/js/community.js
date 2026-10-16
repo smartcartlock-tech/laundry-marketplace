@@ -316,7 +316,7 @@ async function vManage(sub){
    </div>
    <div style="border-top:1px solid #e3edf0;margin-top:10px;padding-top:8px"><b>מיתוג הדף העסקי (White Label)</b>
    <div class="mut" style="margin:4px 0">הדף הממותג: <a href="/b/${slug}" target="_blank" style="color:#0e7a8a" dir="ltr">/b/${slug}</a> · <a href="/api/laundries/${slug}/card" target="_blank" style="color:#0e7a8a">כרטיס QR להדפסה</a></div>
-   <label class="lb">צבע מותג</label><input class="inp" id="s-color" type="color" value="${l.color||'#0e7a8a'}" style="height:44px;padding:4px">
+   <label class="lb">צבע מותג</label><input class="inp" id="s-color" type="color" value="${cssColor(l.color)}" style="height:44px;padding:4px">
    <label class="lb">סלוגן</label><input class="inp" id="s-slogan" value="${esc(l.slogan||'')}">
    <label class="lb">וואטסאפ עסקי</label><input class="inp" id="s-wa" value="${esc(l.whatsapp||'')}" dir="ltr">
    <label class="lb">לוגו (PNG/JPG/WebP עד 2MB)</label>

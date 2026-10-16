@@ -21,7 +21,7 @@ function shade(hex,f){const n=parseInt(hex.slice(1),16);const r=Math.round(((n>>
 async function applyBrandTheme(slug){
  try{
   if(!state.brand||state.brand.slug!==slug){const d=await api('/laundries/'+slug);state.brand=d.laundry}
-  const l=state.brand,c=l.color||'#0e7a8a',dark=shade(c,.6);
+  const l=state.brand,c=cssColor(l.color),dark=shade(c,.6);
   let st=document.getElementById('brand-css');
   if(!st){st=document.createElement('style');st.id='brand-css';document.head.appendChild(st)}
   st.textContent=`.hdr{background:linear-gradient(120deg,${dark},${c})!important}.btn{background:linear-gradient(120deg,${dark},${c})!important}.btn2{background:${c}1a!important;color:${c}!important;border-color:${c}55!important}.btn2.on,.chip.on,.searchbar .go{background:${c}!important;color:#fff!important;border-color:${c}!important}.chip{background:${c}14!important;color:${c}!important;border-color:${c}55!important}`;
@@ -42,6 +42,7 @@ async function adoptCloudCart(){
  if(!state.token)return;
  try{const d=await api('/cart');if(d.items&&d.items.length&&!state.cart.length){state.cart=d.items;store.set('cart',state.cart)}}catch(e){}
 }
+function cssColor(c){return /^#[0-9a-fA-F]{3,8}$/.test(String(c||''))?String(c):'#0e7a8a'}
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 /* פתוח כעת: is_open ידני + שעות פעילות (אזור זמן ישראל). בלי שעות מוגדרות — לפי is_open בלבד */
 function openNow(l){

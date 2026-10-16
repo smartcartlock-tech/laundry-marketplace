@@ -90,7 +90,7 @@ async function vHome(q){
   <div class="mut" id="hf-count" style="margin:0 2px 8px"></div>
   <div class="home-grid" id="home-grid">
   ${laundries.map((l,i)=>{const dd=distOf(l);return `<a class="card lcard" data-idx="${i}" data-rating="${l.rating||0}" data-rc="${l.rating_count||0}" data-open="${openNow(l)?1:0}" data-services="${esc((l.services||[]).join('|'))}" data-fee="${Number(l.delivery_fee||0)}" data-kg="${l.from_kg!=null?Number(l.from_kg):''}" data-price="${l.from_price!=null?Number(l.from_price):''}" data-lat="${l.lat!=null?l.lat:''}" data-lng="${l.lng!=null?l.lng:''}" data-dist="${dd!=null?dd:''}" data-fav="${isFav(l.slug)?1:0}" href="#/laundry/${l.slug}" style="cursor:pointer;text-decoration:none;color:inherit">
-    ${l.has_logo?`<img class="logo" loading="lazy" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
+    ${l.has_logo?`<img class="logo" loading="lazy" src="/api/laundries/${l.slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${cssColor(l.color)}">${esc(l.letter||l.name[0])}</span>`}
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}<span class="dist">${dd!=null?' · '+fmtDist(dd):''}</span></div>
@@ -166,10 +166,10 @@ async function vLaundry(slug){
  return `<div class="hdr">
   <div style="display:flex;gap:12px;align-items:center">
    <a href="#/" style="color:#fff;font-size:20px;text-decoration:none" aria-label="חזרה">→</a>
-   ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${l.color||'#0e7a8a'}">${esc(l.letter||l.name[0])}</span>`}
+   ${l.has_logo?`<img class="logo" src="/api/laundries/${slug}/logo" style="object-fit:contain;background:#fff" alt="${esc(l.name)}">`:`<span class="logo" style="background:${cssColor(l.color)}">${esc(l.letter||l.name[0])}</span>`}
    <div style="flex:1"><h2>${esc(l.name)}</h2><p>${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count} ביקורות) · `:`<span class="tag tb">מכבסה חדשה</span> · `}${esc(l.city||'')} · ${openNow(l)?'פתוח':'סגור'}</p></div>
-   <button id="fav-btn" onclick="toggleFav('${slug}','${esc(l.name)}','${l.color||'#0e7a8a'}','${esc(l.letter||l.name[0])}')" style="background:rgba(255,255,255,.18);border:none;color:#ffd34d;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שמירה למועדפים">${isFav(slug)?'★':'☆'}</button>
-   <button onclick="shareLaundry('${esc(l.name)}')" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
+   <button id="fav-btn" data-fav="${esc(slug)}" data-name="${esc(l.name)}" data-color="${esc(cssColor(l.color))}" data-letter="${esc(l.letter||l.name[0])}" style="background:rgba(255,255,255,.18);border:none;color:#ffd34d;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שמירה למועדפים">${isFav(slug)?'★':'☆'}</button>
+   <button data-share="${esc(l.name)}" style="background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:9px;padding:8px 11px;cursor:pointer;font-family:inherit;font-size:14px;flex-shrink:0" title="שיתוף המכבסה">⤴</button>
   </div>
  </div>
  <div class="body">
@@ -196,7 +196,7 @@ async function vLaundry(slug){
   </div>`:''}
   <div class="sec" id="info">מידע</div>
   <div class="card mut" style="line-height:1.8">
-   שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
+   שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.map(x=>esc(x)).join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
    <span style="color:#17303a;font-weight:700">חלונות איסוף:</span> ${winTxt('pickup')}<br>
    <span style="color:#17303a;font-weight:700">חלונות החזרה:</span> ${winTxt('delivery')}<br>
    ${l.address?`כתובת: ${esc(l.address)}${l.city?', '+esc(l.city):''}<br>`:''}
@@ -253,3 +253,11 @@ function setQty(slug,itemId,delta){
  });
 }
 
+
+/* אבטחה: מאזינים מרוכזים במקום onclick inline — אין הזרקת שדות מכבסה למחרוזות JS */
+document.addEventListener('click',e=>{
+ const fav=e.target.closest('[data-fav]');
+ if(fav){toggleFav(fav.dataset.fav,fav.dataset.name,fav.dataset.color,fav.dataset.letter);return}
+ const shr=e.target.closest('[data-share]');
+ if(shr){shareLaundry(shr.dataset.share)}
+});
