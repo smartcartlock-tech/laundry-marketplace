@@ -2,6 +2,7 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { notifyUser } = require('../notify');
+const { buildReceiptPDF } = require('../receipt');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -123,6 +124,28 @@ r.get('/:id', async (req, res) => {
     q('SELECT status, note, photo_url, created_at FROM order_events WHERE order_id=$1 ORDER BY created_at', [order.id]),
   ]);
   res.json({ order, items: items.rows, events: events.rows, statusHe: STATUS_HE });
+});
+
+// קבלה/חשבונית PDF (אותן הרשאות כמו צפייה בהזמנה)
+r.get('/:id/receipt.pdf', async (req, res) => {
+  const { rows: o } = await q(
+    `SELECT o.*, t.name AS tenant_name, t.slug, t.color, t.address AS tenant_address, t.city AS tenant_city, t.phone AS tenant_phone
+     FROM orders o JOIN tenants t ON t.id=o.tenant_id WHERE o.id=$1`, [req.params.id]);
+  const order = o[0];
+  if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  const isCustomer = order.customer_id === req.user.id;
+  const isAdmin = req.user.role === 'admin';
+  const { rows: mem } = await q('SELECT 1 FROM tenant_members WHERE tenant_id=$1 AND user_id=$2', [order.tenant_id, req.user.id]);
+  if (!isCustomer && !isAdmin && !mem.length) return res.status(403).json({ error: 'אין הרשאה' });
+  const [items, cust] = await Promise.all([
+    q('SELECT name, price, qty FROM order_items WHERE order_id=$1', [order.id]),
+    q('SELECT name, phone, email FROM users WHERE id=$1', [order.customer_id]),
+  ]);
+  const tenant = { name: order.tenant_name, color: order.color, address: order.tenant_address, city: order.tenant_city, phone: order.tenant_phone };
+  const doc = buildReceiptPDF({ order, items: items.rows, tenant, customer: cust[0] || {} });
+  res.setHeader('content-type', 'application/pdf');
+  res.setHeader('content-disposition', `inline; filename="receipt-${order.id.slice(0, 8)}.pdf"`);
+  doc.pipe(res);
 });
 
 // ביטול על ידי לקוח (לפני איסוף)

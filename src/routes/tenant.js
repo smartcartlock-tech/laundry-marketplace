@@ -30,11 +30,11 @@ r.post('/orders/:id/status', async (req, res) => {
     if (!FLOW.includes(status) && status !== 'cancelled') return res.status(400).json({ error: 'סטטוס לא חוקי' });
     const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [req.params.id, req.tenant.id]);
     const order = o[0];
-    if (!order) { client.release(); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
+    if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
     const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
-    if (status !== 'cancelled' && nxt <= cur) { client.release(); return res.status(409).json({ error: 'לא ניתן לחזור אחורה בסטטוס' }); }
+    if (status !== 'cancelled' && nxt <= cur) return res.status(409).json({ error: 'לא ניתן לחזור אחורה בסטטוס' });
     if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
-      client.release(); return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
+      return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
     }
     await client.query('BEGIN');
     await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);

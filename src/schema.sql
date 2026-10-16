@@ -1,5 +1,5 @@
 -- מכבסה בקליק — סכימה רב-דיירתית. כל ישות עסקית נושאת tenant_id.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
