@@ -2,6 +2,7 @@
 const express = require('express');
 const { q, pool } = require('../db');
 const { notifyUser } = require('../notify');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 
@@ -79,7 +80,7 @@ r.post('/orders', async (req, res) => {
   } finally { client.release(); }
 });
 
-r.get('/orders/:id', async (req, res) => {
+r.get('/orders/:id', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `SELECT o.id, o.status, o.total, o.pickup_at, o.delivery_at, o.created_at FROM orders o
      WHERE o.id=$1 AND o.tenant_id=$2`, [req.params.id, req.tenant.id]);

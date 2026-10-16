@@ -1,6 +1,7 @@
 // E9.T1 (+E7.T3): דיווח תקלה מלקוח על הזמנה — סוג, תיאור, עד 3 תמונות; נפתח מול המכבסה ומסונכרן לתור SLA של האדמין
 const express = require('express');
 const { q } = require('../db');
+const { uuidParams } = require('../validate');
 const { requireAuth } = require('../auth');
 const { verifyB64Image } = require('../uploads');
 

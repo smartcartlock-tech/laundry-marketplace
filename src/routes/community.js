@@ -3,6 +3,7 @@ const express = require('express');
 const { q } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const { requireCommunityMember } = require('../community-auth');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireCommunityMember);
@@ -35,7 +36,7 @@ r.post('/forum/posts', async (req, res) => {
   res.status(201).json({ post: rows[0] });
 });
 
-r.get('/forum/posts/:id', async (req, res) => {
+r.get('/forum/posts/:id', uuidParams('id'), async (req, res) => {
   const { rows: p } = await q(
     `SELECT p.*, ${authorInfo},
             (SELECT count(*)::int FROM forum_votes v WHERE v.post_id=p.id) AS useful,
@@ -50,7 +51,7 @@ r.get('/forum/posts/:id', async (req, res) => {
   res.json({ post: p[0], comments });
 });
 
-r.post('/forum/posts/:id/comments', async (req, res) => {
+r.post('/forum/posts/:id/comments', uuidParams('id'), async (req, res) => {
   if (!req.myTenant) return res.status(403).json({ error: 'רק בעלי מכבסות מאומתים יכולים להגיב' });
   const body = String((req.body || {}).body || '').trim();
   if (!body) return res.status(400).json({ error: 'תגובה ריקה' });
@@ -62,7 +63,7 @@ r.post('/forum/posts/:id/comments', async (req, res) => {
   res.status(201).json({ comment: rows[0] });
 });
 
-r.post('/forum/posts/:id/useful', async (req, res) => {
+r.post('/forum/posts/:id/useful', uuidParams('id'), async (req, res) => {
   const { rows: p } = await q('SELECT id FROM forum_posts WHERE id=$1', [req.params.id]);
   if (!p[0]) return res.status(404).json({ error: 'פוסט לא נמצא' });
   const { rows: del } = await q('DELETE FROM forum_votes WHERE post_id=$1 AND user_id=$2 RETURNING post_id', [req.params.id, req.user.id]);
@@ -96,7 +97,7 @@ r.post('/tenders', async (req, res) => {
   res.status(201).json({ tender: rows[0] });
 });
 
-r.get('/tenders/:id', async (req, res) => {
+r.get('/tenders/:id', uuidParams('id'), async (req, res) => {
   const { rows: t } = await q(
     `SELECT t.*, tn.name AS poster_name FROM tenders t JOIN tenants tn ON tn.id=t.tenant_id WHERE t.id=$1`, [req.params.id]);
   if (!t[0]) return res.status(404).json({ error: 'מכרז לא נמצא' });
@@ -113,7 +114,7 @@ r.get('/tenders/:id', async (req, res) => {
   res.json({ tender: { ...tender, status: expired ? 'closed' : tender.status }, bids: visible, bids_count: bids.length, is_poster: !!isPoster });
 });
 
-r.post('/tenders/:id/bids', async (req, res) => {
+r.post('/tenders/:id/bids', uuidParams('id'), async (req, res) => {
   if (!req.myTenant) return res.status(403).json({ error: 'רק בעלי מכבסות מאומתים יכולים להגיש הצעה' });
   const price = Number((req.body || {}).price_per_kg);
   if (!(price > 0)) return res.status(400).json({ error: 'מחיר לק"ג חובה' });
@@ -133,7 +134,7 @@ r.post('/tenders/:id/bids', async (req, res) => {
   }
 });
 
-r.post('/tenders/:id/award', async (req, res) => {
+r.post('/tenders/:id/award', uuidParams('id'), async (req, res) => {
   const { rows: t } = await q('SELECT * FROM tenders WHERE id=$1', [req.params.id]);
   if (!t[0]) return res.status(404).json({ error: 'מכרז לא נמצא' });
   if (!req.myTenant || req.myTenant.id !== t[0].tenant_id) return res.status(403).json({ error: 'רק המפרסם בוחר זוכה' });
@@ -172,7 +173,7 @@ r.post('/groups', async (req, res) => {
   res.status(201).json({ group: rows[0] });
 });
 
-r.post('/groups/:id/join', async (req, res) => {
+r.post('/groups/:id/join', uuidParams('id'), async (req, res) => {
   if (!req.myTenant) return res.status(403).json({ error: 'רק בעלי מכבסות מאומתים יכולים להצטרף' });
   const qty = Number((req.body || {}).qty) || 1;
   if (qty <= 0 || qty > 10000) return res.status(400).json({ error: 'כמות לא תקינה' });
@@ -186,7 +187,7 @@ r.post('/groups/:id/join', async (req, res) => {
   res.json({ ok: true, participants: c[0].n, target_reached: c[0].n >= g[0].target_participants });
 });
 
-r.post('/groups/:id/leave', async (req, res) => {
+r.post('/groups/:id/leave', uuidParams('id'), async (req, res) => {
   if (!req.myTenant) return res.status(403).json({ error: 'אין מכבסה משויכת' });
   await q('DELETE FROM purchase_group_members WHERE group_id=$1 AND tenant_id=$2', [req.params.id, req.myTenant.id]);
   res.json({ ok: true });
@@ -215,7 +216,7 @@ r.post('/capacity', async (req, res) => {
   res.status(201).json({ post: rows[0] });
 });
 
-r.post('/capacity/:id/engage', async (req, res) => {
+r.post('/capacity/:id/engage', uuidParams('id'), async (req, res) => {
   if (!req.myTenant) return res.status(403).json({ error: 'רק בעלי מכבסות מאומתים' });
   const { rows: p } = await q('SELECT * FROM capacity_posts WHERE id=$1', [req.params.id]);
   if (!p[0]) return res.status(404).json({ error: 'מודעה לא נמצאה' });
@@ -229,7 +230,7 @@ r.post('/capacity/:id/engage', async (req, res) => {
   res.status(201).json({ engagement: rows[0] });
 });
 
-r.post('/capacity/engagements/:id/done', async (req, res) => {
+r.post('/capacity/engagements/:id/done', uuidParams('id'), async (req, res) => {
   const payment = Number((req.body || {}).payment_demo) || null;
   const { rows } = await q(
     `UPDATE capacity_engagements e SET status='done', payment_demo=$2
@@ -253,7 +254,7 @@ r.get('/content', async (req, res) => {
   res.json({ articles: rows });
 });
 
-r.get('/content/:id', async (req, res) => {
+r.get('/content/:id', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE content_articles a SET views=views+1 WHERE a.id=$1 AND a.published
      RETURNING a.id, a.category, a.title, a.body, a.views, a.created_at, (SELECT name FROM users WHERE id=a.author_id) AS author_name`,

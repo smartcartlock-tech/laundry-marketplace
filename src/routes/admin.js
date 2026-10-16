@@ -3,6 +3,7 @@ const { q, pool } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
 const { sendCsv } = require('../csv');
 const { buildRoutesForDate } = require('../routes-engine');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
@@ -30,18 +31,18 @@ r.get('/tenants', async (req, res) => {
   res.json({ tenants: rows });
 });
 
-r.post('/tenants/:id/approve', async (req, res) => {
+r.post('/tenants/:id/approve', uuidParams('id'), async (req, res) => {
   await q('UPDATE tenants SET approved=true WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
-r.post('/tenants/:id/suspend', async (req, res) => {
+r.post('/tenants/:id/suspend', uuidParams('id'), async (req, res) => {
   await q('UPDATE tenants SET approved=false WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // פרטי מכבסה מלאים לסקירת אדמין לפני אישור/דחייה
 // E10.T3: מפתח הבוט של מכבסה — נדרש כדי לחבר את בוט הווטסאפ שלה למרקטפלייס (/api/bot)
-r.get('/tenants/:id/apikey', async (req, res) => {
+r.get('/tenants/:id/apikey', uuidParams('id'), async (req, res) => {
   // B3: המפתח אינו נשלף — רק מטא (קיים/לא). לקבלת מפתח יש לבצע רוטציה.
   const { rows } = await q('SELECT slug, api_key_hash FROM tenants WHERE id=$1', [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'not found' });
@@ -49,7 +50,7 @@ r.get('/tenants/:id/apikey', async (req, res) => {
 });
 
 // B3: רוטציית מפתח — מייצר מפתח חדש, שומר hash בלבד, ומחזיר את הגלוי פעם אחת בלבד
-r.post('/tenants/:id/apikey/rotate', async (req, res) => {
+r.post('/tenants/:id/apikey/rotate', uuidParams('id'), async (req, res) => {
   const crypto = require('crypto');
   const key = crypto.randomBytes(24).toString('hex');
   const hash = crypto.createHash('sha256').update(key).digest('hex');
@@ -58,7 +59,7 @@ r.post('/tenants/:id/apikey/rotate', async (req, res) => {
   res.json({ slug: rows[0].slug, api_key: key, note: 'המפתח מוצג פעם אחת בלבד — שמרו אותו. המפתח הקודם בוטל.' });
 });
 
-r.get('/tenants/:id', async (req, res) => {
+r.get('/tenants/:id', uuidParams('id'), async (req, res) => {
   const { rows: t } = await q('SELECT id, slug, name, letter, phone, address, city, services, hours, terms, delivery_fee, min_order, approved, is_open, created_at FROM tenants WHERE id=$1', [req.params.id]);
   if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
   const [items, windows, members, orders] = await Promise.all([
@@ -71,7 +72,7 @@ r.get('/tenants/:id', async (req, res) => {
 });
 
 // דחייה: מחיקת מכבסה שלא אושרה (רק אם אין לה הזמנות)
-r.post('/tenants/:id/reject', async (req, res) => {
+r.post('/tenants/:id/reject', uuidParams('id'), async (req, res) => {
   const { rows: t } = await q('SELECT id, name, approved FROM tenants WHERE id=$1', [req.params.id]);
   if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
   const { rows: oc } = await q('SELECT count(*)::int AS n FROM orders WHERE tenant_id=$1', [t[0].id]);
@@ -98,7 +99,7 @@ r.get('/couriers/pending', async (req, res) => {
 });
 
 // E5.T2: צפיית אדמין במסמך שליח
-r.get('/courier-documents/:id', async (req, res) => {
+r.get('/courier-documents/:id', uuidParams('id'), async (req, res) => {
   const { rows } = await q('SELECT * FROM courier_documents WHERE id=$1', [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: 'מסמך לא נמצא' });
   res.setHeader('content-type', rows[0].mime);
@@ -107,7 +108,7 @@ r.get('/courier-documents/:id', async (req, res) => {
 });
 
 // E5.T2: דחיית שליח עם סיבה
-r.post('/couriers/:id/reject', async (req, res) => {
+r.post('/couriers/:id/reject', uuidParams('id'), async (req, res) => {
   const reason = String((req.body || {}).reason || '').trim();
   if (!reason) return res.status(400).json({ error: 'יש לציין סיבת דחייה' });
   const { rows } = await q('UPDATE couriers SET approved=false, rejected_reason=$2 WHERE id=$1 RETURNING id', [req.params.id, reason]);
@@ -137,7 +138,7 @@ r.post('/clusters', async (req, res) => {
   res.status(201).json({ cluster: rows[0] });
 });
 
-r.post('/clusters/:id/fixed-routes', async (req, res) => {
+r.post('/clusters/:id/fixed-routes', uuidParams('id'), async (req, res) => {
   const { courier_id, weekday } = req.body || {};
   const wd = Number(weekday);
   if (!(wd >= 0 && wd <= 6)) return res.status(400).json({ error: 'יום לא תקין' });
@@ -150,7 +151,7 @@ r.post('/clusters/:id/fixed-routes', async (req, res) => {
   res.status(201).json({ fixed_route: rows[0] });
 });
 
-r.post('/clusters/:id/toggle', async (req, res) => {
+r.post('/clusters/:id/toggle', uuidParams('id'), async (req, res) => {
   await q('UPDATE courier_clusters SET active=NOT active WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
@@ -188,7 +189,7 @@ r.get('/couriers/network', async (req, res) => {
 });
 
 // E5.T8: טיפול במחלוקת תשלום — החזרה לנצבר (אושר) או מחיקה (נדחה)
-r.post('/earnings/:id/resolve', async (req, res) => {
+r.post('/earnings/:id/resolve', uuidParams('id'), async (req, res) => {
   const action = (req.body || {}).action;
   if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action: approve | reject' });
   if (action === 'approve') {
@@ -233,11 +234,11 @@ r.get('/couriers', async (req, res) => {
      ORDER BY c.approved, c.created_at DESC`, []);
   res.json({ couriers: rows });
 });
-r.post('/couriers/:id/approve', async (req, res) => {
+r.post('/couriers/:id/approve', uuidParams('id'), async (req, res) => {
   await q('UPDATE couriers SET approved=true, rejected_reason=NULL WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
-r.post('/couriers/:id/suspend', async (req, res) => {
+r.post('/couriers/:id/suspend', uuidParams('id'), async (req, res) => {
   await q('UPDATE couriers SET approved=false WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });

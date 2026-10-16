@@ -1,6 +1,7 @@
 const express = require('express');
 const { q } = require('../db');
 const { requireAuth } = require('../auth');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -30,7 +31,7 @@ r.post('/', async (req, res) => {
   res.status(201).json({ address: rows[0] });
 });
 
-r.delete('/:id', async (req, res) => {
+r.delete('/:id', uuidParams('id'), async (req, res) => {
   const { rowCount } = await q('DELETE FROM user_addresses WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
   if (!rowCount) return res.status(404).json({ error: 'כתובת לא נמצאה' });
   res.json({ ok: true });

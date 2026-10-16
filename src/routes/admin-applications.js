@@ -2,6 +2,7 @@
 const express = require('express');
 const { q } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
@@ -24,7 +25,7 @@ async function setHandled(id, status, adminId, tenantId) {
   return rows[0];
 }
 
-r.post('/applications/:id/convert', async (req, res) => {
+r.post('/applications/:id/convert', uuidParams('id'), async (req, res) => {
   try {
     const { rows: a } = await q('SELECT * FROM tenant_applications WHERE id=$1', [req.params.id]);
     const app = a[0];
@@ -42,7 +43,7 @@ r.post('/applications/:id/convert', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 
-r.post('/applications/:id/reject', async (req, res) => {
+r.post('/applications/:id/reject', uuidParams('id'), async (req, res) => {
   const row = await setHandled(req.params.id, 'rejected', req.user.id, null);
   if (!row) return res.status(404).json({ error: 'בקשה לא נמצאה' });
   res.json({ ok: true });

@@ -3,6 +3,7 @@ const express = require('express');
 const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { ensureCurrentPeriod } = require('../subscriptions');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -77,7 +78,7 @@ async function mySub(req, res) {
 }
 
 // שדרוג/שינוי תוכנית (מנוי פעיל בלבד)
-r.post('/:id/upgrade', async (req, res) => {
+r.post('/:id/upgrade', uuidParams('id'), async (req, res) => {
   const sub = await mySub(req, res); if (!sub) return;
   if (sub.status !== 'active') return res.status(409).json({ error: 'שדרוג אפשרי רק למנוי פעיל' });
   const { plan_id } = req.body || {};
@@ -89,7 +90,7 @@ r.post('/:id/upgrade', async (req, res) => {
 });
 
 // השהיה
-r.post('/:id/pause', async (req, res) => {
+r.post('/:id/pause', uuidParams('id'), async (req, res) => {
   const sub = await mySub(req, res); if (!sub) return;
   if (sub.status !== 'active') return res.status(409).json({ error: 'רק מנוי פעיל ניתן להשהיה' });
   const { rows } = await q(`UPDATE subscriptions SET status='paused', updated_at=now() WHERE id=$1 RETURNING *`, [sub.id]);
@@ -98,7 +99,7 @@ r.post('/:id/pause', async (req, res) => {
 });
 
 // חידוש מהשהיה
-r.post('/:id/resume', async (req, res) => {
+r.post('/:id/resume', uuidParams('id'), async (req, res) => {
   const sub = await mySub(req, res); if (!sub) return;
   if (sub.status !== 'paused') return res.status(409).json({ error: 'המנוי אינו מושהה' });
   const { rows } = await q(`UPDATE subscriptions SET status='active', updated_at=now() WHERE id=$1 RETURNING *`, [sub.id]);
@@ -107,7 +108,7 @@ r.post('/:id/resume', async (req, res) => {
 });
 
 // ביטול — עוצר חידוש אוטומטי
-r.post('/:id/cancel', async (req, res) => {
+r.post('/:id/cancel', uuidParams('id'), async (req, res) => {
   const sub = await mySub(req, res); if (!sub) return;
   if (sub.status === 'cancelled') return res.status(409).json({ error: 'המנוי כבר בוטל' });
   const { rows } = await q(
@@ -117,7 +118,7 @@ r.post('/:id/cancel', async (req, res) => {
 });
 
 // היסטוריית ניצול
-r.get('/:id/usage', async (req, res) => {
+r.get('/:id/usage', uuidParams('id'), async (req, res) => {
   const sub = await mySub(req, res); if (!sub) return;
   const { rows } = await q(
     `SELECT u.*, o.id AS order_short FROM subscription_usage u LEFT JOIN orders o ON o.id=u.order_id

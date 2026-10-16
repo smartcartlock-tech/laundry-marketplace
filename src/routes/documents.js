@@ -4,6 +4,7 @@ const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { creditDocument, KIND_HE } = require('../documents');
 const { buildDocumentPDF, docVerificationImages } = require('../receipt');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -79,7 +80,7 @@ r.get('/mine', async (req, res) => {
 });
 
 // PDF של מסמך — לקוח הבעלים בלבד
-r.get('/:id/pdf', async (req, res) => {
+r.get('/:id/pdf', uuidParams('id'), async (req, res) => {
   const d = await loadDocContext(req.params.id);
   if (!d) return res.status(404).json({ error: 'מסמך לא נמצא' });
   if (d.customer_id !== req.user.id && req.user.role !== 'admin') {

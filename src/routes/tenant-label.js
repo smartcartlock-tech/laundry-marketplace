@@ -4,13 +4,14 @@ const bwipjs = require('bwip-js');
 const { q } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
 const { buildLabelPDF } = require('../receipt');
+const { uuidParams } = require('../validate');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'https://laundry-marketplace-ay5h.onrender.com';
 
-r.get('/orders/:id/label.pdf', async (req, res) => {
+r.get('/orders/:id/label.pdf', uuidParams('id'), async (req, res) => {
   const { rows: o } = await q('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   const order = o[0];
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });

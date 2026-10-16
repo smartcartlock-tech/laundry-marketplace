@@ -10,6 +10,7 @@ const { issueDocumentsForOrder, creditDocument } = require('../documents');
 const { sendCsv } = require('../csv');
 const { restoreBags } = require('../subscriptions');
 const { buildDocumentPDF, docVerificationImages } = require('../receipt');
+const { uuidParams } = require('../validate');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
@@ -31,7 +32,7 @@ r.get('/orders', async (req, res) => {
 });
 
 // עדכון סטטוס הזמנה (כולל שיבוץ איסוף נקודות בעת השלמה)
-r.post('/orders/:id/status', async (req, res) => {
+r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
   const client = await pool.connect();
   try {
     const { status, note } = req.body || {};
@@ -90,7 +91,7 @@ r.post('/items', async (req, res) => {
     [req.tenant.id, name, price, category || 'כביסה', ['kg','bag'].includes(unit) ? unit : 'item', !!subscription_eligible]);
   res.status(201).json({ item: rows[0] });
 });
-r.patch('/items/:id', async (req, res) => {
+r.patch('/items/:id', uuidParams('id'), async (req, res) => {
   const { name, price, category, active, subscription_eligible, unit } = req.body || {};
   const { rows } = await q(
     `UPDATE price_items SET name=COALESCE($1,name), price=COALESCE($2,price),
@@ -103,7 +104,7 @@ r.patch('/items/:id', async (req, res) => {
   if (!rows[0]) return res.status(404).json({ error: 'לא נמצא' });
   res.json({ item: rows[0] });
 });
-r.delete('/items/:id', async (req, res) => {
+r.delete('/items/:id', uuidParams('id'), async (req, res) => {
   await q('UPDATE price_items SET active=false WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   res.json({ ok: true });
 });
@@ -121,7 +122,7 @@ r.post('/windows', async (req, res) => {
     [req.tenant.id, weekday, start_time, end_time, capacity || 10, kind === 'delivery' ? 'delivery' : 'pickup']);
   res.status(201).json({ window: rows[0] });
 });
-r.delete('/windows/:id', async (req, res) => {
+r.delete('/windows/:id', uuidParams('id'), async (req, res) => {
   await q('DELETE FROM pickup_windows WHERE id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   res.json({ ok: true });
 });
@@ -149,6 +150,57 @@ r.patch('/settings', async (req, res) => {
   }
   if (req.body.invoice_mode !== undefined && !['per_order', 'consolidated'].includes(req.body.invoice_mode)) {
     return res.status(400).json({ error: 'אופן הפקת מסמכים לא תקין (per_order/consolidated)' });
+  }
+  // אבטחה (XSS): ולידציית שדות טקסט/שעות/צבע לפני שמירה — המקור לתוכן מוצג ב-UI
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const cleanText = (v, max) => {
+    if (typeof v !== 'string') return null;
+    const t = v.replace(/[\u0000-\u001F\u007F]/g, '').trim();
+    if (t.length > max) return null;
+    return t;
+  };
+  for (const [k, max] of [['name', 80], ['address', 120], ['city', 60], ['slogan', 160]]) {
+    if (req.body[k] !== undefined && req.body[k] !== null) {
+      const t = cleanText(req.body[k], max);
+      if (t === null || (k === 'name' && !t)) return res.status(400).json({ error: `ערך לא תקין בשדה ${k}` });
+      if (/[<>]/.test(t)) return res.status(400).json({ error: `שדה ${k} אינו יכול להכיל < או >` });
+      req.body[k] = t;
+    }
+  }
+  if (req.body.terms !== undefined && req.body.terms !== null) {
+    const t = cleanText(req.body.terms, 2000);
+    if (t === null) return res.status(400).json({ error: 'תקנון ארוך מדי' });
+    if (/[<>]/.test(t)) return res.status(400).json({ error: 'התקנון אינו יכול להכיל < או >' });
+    req.body.terms = t;
+  }
+  for (const k of ['phone', 'whatsapp']) {
+    if (req.body[k] !== undefined && req.body[k] !== null && req.body[k] !== '') {
+      if (!/^\+?[0-9][0-9\- ]{4,18}$/.test(String(req.body[k]))) return res.status(400).json({ error: `מספר לא תקין בשדה ${k}` });
+      req.body[k] = String(req.body[k]).trim();
+    }
+  }
+  if (req.body.color !== undefined && req.body.color !== null && req.body.color !== '') {
+    if (!/^#[0-9a-fA-F]{6}$/.test(String(req.body.color))) return res.status(400).json({ error: 'צבע חייב להיות hex בפורמט #RRGGBB' });
+  }
+  if (req.body.services !== undefined && req.body.services !== null) {
+    if (!Array.isArray(req.body.services) || req.body.services.length > 10 ||
+        req.body.services.some(x => typeof x !== 'string' || x.length > 30 || /[<>]/.test(x))) {
+      return res.status(400).json({ error: 'רשימת שירותים לא תקינה' });
+    }
+  }
+  if (req.body.hours !== undefined && req.body.hours !== null) {
+    const h = req.body.hours;
+    if (typeof h !== 'object' || Array.isArray(h)) return res.status(400).json({ error: 'מבנה שעות פעילות לא תקין' });
+    for (const [day, ranges] of Object.entries(h)) {
+      if (!/^[0-6]$/.test(day)) return res.status(400).json({ error: 'יום לא תקין בשעות הפעילות' });
+      if (!Array.isArray(ranges) || ranges.length > 4) return res.status(400).json({ error: 'מבנה שעות פעילות לא תקין' });
+      for (const r of ranges) {
+        if (!Array.isArray(r) || r.length !== 2 || !HHMM.test(String(r[0])) || !HHMM.test(String(r[1]))) {
+          return res.status(400).json({ error: 'שעות חייבות להיות בפורמט HH:MM' });
+        }
+      }
+    }
+    req.body.hours = JSON.stringify(h);
   }
   const allowed = ['name','phone','address','city','services','hours','terms','delivery_fee','min_order','is_open','lat','lng','dealer_type','dealer_id','invoice_mode','slogan','whatsapp','color'];
   const sets = [], params = [];
@@ -181,7 +233,7 @@ r.post('/plans', async (req, res) => {
      extra_bag_price === undefined || extra_bag_price === '' ? null : Number(extra_bag_price), perks || null]);
   res.status(201).json({ plan: rows[0] });
 });
-r.patch('/plans/:id', async (req, res) => {
+r.patch('/plans/:id', uuidParams('id'), async (req, res) => {
   const { name, bags_per_month, kg_per_bag, price, extra_bag_price, perks, active } = req.body || {};
   const { rows } = await q(
     `UPDATE subscription_plans SET name=COALESCE($1,name), bags_per_month=COALESCE($2,bags_per_month),
@@ -356,7 +408,7 @@ r.get('/clusters', async (req, res) => {
   res.json({ clusters: rows });
 });
 
-r.post('/clusters/:id/join', async (req, res) => {
+r.post('/clusters/:id/join', uuidParams('id'), async (req, res) => {
   const { rows: cl } = await q('SELECT id, name FROM courier_clusters WHERE id=$1 AND active', [req.params.id]);
   if (!cl[0]) return res.status(404).json({ error: 'קלאסטר לא נמצא' });
   const { rows: n } = await q('SELECT count(*)::int AS n FROM courier_cluster_members WHERE cluster_id=$1', [cl[0].id]);
@@ -365,12 +417,12 @@ r.post('/clusters/:id/join', async (req, res) => {
   res.json({ ok: true });
 });
 
-r.post('/clusters/:id/leave', async (req, res) => {
+r.post('/clusters/:id/leave', uuidParams('id'), async (req, res) => {
   await q('DELETE FROM courier_cluster_members WHERE cluster_id=$1 AND tenant_id=$2', [req.params.id, req.tenant.id]);
   res.json({ ok: true });
 });
 
-r.post('/orders/:id/assign', async (req, res) => {
+r.post('/orders/:id/assign', uuidParams('id'), async (req, res) => {
   const { courier_id } = req.body || {};
   const { rows: c } = await q(
     `SELECT c.*, u.id AS uid, u.phone FROM couriers c JOIN users u ON u.id=c.user_id
@@ -426,7 +478,7 @@ r.post('/coupons', async (req, res) => {
   }
 });
 
-r.patch('/coupons/:id', async (req, res) => {
+r.patch('/coupons/:id', uuidParams('id'), async (req, res) => {
   const { active, expires_at, min_order, usage_limit, per_user_limit } = req.body || {};
   const { rows } = await q(
     `UPDATE coupons SET
@@ -459,7 +511,7 @@ r.get('/documents', async (req, res) => {
   res.json({ documents: rows.map(d => ({ ...d, kind_he: KIND_HE[d.kind] || d.kind })) });
 });
 
-r.get('/documents/:id/pdf', async (req, res) => {
+r.get('/documents/:id/pdf', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `SELECT d.*, t.name AS tenant_name, t.color, t.address AS tenant_address, t.city AS tenant_city,
             t.dealer_type, t.dealer_id, u.name AS customer_name, u.phone AS customer_phone
@@ -492,7 +544,7 @@ r.get('/documents/:id/pdf', async (req, res) => {
 });
 
 // E12.T5: הנפקת זיכוי מול מסמך מקור (מלא אם amount חסר)
-r.post('/documents/:id/credit', async (req, res) => {
+r.post('/documents/:id/credit', uuidParams('id'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

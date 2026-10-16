@@ -2,6 +2,7 @@
 const express = require('express');
 const { q } = require('../db');
 const { requireAuth, requireAdmin } = require('../auth');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth, requireAdmin);
@@ -118,7 +119,7 @@ r.get('/sla', async (req, res) => {
 });
 
 // E7.T3: טיפול מתועד בהתראה
-r.post('/sla/:id/handle', async (req, res) => {
+r.post('/sla/:id/handle', uuidParams('id'), async (req, res) => {
   const { note } = req.body || {};
   const { rows } = await q(
     `UPDATE sla_alerts SET status='handled', handled_by=$2, handled_at=now(), handle_note=$3
@@ -129,7 +130,7 @@ r.post('/sla/:id/handle', async (req, res) => {
 });
 
 // E7.T3: פתיחה מחדש של התראה שטופלה בטעות
-r.post('/sla/:id/reopen', async (req, res) => {
+r.post('/sla/:id/reopen', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE sla_alerts SET status='open', handled_by=NULL, handled_at=NULL, handle_note=NULL
      WHERE id=$1 AND status='handled' RETURNING *`, [req.params.id]);
@@ -152,7 +153,7 @@ r.get('/issues', async (req, res) => {
   res.json({ issues: rows });
 });
 
-r.post('/issues/:id/handle', async (req, res) => {
+r.post('/issues/:id/handle', uuidParams('id'), async (req, res) => {
   const { status, note } = req.body || {};
   if (!['in_progress','resolved'].includes(status)) return res.status(400).json({ error: 'סטטוס: in_progress | resolved' });
   const { rows } = await q(

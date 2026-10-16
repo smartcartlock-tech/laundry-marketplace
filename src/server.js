@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { migrate, q } = require('./db');
+require('./async-wrap').installProcessGuards(); // לכידת rejections מ-async handlers + רישום בלבד
 
 const app = express();
 app.disable('x-powered-by');

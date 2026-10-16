@@ -2,6 +2,7 @@
 const express = require('express');
 const { q } = require('../db');
 const { requireAuth, requireTenantMember } = require('../auth');
+const { uuidParams } = require('../validate');
 
 const r = express.Router({ mergeParams: true });
 r.use(requireAuth, requireTenantMember);
@@ -18,7 +19,7 @@ r.get('/issues', async (req, res) => {
   res.json({ issues: rows });
 });
 
-r.post('/issues/:id/handle', async (req, res) => {
+r.post('/issues/:id/handle', uuidParams('id'), async (req, res) => {
   const { status, note, mediation } = req.body || {};
   if (!['open','in_progress','resolved'].includes(status)) return res.status(400).json({ error: 'סטטוס: open | in_progress | resolved' });
   const { rows } = await q(

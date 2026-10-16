@@ -6,6 +6,7 @@ const { applyCourierRating } = require('../routes-engine');
 const { buildReceiptPDF } = require('../receipt');
 const { validateCoupon } = require('../coupons');
 const { ensureCurrentPeriod, applySubscriptionToOrder, restoreBags } = require('../subscriptions');
+const { uuidParams } = require('../validate');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -198,7 +199,7 @@ r.get('/club/summary', async (req, res) => {
 
 
 // פרטי הזמנה + פריטים + אירועים (לקוח שהזמין / בעל מכבסה / שליח משובץ / אדמין)
-r.get('/:id', async (req, res) => {
+r.get('/:id', uuidParams('id'), async (req, res) => {
   const { rows: o } = await q(
     `SELECT o.*, t.name AS tenant_name, t.slug, t.phone AS tenant_phone FROM orders o JOIN tenants t ON t.id=o.tenant_id WHERE o.id=$1`,
     [req.params.id]);
@@ -219,7 +220,7 @@ r.get('/:id', async (req, res) => {
 });
 
 // קבלה/חשבונית PDF (אותן הרשאות כמו צפייה בהזמנה)
-r.get('/:id/receipt.pdf', async (req, res) => {
+r.get('/:id/receipt.pdf', uuidParams('id'), async (req, res) => {
   const { rows: o } = await q(
     `SELECT o.*, t.name AS tenant_name, t.slug, t.color, t.address AS tenant_address, t.city AS tenant_city, t.phone AS tenant_phone
      FROM orders o JOIN tenants t ON t.id=o.tenant_id WHERE o.id=$1`, [req.params.id]);
@@ -241,7 +242,7 @@ r.get('/:id/receipt.pdf', async (req, res) => {
 });
 
 // ביטול על ידי לקוח (לפני איסוף)
-r.post('/:id/cancel', async (req, res) => {
+r.post('/:id/cancel', uuidParams('id'), async (req, res) => {
   const { rows } = await q('SELECT * FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
   const order = rows[0];
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
@@ -253,7 +254,7 @@ r.post('/:id/cancel', async (req, res) => {
 });
 
 // דירוג אחרי הזמנה
-r.post('/:id/review', async (req, res) => {
+r.post('/:id/review', uuidParams('id'), async (req, res) => {
   const { rating, text, tags: laundry_tags, courier_rating, courier_tags } = req.body || {};
   const rt = Number(rating);
   if (!(rt >= 1 && rt <= 5)) return res.status(400).json({ error: 'דירוג 1-5' });

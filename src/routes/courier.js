@@ -9,6 +9,7 @@ const r = express.Router();
 r.use(requireAuth);
 
 const { fileFilter, verifyFile, IMAGES } = require('../uploads');
+const { uuidParams } = require('../validate');
 const DOC_TYPES = [...IMAGES, 'application/pdf'];
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -74,7 +75,7 @@ r.get('/registration', async (req, res) => {
 });
 
 // צפייה במסמך: בעל המסמך בלבד (אדמין דרך /api/admin)
-r.get('/documents/:id', async (req, res) => {
+r.get('/documents/:id', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `SELECT d.* FROM courier_documents d JOIN couriers c ON c.id=d.courier_id WHERE d.id=$1 AND c.user_id=$2`,
     [req.params.id, req.user.id]);
@@ -98,7 +99,7 @@ r.get('/offers', async (req, res) => {
   res.json({ offers: rows });
 });
 
-r.post('/offers/:id/accept', async (req, res) => {
+r.post('/offers/:id/accept', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE courier_offers SET status='accepted', responded_at=now()
      WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING *`, [req.params.id, req.courier.id]);
@@ -111,7 +112,7 @@ r.post('/offers/:id/accept', async (req, res) => {
   res.json({ ok: true });
 });
 
-r.post('/offers/:id/decline', async (req, res) => {
+r.post('/offers/:id/decline', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE courier_offers SET status='declined', responded_at=now()
      WHERE id=$1 AND courier_id=$2 AND status='offered' RETURNING id`, [req.params.id, req.courier.id]);
@@ -190,7 +191,7 @@ r.post('/earnings/payout', async (req, res) => {
 });
 
 // E5.T4/T8: מחלוקת על רשומת תשלום
-r.post('/earnings/:id/dispute', async (req, res) => {
+r.post('/earnings/:id/dispute', uuidParams('id'), async (req, res) => {
   const { rows } = await q(
     `UPDATE courier_earnings SET status='disputed' WHERE id=$1 AND courier_id=$2 AND status='accrued' RETURNING id`,
     [req.params.id, req.courier.id]);
@@ -199,7 +200,7 @@ r.post('/earnings/:id/dispute', async (req, res) => {
 });
 
 // סימון איסוף/מסירה על ידי שליח (עם תמונה אופציונלית)
-r.post('/orders/:id/mark', async (req, res) => {
+r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
   const { action, photo_url, note } = req.body || {};
   const map = { picked_up: 'picked_up', out_for_delivery: 'out_for_delivery', delivered: 'delivered' };
   const newStatus = map[action];
