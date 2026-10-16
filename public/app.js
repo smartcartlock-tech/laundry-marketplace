@@ -32,6 +32,13 @@ async function api(path,opts={}){
  return data;
 }
 function go(h){location.hash=h}
+async function openPdf(path){
+ try{
+  const r=await fetch('/api'+path,{headers:state.token?{Authorization:'Bearer '+state.token}:{}});
+  if(!r.ok){const d=await r.json().catch(()=>({}));toast(d.error||'שגיאה בפתיחת PDF');return}
+  const b=await r.blob();window.open(URL.createObjectURL(b),'_blank');
+ }catch(e){toast('שגיאה בפתיחת PDF')}
+}
 function fmtQ(q){const n=Number(q);return (n%1)?String(n):String(Math.round(n))}
 const HE={new:'התקבלה',confirmed:'אושרה',picked_up:'נאספה',in_work:'בעבודה',ready:'מוכנה',out_for_delivery:'בדרך',delivered:'הוחזרה',cancelled:'בוטלה'};
 const FLOW=['new','confirmed','picked_up','in_work','ready','out_for_delivery','delivered'];
@@ -291,6 +298,8 @@ async function vOrder(id){
  const o=d.order;
  const idx=FLOW.indexOf(o.status);
  const isMine=o.customer_id===(state.me&&state.me.id);
+ let docs=[];
+ if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id)}catch(e){}}
  return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   <div class="card">
@@ -307,6 +316,14 @@ async function vOrder(id){
    <div class="mut">כתובת: ${esc(o.address)}</div>
    <div class="mut">${o.pickup_at?'איסוף: '+fmtDT(o.pickup_at):'איסוף: ללא העדפה — המכבסה תתאם'}${o.delivery_at?' · החזרה: '+fmtDT(o.delivery_at):''}</div>
   </div>
+  ${isMine?`<div class="card"><b>מסמכים</b>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+    <button class="btn2" onclick="openPdf('/orders/${o.id}/receipt.pdf')">קבלה-סיכום (PDF)</button>
+    ${docs.map(dc=>`<button class="btn2" onclick="openPdf('/documents/${dc.id}/pdf')">${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</button>
+     <button class="btn2" style="opacity:.75" onclick="openPdf('/documents/${dc.id}/pdf?copy=1')">העתק</button>`).join('')}
+   </div>
+   ${docs.length?'<div class="mut" style="margin-top:4px">מסמכים חשבונאיים מסומנים ״מסמך דמו״ עד לרישום התוכנה ברשות המסים.</div>':''}
+  </div>`:''}
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" onclick="cancelOrder('${o.id}')">ביטול הזמנה</button>`:''}
   ${isMine&&o.status==='delivered'?`<div class="card"><label class="lb">דרגו את ההזמנה</label>
     <select class="inp" id="rv-rating"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
@@ -381,7 +398,7 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['documents','מסמכים'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
  if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
@@ -439,6 +456,18 @@ async function vManage(sub){
    <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
     <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
     <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
+ } else if(sub==='documents'){
+  const d=await api(`/t/${slug}/documents`);
+  const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
+  body=d.documents.length?`<div class="card">${d.documents.map(dc=>`<div class="row"><div>
+    <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
+    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
+     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
+     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
+    </div></div>`).join('')}</div>`
+   :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
  } else if(sub==='couriers'){
   const d=await api(`/t/${slug}/couriers`);
   body=`<div class="card">${d.couriers.map(c=>`<div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
@@ -510,6 +539,12 @@ async function editItem(slug,id,btn){
  try{await api(`/t/${slug}/items/${id}`,{method:'PATCH',body:JSON.stringify({name:vals.name.trim()||undefined,price:vals.price?Number(vals.price):undefined})});toast('הפריט עודכן');route()}catch(e){toast(e.message)}
 }
 async function delItem(slug,id){try{await api(`/t/${slug}/items/${id}`,{method:'DELETE'});route()}catch(e){toast(e.message)}}
+async function creditDoc(slug,id,total,credited){
+ const rem=Math.round((Number(total)-Number(credited))*100)/100;
+ const vals=await xmodal({title:'הנפקת זיכוי',body:`יתרה לזיכוי במסמך: ₪${rem}. השאר את השדה ריק לזיכוי מלא.`,okText:'הנפק זיכוי',fields:[{id:'amt',label:'סכום חלקי (אופציונלי)',type:'number'}]});
+ if(!vals)return;
+ try{await api(`/t/${slug}/documents/${id}/credit`,{method:'POST',body:JSON.stringify(vals.amt&&vals.amt.trim()?{amount:Number(vals.amt)}:{})});toast('הזיכוי הונפק');route()}catch(e){toast(e.message)}
+}
 async function addCoupon(slug){try{const b={code:$('#cp-code').value,kind:$('#cp-kind').value,value:$('#cp-value').value,min_order:$('#cp-min').value||undefined,usage_limit:$('#cp-usage').value||undefined,per_user_limit:$('#cp-peruser').value||undefined,expires_at:$('#cp-exp').value||undefined};await api(`/t/${slug}/coupons`,{method:'POST',body:JSON.stringify(b)});toast('הקופון נוצר');route()}catch(e){toast(e.message)}}
 async function toggleCoupon(slug,id,active){try{await api(`/t/${slug}/coupons/${id}`,{method:'PATCH',body:JSON.stringify({active})});route()}catch(e){toast(e.message)}}
 async function addWindow(slug){try{await api(`/t/${slug}/windows`,{method:'POST',body:JSON.stringify({weekday:$('#w-day').value,start_time:$('#w-start').value,end_time:$('#w-end').value,kind:$('#w-kind').value})});route()}catch(e){toast(e.message)}}
@@ -549,6 +584,18 @@ async function vAdmin(sub){
    <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
     <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
     <button class="btn2" onclick="toggleCoupon('${slug}','${c.id}',${!c.active})">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
+ } else if(sub==='documents'){
+  const d=await api(`/t/${slug}/documents`);
+  const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
+  body=d.documents.length?`<div class="card">${d.documents.map(dc=>`<div class="row"><div>
+    <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
+    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf')">מקור</button>
+     <button class="btn2" onclick="openPdf('/t/${slug}/documents/${dc.id}/pdf?copy=1')">העתק</button>
+     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" onclick="creditDoc('${slug}','${dc.id}',${dc.total},${dc.credited_amount})">זיכוי</button>`:''}
+    </div></div>`).join('')}</div>`
+   :'<div class="card mut">אין מסמכים עדיין — מסמכים מונפקים אוטומטית כשהזמנה מסתיימת (delivered), אחרי שמוגדר סוג עוסק בהגדרות.</div>';
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
   body=`<div class="card"><table class="tbl"><tr><th>שליח</th><th>סוג</th><th>מכבסה</th><th></th></tr>
