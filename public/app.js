@@ -330,7 +330,7 @@ async function vLaundry(slug){
   </div>
  </div>
  <div class="body">
-  ${!l.is_open?`<div class="card warn" style="text-align:center"><b>המכבסה סגורה כרגע</b><div style="margin-top:2px">אפשר לעיין במחירון — הזמנה תהיה אפשרית כשהמכבסה תיפתח</div></div>`:''}
+  ${!l.is_open?`<div class="card warn" style="text-align:center"><b>המכבסה סגורה כרגע</b><div style="margin-top:2px">אפשר לעיין במחירון — הזמנה תהיה אפשרית כשהמכבסה תיפתח</div></div>`:!openNow(l)?`<div class="card warn" style="text-align:center"><b>מחוץ לשעות הפעילות כרגע</b><div style="margin-top:2px">אפשר להזמין — האיסוף יתואם לשעות הפעילות הקרובות</div></div>`:''}
   ${(l.services&&l.services.length)?`<div style="margin:0 2px 8px">${l.services.map(sv=>`<span class="tag tb" style="margin-left:4px;padding:3px 10px">${esc(sv)}</span>`).join('')}</div>`:''}
   <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" onclick="document.getElementById('info').scrollIntoView({behavior:'smooth'})">מידע</button><button class="chip" type="button" onclick="document.getElementById('revs').scrollIntoView({behavior:'smooth'})">ביקורות</button></div>
   <div class="mut" style="margin:0 2px 8px">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום הזמנה ₪'+l.min_order:''}</div>
