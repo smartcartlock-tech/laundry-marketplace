@@ -1,0 +1,29 @@
+# E1: גיבוי יומי אוטומטי — להעלאה ידנית ל-.github/workflows/backup.yml
+# (דחיפת workflows חסומה ב-PAT בלי scope של workflow; ראו docs/DEVELOPMENT.md)
+# דורש repo secret: DATABASE_URL (מחרוזת החיבור של Neon)
+name: Backup
+on:
+  schedule:
+    - cron: '23 21 * * *'  # 21:23 UTC ≈ 00:23 לפנות בוקר בישראל
+  workflow_dispatch:        # הרצה ידנית מהממשק
+
+jobs:
+  backup:
+    name: גיבוי יומי של Neon ל-artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: גיבוי מלא ל-JSON
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/backup.js backups/backup.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neon-backup-${{ github.run_number }}
+          path: backups/backup.json
+          retention-days: 30
