@@ -497,6 +497,7 @@ async function vOrders(){
     <span class="logo sm" style="background:${o.color||'#0e7a8a'}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
     <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div></div>
+    ${o.status==='delivered'?`<button class="btn2" style="flex-shrink:0" onclick="event.stopPropagation();reorder('${o.id}','${o.slug}')" title="הוספת אותם פריטים לסל">↻ שוב</button>`:''}
     <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'}
  </div>`;
 }
@@ -506,17 +507,28 @@ async function vOrder(id){
  const o=d.order;
  const idx=FLOW.indexOf(o.status);
  const isMine=o.customer_id===(state.me&&state.me.id);
+ // E13.T3: ציר זמן עם חותמות זמן מדויקות מאירועי ההזמנה + רענון חי כל 20 שניות עד לסיום
+ const evByStatus={};
+ (d.events||[]).forEach(ev=>{if(!evByStatus[ev.status])evByStatus[ev.status]=ev});
+ if(!['delivered','cancelled'].includes(o.status)){
+  orderPoll=setInterval(async()=>{
+   if(!location.hash.startsWith('#/orders/'+id)){clearInterval(orderPoll);orderPoll=null;return}
+   try{const d2=await api('/orders/'+id);if(d2.order.status!==o.status||d2.order.updated_at!==o.updated_at)route()}catch(e){}
+  },20000);
+ }
  let docs=[];
  if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id||(x.covered_order_ids||[]).includes(id))}catch(e){}}
  let myReports=[];
  if(isMine){try{const rr=await api('/orders/'+id+'/reports');myReports=rr.reports||[]}catch(e){}}
  return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
-  ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDT(o.updated_at)}</div></div>`:`<div class="card">
+  ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDT(evByStatus.cancelled?evByStatus.cancelled.created_at:o.updated_at)}</div></div>`:`<div class="card">
    <div class="tl">
-    ${FLOW.map((s,i)=>`<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}</div>`).join('')}
+    ${FLOW.map((s,i)=>{const ev=evByStatus[s];return `<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${ev?`<div class="mut">${fmtDT(ev.created_at)}</div>`:i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}${i===idx&&ev&&ev.note&&ev.note!=='הזמנה נוצרה'?`<div class="mut">${esc(ev.note)}</div>`:''}</div>`}).join('')}
    </div>
+   <div class="mut" style="text-align:center;margin-top:2px">המעקב מתעדכן אוטומטית · <a href="#/orders/${id}" onclick="route();return false" style="color:#0e7a8a">רענון עכשיו</a></div>
   </div>`}
+  ${isMine&&(o.status==='delivered'||o.status==='cancelled')?`<button class="btn" style="margin-bottom:12px" onclick="reorder('${o.id}','${o.slug}')">↻ הזמנה חוזרת — אותם פריטים שוב</button>`:''}
   <div class="card">
    ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${it.qty} × ₪${it.price}</div></div>`).join('')}
    <div class="row"><div class="mut">שליחות</div><div>₪${o.delivery_fee}</div></div>
@@ -553,6 +565,26 @@ async function vOrder(id){
     <div class="mut" style="margin:4px 0">ביקורת מזכה ב־20 נקודות מועדון</div>
     <button class="btn2 on" onclick="sendReview('${o.id}')">שליחת דירוג</button></div>`:''}
  </div>`;
+}
+let orderPoll=null;
+/* E13.T3: הזמנה חוזרת בלחיצה — ממפה פריטי ההזמנה למחירון הנוכחי (לפי שם) ומובילה לצ׳ק-אאוט */
+async function reorder(orderId,slug){
+ try{
+  const [lod,od]=await Promise.all([api('/laundries/'+slug),api('/orders/'+orderId)]);
+  const cur=lod.items||[];
+  let added=0,skipped=0;
+  state.cart=state.cart.filter(c=>c.slug!==slug);
+  for(const oi of (od.items||[])){
+   const it=cur.find(x=>x.name===oi.name);
+   if(!it){skipped++;continue}
+   state.cart.push({slug,item_id:it.id,name:it.name,price:Number(it.price),unit:it.unit,qty:Number(oi.qty)});
+   added++;
+  }
+  save();
+  if(!added)return toast('אף פריט מההזמנה לא זמין כרגע במחירון');
+  if(skipped)toast(skipped===1?'פריט אחד כבר לא במחירון ולא נוסף':skipped+' פריטים כבר לא במחירון ולא נוספו');
+  go('#/checkout/'+slug);
+ }catch(e){toast(e.message)}
 }
 async function cancelOrder(id){if(!await xconfirm('לא ניתן לשחזר הזמנה לאחר הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל את ההזמנה'}))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
 async function sendReview(id){try{const ctags=[...document.querySelectorAll('.rv-ctag:checked')].map(x=>x.value);const ltags=[...document.querySelectorAll('.rv-ltag:checked')].map(x=>x.value);const cr=$('#rv-courier')?$('#rv-courier').value:'';const r=await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value,courier_rating:cr||undefined,courier_tags:ctags.length?ctags:undefined,tags:ltags.length?ltags:undefined})});toast(r&&r.points_bonus?`תודה על הדירוג! צברת ${r.points_bonus} נקודות`:'תודה על הדירוג!');route()}catch(e){toast(e.message)}}
@@ -1642,6 +1674,7 @@ async function vVerify(code){
 
 async function route(){
  const seq=++routeSeq;
+ if(orderPoll){clearInterval(orderPoll);orderPoll=null}
  document.querySelectorAll('.modal-ov').forEach(m=>m.remove());
  const h=location.hash||'#/';
  const [,path]=h.split('#');
