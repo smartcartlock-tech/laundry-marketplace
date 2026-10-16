@@ -51,6 +51,28 @@ const pool = new Pool({
       }
     }
 
+    // הגנה בכיוון ההפוך: הזמנה/מסמך של משתמש שאינו דמו בתוך טננט דמו —
+    // מחיקת הטננט תמחק להם היסטוריה אמיתית. עוצרים הכל בלי למחוק דבר (מדווח מזהים בלבד, בלי טלפונים).
+    if (tids.length) {
+      const { rows: rleaks } = await client.query(
+        `SELECT o.id, t.slug, 'הזמנה' AS rel FROM orders o
+           JOIN tenants t ON t.id = o.tenant_id JOIN users u ON u.id = o.customer_id
+          WHERE o.tenant_id = ANY($1) AND NOT u.is_demo
+         UNION ALL
+         SELECT d.id, t.slug, 'מסמך' FROM documents d
+           JOIN tenants t ON t.id = d.tenant_id JOIN users u ON u.id = d.customer_id
+          WHERE d.tenant_id = ANY($1) AND NOT u.is_demo
+         LIMIT 20`, [tids]);
+      if (rleaks.length) {
+        await client.query('ROLLBACK');
+        console.error('חסום: נמצאו ' + rleaks.length + ' רשומות של משתמשים שאינם דמו בתוך טננטים דמו — לא נמחק דבר:');
+        for (const l of rleaks) console.error(`  ${l.rel} ${l.id} בטננט ${l.slug}`);
+        console.error('יש לסמן את המשתמשים is_demo, לנתק את הרשומות, או להסיר מסימון הטננט לפני הרצה חוזרת.');
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     // מסמכים חשבונאיים חסומי-מחיקה בטריגר — מושבת זמנית בתוך הטרנזקציה ומוחזר מיד
     await client.query('ALTER TABLE documents DISABLE TRIGGER documents_immutable_trg');
     const del = async (label, sql, params) => {

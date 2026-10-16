@@ -121,9 +121,12 @@ test('E12.T7-hotfix: מקור ללא sha256 (דור קדם-QR) מוגש ברינ
   };
   const orig = await rawGet();
   assert.equal(orig.status, 200);
-  // דמיון לדור ישן: מחיקת sha256 (PDF המקור נשאר — רק ההגשה משתנה)
+  // דמיון לדור ישן: מחיקת sha256 (PDF המקור נשאר — רק ההגשה משתנה).
+  // מאז 091 sha256 הוא write-once גם מול NULL — סימולציית דור-ישן עוקפת את הטריגר ברמת הסשן (טסט בלבד).
   const pool = new Pool({ connectionString: TEST_DB, options: `-c search_path=${schema},public` });
+  await pool.query(`SET session_replication_role = 'replica'`);
   await pool.query('UPDATE documents SET sha256=NULL WHERE id=$1', [inv.id]);
+  await pool.query(`SET session_replication_role = 'origin'`);
   const legacy = await rawGet();
   await pool.end();
   assert.equal(legacy.status, 200);
