@@ -15,6 +15,9 @@ const TENANT_GETS = [
   '/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries',
   '/bookkeeping/trial-balance', '/bookkeeping/periods',
   '/bookkeeping/expenses', '/bookkeeping/expenses/x/file', '/bookkeeping/documents',
+  '/bookkeeping/bank/transactions', '/bookkeeping/bank/reconciliation',
+  '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
+  '/bookkeeping/accountant-export.csv',
 ];
 const TENANT_WRITES = [
   ['POST', '/items', {}], ['POST', '/windows', {}], ['POST', '/coupons', {}], ['PATCH', '/settings', {}],

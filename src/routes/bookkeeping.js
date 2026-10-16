@@ -585,6 +585,272 @@ r.post('/bookkeeping/documents/:id/cancel', async (req, res) => {
   res.json({ cancelled: true });
 });
 
+// --- 093: ייבוא CSV בנק + התאמת בנק ---
+const bankUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => cb(null, true), // CSV טקסטואלי — הולידציה בפועל בפרסינג
+});
+
+// פרסר CSV פשוט עם גרשיים; עמודות לפי כותרות עבריות/אנגליות נפוצות בבנקים בישראל
+function parseBankCsv(buf) {
+  const text = buf.toString('utf8').replace(/^\uFEFF/, '');
+  const rows = [];
+  let cur = [''], inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { cur[cur.length - 1] += '"'; i++; } else inQ = false; }
+      else cur[cur.length - 1] += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') cur.push('');
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      if (cur.length > 1 || cur[0] !== '') { rows.push(cur); cur = ['']; }
+    } else cur[cur.length - 1] += c;
+  }
+  if (cur.length > 1 || cur[0] !== '') rows.push(cur);
+  if (!rows.length) return { error: 'קובץ ריק' };
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const col = (names) => head.findIndex(h => names.some(n => h.includes(n)));
+  const cDate = col(['תאריך', 'date']), cDesc = col(['תיאור', 'desc', 'פרטים']);
+  const cRef = col(['אסמכתא', 'ref']);
+  const cDebit = col(['חובה', 'debit', 'משולם']), cCredit = col(['זכות', 'credit', 'התקבל']);
+  const cBal = col(['יתרה', 'balance']);
+  if (cDate < 0 || (cDebit < 0 && cCredit < 0)) {
+    return { error: 'כותרות לא מזוהות — נדרשים לפחות תאריך וחובה/זכות' };
+  }
+  const num = (v) => {
+    const n = Number(String(v || '').replace(/[₪,\s]/g, ''));
+    return isNaN(n) ? null : n;
+  };
+  const out = [], skipped = [];
+  for (const row of rows.slice(1)) {
+    const rawDate = (row[cDate] || '').trim();
+    const m = rawDate.match(/^(\d{2})[/.](\d{2})[/.](\d{4})$/) || rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    let iso = null;
+    if (m) iso = m[1].length === 4 ? rawDate : `${m[3]}-${m[2]}-${m[1]}`;
+    const debit = cDebit >= 0 ? num(row[cDebit]) : null;
+    const credit = cCredit >= 0 ? num(row[cCredit]) : null;
+    const amount = credit ? credit : debit ? -debit : null;
+    if (!iso || amount === null) { skipped.push(row.join(',')); continue; }
+    out.push({
+      date: iso, description: cDesc >= 0 ? row[cDesc].trim() : null,
+      reference: cRef >= 0 ? row[cRef].trim() : null,
+      amount, balance: cBal >= 0 ? num(row[cBal]) : null,
+    });
+  }
+  return { txs: out, skipped };
+}
+
+r.post('/bookkeeping/bank/import', bankUpload.single('statement'), async (req, res) => {
+  if (!req.file || !req.file.buffer.length) return res.status(400).json({ error: 'נדרש קובץ CSV של תנועות הבנק' });
+  const parsed = parseBankCsv(req.file.buffer);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  if (!parsed.txs.length) return res.status(400).json({ error: 'לא זוהתה אף תנועה תקינה בקובץ' });
+  const tid = req.tenant.id;
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: imp } = await client.query(
+      `INSERT INTO bk_bank_imports (tenant_id, file_name, rows_count, skipped_count, imported_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [tid, req.file.originalname || 'statement.csv', parsed.txs.length, parsed.skipped.length, req.user.id]);
+    for (const t of parsed.txs) {
+      await client.query(
+        `INSERT INTO bk_bank_txs (tenant_id, import_id, tx_date, description, reference, amount, balance_after)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [tid, imp[0].id, t.date, t.description, t.reference, t.amount, t.balance]);
+    }
+    await client.query('COMMIT');
+    await audit(req, 'bk_bank_import', 'bk_bank_import', imp[0].id, { rows: parsed.txs.length, skipped: parsed.skipped.length });
+    res.status(201).json({ import_id: imp[0].id, rows: parsed.txs.length, skipped: parsed.skipped.length });
+  } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+});
+
+r.get('/bookkeeping/bank/transactions', async (req, res) => {
+  const status = req.query.status;
+  if (status && !['unmatched','matched','booked','ignored'].includes(status)) return res.status(400).json({ error: 'status לא תקין' });
+  const { rows } = await q(
+    `SELECT id, tx_date, description, reference, amount, balance_after, status, matched_line_id, booked_entry_id
+     FROM bk_bank_txs WHERE tenant_id=$1 ${status ? 'AND status=$2' : ''}
+     ORDER BY tx_date DESC, created_at DESC LIMIT 500`,
+    status ? [req.tenant.id, status] : [req.tenant.id]);
+  res.json({ transactions: rows });
+});
+
+// התאמה לשורת ספר קיימת בחשבון הבנק (1010) באותו סכום וצד
+r.post('/bookkeeping/bank/transactions/:id/match', async (req, res) => {
+  const tid = req.tenant.id;
+  const { line_id } = req.body || {};
+  const { rows: txs } = await q(`SELECT * FROM bk_bank_txs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  const tx = txs[0];
+  if (!tx) return res.status(404).json({ error: 'תנועה לא נמצאה' });
+  if (tx.status !== 'unmatched') return res.status(409).json({ error: 'ניתן להתאים תנועה שלא שויכה בלבד' });
+  const { rows: ls } = await q(
+    `SELECT l.id, l.debit, l.credit FROM bk_lines l
+     JOIN bk_accounts a ON a.id = l.account_id
+     WHERE l.id=$1 AND l.tenant_id=$2 AND a.code='1010'`, [line_id, tid]);
+  const line = ls[0];
+  if (!line) return res.status(400).json({ error: 'שורת ספר לא נמצאה בחשבון הבנק (1010)' });
+  const lineAmt = Number(line.debit) > 0 ? Number(line.debit) : -Number(line.credit);
+  if (Math.abs(lineAmt - Number(tx.amount)) > 0.004) {
+    return res.status(400).json({ error: `סכום לא תואם: בבנק ${Number(tx.amount).toFixed(2)} מול ${lineAmt.toFixed(2)} בספר` });
+  }
+  const { rows: dup } = await q(`SELECT 1 FROM bk_bank_txs WHERE matched_line_id=$1 AND id<>$2`, [line_id, tx.id]);
+  if (dup[0]) return res.status(409).json({ error: 'שורת הספר כבר שויכה לתנועה אחרת' });
+  await q(`UPDATE bk_bank_txs SET status='matched', matched_line_id=$1 WHERE id=$2`, [line_id, tx.id]);
+  await audit(req, 'bk_bank_match', 'bk_bank_tx', tx.id, { line_id });
+  res.json({ matched: true });
+});
+
+// רישום תנועת בנק לספר: בחירת חשבון נגדי
+r.post('/bookkeeping/bank/transactions/:id/book', async (req, res) => {
+  const tid = req.tenant.id;
+  const { account_code, description } = req.body || {};
+  const { rows: txs } = await q(`SELECT * FROM bk_bank_txs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  const tx = txs[0];
+  if (!tx) return res.status(404).json({ error: 'תנועה לא נמצאה' });
+  if (tx.status !== 'unmatched') return res.status(409).json({ error: 'ניתן לרשום תנועה שלא שויכה בלבד' });
+  const dateStr = tx.tx_date.toISOString().slice(0, 10);
+  if (await periodClosed(tid, dateStr)) return res.status(409).json({ error: 'התקופה סגורה — לא ניתן לרשום' });
+  const counter = await acctByCode(tid, String(account_code || ''));
+  const bank = await acctByCode(tid, '1010');
+  if (!counter || !bank) return res.status(400).json({ error: 'חשבון נגדי לא קיים או תרשים לא אותחל' });
+  if (counter.code === '1010') return res.status(400).json({ error: 'החשבון הנגדי לא יכול להיות הבנק עצמו' });
+  const amt = Math.abs(Number(tx.amount));
+  const lines = Number(tx.amount) > 0
+    ? [{ account_id: bank.id, debit: amt }, { account_id: counter.id, credit: amt }]
+    : [{ account_id: counter.id, debit: amt }, { account_id: bank.id, credit: amt }];
+  const client = await require('../db').pool.connect();
+  try {
+    await client.query('BEGIN');
+    const e = await insertEntryTx(client, tid, {
+      date: dateStr, description: description || `בנק: ${tx.description || 'תנועה'}`, source: 'bank', lines, createdBy: req.user.id,
+    });
+    await client.query(`UPDATE bk_bank_txs SET status='booked', booked_entry_id=$1 WHERE id=$2`, [e.id, tx.id]);
+    await client.query('COMMIT');
+    await audit(req, 'bk_bank_book', 'bk_bank_tx', tx.id, { entry_no: e.entry_no, amount: amt.toFixed(2) });
+    res.json({ booked: true, entry_no: e.entry_no });
+  } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+});
+
+// תמונת התאמה: כמה שויך/נרשם/ממתין + יתרת הבנק בספר
+r.get('/bookkeeping/bank/reconciliation', async (req, res) => {
+  const tid = req.tenant.id;
+  const { rows: counts } = await q(
+    `SELECT status, count(*)::int AS n, COALESCE(sum(amount),0)::numeric(12,2) AS total
+     FROM bk_bank_txs WHERE tenant_id=$1 GROUP BY status`, [tid]);
+  const { rows: bal } = await q(
+    `SELECT COALESCE(sum(l.debit),0)::numeric(12,2) AS debit, COALESCE(sum(l.credit),0)::numeric(12,2) AS credit
+     FROM bk_lines l JOIN bk_accounts a ON a.id=l.account_id
+     WHERE l.tenant_id=$1 AND a.code='1010'`, [tid]);
+  res.json({
+    by_status: Object.fromEntries(counts.map(c => [c.status, { count: c.n, total: c.total }])),
+    ledger_bank_balance: (Number(bal[0].debit) - Number(bal[0].credit)).toFixed(2),
+  });
+});
+
+// --- 094: דוחות — רווח והפסד, מע"מ תקופתי (לעיון בלבד), ממתינים להקצאה, יצוא רו"ח אמיתי ---
+const { sendCsv } = require('../csv');
+
+function dateRange(req) {
+  let { from, to } = req.query || {};
+  if (from && !DATE_RE.test(from)) return { error: 'תאריך from לא תקין' };
+  if (to && !DATE_RE.test(to)) return { error: 'תאריך to לא תקין' };
+  const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  if (!from) from = `${nowIL.getFullYear()}-01-01`;
+  if (!to) to = nowIL.toISOString().slice(0, 10);
+  return { from, to };
+}
+
+// רווח והפסד לפי תנועות הספר בפועל
+r.get('/bookkeeping/reports/pnl', async (req, res) => {
+  const p = dateRange(req);
+  if (p.error) return res.status(400).json({ error: p.error });
+  const { rows } = await q(
+    `SELECT a.code, a.name_he, a.type,
+            COALESCE(sum(l.debit),0)::numeric(12,2) AS debit, COALESCE(sum(l.credit),0)::numeric(12,2) AS credit
+     FROM bk_accounts a
+     JOIN bk_lines l ON l.account_id = a.id AND l.tenant_id = a.tenant_id
+     JOIN bk_entries e ON e.id = l.entry_id
+     WHERE a.tenant_id=$1 AND a.type IN ('income','expense') AND e.entry_date BETWEEN $2 AND $3
+     GROUP BY a.id ORDER BY a.code`, [req.tenant.id, p.from, p.to]);
+  const income = rows.filter(r => r.type === 'income').map(r => ({ ...r, net: (Number(r.credit) - Number(r.debit)).toFixed(2) }));
+  const expenses = rows.filter(r => r.type === 'expense').map(r => ({ ...r, net: (Number(r.debit) - Number(r.credit)).toFixed(2) }));
+  const totalIncome = income.reduce((t, x) => t + Number(x.net), 0);
+  const totalExpenses = expenses.reduce((t, x) => t + Number(x.net), 0);
+  res.json({
+    from: p.from, to: p.to, income, expenses,
+    total_income: totalIncome.toFixed(2), total_expenses: totalExpenses.toFixed(2),
+    net_profit: (totalIncome - totalExpenses).toFixed(2),
+  });
+});
+
+// דוח מע"מ תקופתי מחושב — לעיון בלבד, לא להגשה. ההגשה בפועל: חיים/רו"ח באזור האישי
+r.get('/bookkeeping/reports/vat', async (req, res) => {
+  const p = dateRange(req);
+  if (p.error) return res.status(400).json({ error: p.error });
+  if (req.tenant.dealer_type !== 'morasha') {
+    return res.json({ applicable: false, note: 'עוסק פטור — מדווח דו"ח שנתי ולא דו"ח מע"מ תקופתי' });
+  }
+  const sums = async (code) => {
+    const { rows } = await q(
+      `SELECT COALESCE(sum(l.debit),0)::numeric(12,2) AS debit, COALESCE(sum(l.credit),0)::numeric(12,2) AS credit
+       FROM bk_lines l JOIN bk_accounts a ON a.id=l.account_id JOIN bk_entries e ON e.id=l.entry_id
+       WHERE l.tenant_id=$1 AND a.code=$2 AND e.entry_date BETWEEN $3 AND $4`,
+      [req.tenant.id, code, p.from, p.to]);
+    return rows[0];
+  };
+  const out = await sums('2010'); // מע"מ עסקאות
+  const inp = await sums('2020'); // מע"מ תשומות
+  const vatOut = Number(out.credit) - Number(out.debit);
+  const vatIn = Number(inp.debit) - Number(inp.credit);
+  res.json({
+    applicable: true, from: p.from, to: p.to,
+    vat_on_sales: vatOut.toFixed(2), vat_on_inputs: vatIn.toFixed(2),
+    balance: (vatOut - vatIn).toFixed(2),
+    disclaimer: 'דוח מחושב לעיון בלבד — אינו דיווח לרשות המסים. ההגשה והתשלום מתבצעים באזור האישי של רשות המסים (עד ה-19 בחודש מקוון).',
+  });
+});
+
+// דוח ראיה לרו"ח: מסמכי מס שממתינים למספר הקצאה
+r.get('/bookkeeping/reports/pending-allocation', async (req, res) => {
+  const { rows } = await q(
+    `SELECT id, kind, customer_name, amount_net, vat_amount, (amount_net+vat_amount) AS total, created_at
+     FROM bk_documents WHERE tenant_id=$1 AND status='draft' AND kind IN ('tax_invoice','tax_invoice_receipt')
+     ORDER BY created_at`, [req.tenant.id]);
+  res.json({
+    pending: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d) })),
+    count: rows.length,
+    note: rows.length ? 'יש לבקש מספרי הקצאה באזור האישי של רשות המסים ולהזינם לכל מסמך לפני ההנפקה' : 'אין מסמכים ממתינים',
+  });
+});
+
+// יצוא רו"ח מהספר האמיתי — מחליף את יצוא הדמו של settlement (CSV משותף עם ניטרול נוסחאות)
+r.get('/bookkeeping/accountant-export.csv', async (req, res) => {
+  const p = dateRange(req);
+  if (p.error) return res.status(400).json({ error: p.error });
+  const { rows } = await q(
+    `SELECT e.entry_no, e.entry_date, e.description, e.source,
+            a.code, a.name_he, p2.name AS party, l.debit, l.credit, l.details
+     FROM bk_entries e
+     JOIN bk_lines l ON l.entry_id = e.id
+     JOIN bk_accounts a ON a.id = l.account_id
+     LEFT JOIN bk_parties p2 ON p2.id = l.party_id
+     WHERE e.tenant_id=$1 AND e.entry_date BETWEEN $2 AND $3
+     ORDER BY e.entry_no, (l.debit > 0) DESC`, [req.tenant.id, p.from, p.to]);
+  const SRC_HE = { manual: 'ידנית', invoice: 'מסמך', expense: 'הוצאה', bank: 'בנק', reversal: 'סטורנו' };
+  sendCsv(res, `bookkeeping-${p.from}_${p.to}.csv`, [
+    ['מספר פקודה', 'תאריך', 'תיאור', 'מקור', 'קוד חשבון', 'שם חשבון', 'כרטיס', 'חובה', 'זכות', 'פרטים'],
+    ...rows.map(r => [
+      String(r.entry_no), r.entry_date.toISOString().slice(0, 10), r.description, SRC_HE[r.source] || r.source,
+      r.code, r.name_he, r.party || '', Number(r.debit) ? Number(r.debit).toFixed(2) : '',
+      Number(r.credit) ? Number(r.credit).toFixed(2) : '', r.details || '',
+    ]),
+  ]);
+});
+
 async function acctByCode(tid, code) {
   const { rows } = await q(`SELECT id, code FROM bk_accounts WHERE tenant_id=$1 AND code=$2 AND active`, [tid, code]);
   return rows[0] || null;
