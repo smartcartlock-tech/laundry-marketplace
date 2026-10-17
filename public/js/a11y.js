@@ -164,6 +164,8 @@
  const skL=document.querySelector('.skip-link');
  if(skL&&appT)skL.addEventListener('click',e=>{e.preventDefault();appT.focus()});
  ensureStyle('#app:focus{outline:none}/*app-focus*/','app-focus');
+ /* T8: כותרת דף שמקבלת פוקוס ניווטי — בלי טבעת ויזואלית */
+ ensureStyle('#app h1:focus,#app h2:focus{outline:none}/*hd-focus*/','hd-focus');
  /* T34: כיבוד העדפת הפחתת תנועה */
  ensureStyle('@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}/*reduced-motion*/','reduced-motion');
 

@@ -76,12 +76,21 @@ async function route(){
  if(seq!==routeSeq)return; // ניווט חדש יותר דורס רינדור ישן — נחיתה עקבית תמיד
  renderTabs(h.split('?')[0]);
  $('#app').innerHTML=html;
+ /* T8: הכרזת ניווט לקורא-מסך — מעבר פוקוס לכותרת הדף החדש במעבר נתיב בלבד
+    (רינדור-מחדש של אותו נתיב, כמו אחרי פעולה או polling, לא גונב פוקוס) */
+ if(window.__lastRoutePath!==p){
+  window.__lastRoutePath=p;
+  const hd=$('#app').querySelector('h1,h2');
+  if(hd){hd.setAttribute('tabindex','-1');hd.focus()}
+ }
  if(parts[0]==='login')initGoogle();
  if(state.brandSlug)applyBrandTheme(state.brandSlug);
  const jf=$('#join-files');if(jf)jf.onchange=()=>joinExtract(jf.files);
  if(parts[0]==='checkout'&&__coAddrs.length===1){const sa=$('#co-saved-addr');if(sa){sa.value=__coAddrs[0].id;pickAddr(sa)}} // E13.T2: כתובת שמורה יחידה נבחרת אוטומטית
  window.scrollTo(0,0);
 }
+/* T8: אתחול נתיב — טעינה ראשונה לא גונבת פוקוס */
+window.__lastRoutePath=(location.hash||'#/').split('#')[1].split('?')[0];
 window.addEventListener('hashchange',route);
 window.addEventListener('storage',e=>{
  /* T1: רק מפתחות סשן ורק שינוי אמיתי — כתיבות cache של vHome (orderStatus/homeCache) לא מעוררות route,
