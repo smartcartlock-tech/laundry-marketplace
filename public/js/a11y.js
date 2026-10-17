@@ -109,12 +109,23 @@
  }
  Object.keys(FORMS).forEach(wrapForm);
 
+ /* הזרקת CSS של שכבת הנגישות (styles.css לא נערך) */
+ function ensureStyle(css,mark){
+  let st=document.getElementById('a11y-style');
+  if(!st){st=document.createElement('style');st.id='a11y-style';document.head.appendChild(st)}
+  if(st.textContent.indexOf(mark)===-1)st.textContent+=css;
+ }
+
  /* קישור דילוג לתוכן */
  if(!document.querySelector('.skip-link')){
   const sk=document.createElement('a');
   sk.className='skip-link';sk.href='#app';sk.textContent='דילוג לתוכן המרכזי';
   document.body.insertBefore(sk,document.body.firstChild);
  }
+ /* T21: יעד הדילוג חייב להיות focusable כדי שהפוקוס יעבור לתוכן */
+ const appT=document.getElementById('app');
+ if(appT&&!appT.hasAttribute('tabindex'))appT.setAttribute('tabindex','-1');
+ ensureStyle('#app:focus{outline:none}/*app-focus*/','app-focus');
 
  /* הרצה חוזרת אחרי כל רינדור של ה-SPA */
  let t=null;
