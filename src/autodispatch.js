@@ -10,8 +10,9 @@ async function logDecision(tenantId, orderId, decision, reason, payload = {}) {
     [tenantId, orderId, decision, reason || null, JSON.stringify(payload)]);
 }
 
-// שליחים פעילים (מאושרים + מקוונים) באותו tenant, ממוינים לפי עומס משימות פתוחות ואז דירוג.
-// שליח שכבר קיבל הצעה להזמנה זו (בכל ניסיון) לא מוצע שוב.
+// סינון קשיח: רק שליחים מאושרים עם is_online=true — גם ב-fallback. סדר העדפה: שליחי דמו (טלפון דמו +9725000000xx)
+// קודם בטנאנט דמו, אז שליחי הטנאנט עצמו, ואז לפי עומס משימות פתוחות, דירוג וותק. שליח שכבר קיבל הצעה להזמנה זו לא מוצע שוב.
+const DEMO_PHONES = ['+972500000002', '+972500000003', '+972500000004', '+972500000031'];
 async function pickCourier(tenantId, orderId) {
   const { rows } = await q(
     `SELECT c.id, c.model, u.id AS uid, u.phone,
@@ -19,7 +20,7 @@ async function pickCourier(tenantId, orderId) {
      FROM couriers c JOIN users u ON u.id=c.user_id
      WHERE c.approved AND c.is_online AND (c.tenant_id=$1 OR c.model IN ('platform','shared'))
        AND NOT EXISTS (SELECT 1 FROM dispatch_offers f WHERE f.order_id=$2 AND f.courier_id=c.id)
-     ORDER BY load ASC, c.rating DESC, c.created_at ASC`, [tenantId, orderId]);
+     ORDER BY CASE WHEN u.phone = ANY($3) THEN 0 ELSE 1 END, CASE WHEN c.tenant_id=$1 THEN 0 ELSE 1 END, load ASC, c.rating DESC, c.created_at ASC`, [tenantId, orderId, DEMO_PHONES]);
   return rows;
 }
 
@@ -99,4 +100,4 @@ function start() {
   setInterval(() => expireStaleOffers().catch(e => console.error('[dispatch]', e.message)), scanMs).unref();
 }
 
-module.exports = { TIMEOUT_MIN, dispatchOrder, expireStaleOffers, acceptOffer, declineOffer, pickCourier, logDecision, start };
+module.exports = { TIMEOUT_MIN, DEMO_PHONES, dispatchOrder, expireStaleOffers, acceptOffer, declineOffer, pickCourier, logDecision, start };

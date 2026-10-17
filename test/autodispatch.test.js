@@ -122,3 +122,42 @@ test('T81: שיבוץ אוטומטי מלא — הצעה, fallback, accept רא�
   }
   assert.ok(autoOffer, 'confirmed status auto-dispatches an offer');
 });
+
+test('T81: דמו — שליח דמו מקוון מקודם לשליח פלטפורמה; fallback רק בין מחוברים', async (t) => {
+  const { api, schema } = await startApp(t);
+  const db = new Client({ connectionString: TEST_DB });
+  await db.connect();
+  t.after(() => db.end());
+  await db.query(`SET search_path TO ${schema}, public`);
+
+  const owner = await api.login('+972500000003');
+  const customer = await api.login('+972500000002');
+  const courierDemo = await api.login('+972500000004'); // שליח דמו (טלפון דמו)
+  const courierPlatform = await api.login('+972500000005'); // שליח פלטפורמה — לא טלפון דמו
+  const { rows: c4 } = await db.query(`SELECT c.id FROM couriers c JOIN users u ON u.id=c.user_id WHERE u.phone='+972500000004'`);
+  const { rows: c5 } = await db.query(`SELECT c.id FROM couriers c JOIN users u ON u.id=c.user_id WHERE u.phone='+972500000005'`);
+
+  // שניהם מקוונים — ההצעה הולכת לשליח הדמו 004, לא לשליח הפלטפורמה 005
+  await api('/api/courier/availability', { method: 'POST', token: courierDemo, body: { online: true } });
+  await api('/api/courier/availability', { method: 'POST', token: courierPlatform, body: { online: true } });
+  const o1 = await makeOrder(api, customer, 'achuza');
+  const trig = await api(`/api/dispatch/orders/${o1}/trigger`, { method: 'POST', token: owner, body: {} });
+  assert.equal(trig.json.mode, 'offered', JSON.stringify(trig.json));
+  const { rows: f1 } = await db.query('SELECT courier_id FROM dispatch_offers WHERE order_id=$1', [o1]);
+  assert.equal(f1[0].courier_id, c4[0].id, 'demo-phone courier preferred over platform courier');
+
+  // fallback רק בין מחוברים: 005 כבוי, 004 דוחה — אין הצעה נוספת, נרשם unassigned
+  await api('/api/courier/availability', { method: 'POST', token: courierPlatform, body: { online: false } });
+  const o2 = await makeOrder(api, customer, 'achuza');
+  await api(`/api/dispatch/orders/${o2}/trigger`, { method: 'POST', token: owner, body: {} });
+  const offers4 = await api('/api/dispatch/offers', { token: courierDemo });
+  const off2 = offers4.json.offers.find(f => f.order_id === o2);
+  assert.ok(off2, 'demo courier got the offer');
+  const dec = await api(`/api/dispatch/offers/${off2.offer_id}/decline`, { method: 'POST', token: courierDemo, body: { reason: 'עמוס' } });
+  assert.equal(dec.status, 200, JSON.stringify(dec.json));
+  assert.equal(dec.json.next, 'unassigned', 'no fallback to an offline courier');
+  const { rows: f2 } = await db.query(`SELECT count(*)::int AS n FROM dispatch_offers WHERE order_id=$1 AND status='offered'`, [o2]);
+  assert.equal(f2[0].n, 0, 'offline courier received no fallback offer');
+  const { rows: lg } = await db.query(`SELECT decision FROM dispatch_log WHERE order_id=$1 ORDER BY created_at`, [o2]);
+  assert.ok(lg.some(x => x.decision === 'unassigned'), 'unassigned decision logged');
+});
