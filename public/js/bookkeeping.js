@@ -86,6 +86,13 @@
         ${isMorasha ? `<input class="inp" id="bk-exp-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">` : ''}
         <input type="file" id="bk-exp-file" accept=".pdf,image/jpeg,image/png,image/webp" style="width:170px">
         <button class="btn2 on" data-bk-act="create-exp">הוספת הוצאה</button>
+        <button class="btn2" data-bkp-act="sup-toggle">+ ספק חדש</button>
+      </div>
+      <div id="bk-new-sup" hidden style="gap:6px;flex-wrap:wrap;margin-bottom:8px;border:1px dashed #e3edf0;border-radius:8px;padding:6px">
+        <input class="inp" id="bk-ns-name" placeholder="שם ספק (חובה)" style="flex:2">
+        <input class="inp" id="bk-ns-taxid" inputmode="numeric" placeholder="מספר עוסק/ח.פ" style="width:120px">
+        <input class="inp" id="bk-ns-phone" placeholder="טלפון" style="width:120px">
+        <button class="btn2 on" data-bkp-act="sup-create">צור ספק</button>
       </div>
       ${expRows ? `<table class="tbl"><tr><th>תאריך</th><th>ספק</th><th>תיאור</th><th>חשבון</th><th>סכום</th><th>סטטוס</th><th>פעולות</th></tr>${expRows}</table>` : '<div class="mut">אין הוצאות עדיין</div>'}</div>
 
