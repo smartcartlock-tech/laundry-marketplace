@@ -80,6 +80,10 @@
    if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
    if(!el.hasAttribute('role'))el.setAttribute('role',el.dataset.a&&el.dataset.a.charAt(0)==='#'?'link':'button');
   });
+  /* T34: תמונות ללא alt — טקסט חלופי ללוגו, סימון דקורטיבי לשאר */
+  document.querySelectorAll('img:not([alt])').forEach(im=>{
+   im.setAttribute('alt',/logo/i.test(im.className+' '+im.src)?'לוגו המכבסה':'');
+  });
   const sb=document.querySelector('.searchbar');if(sb&&!sb.getAttribute('role'))sb.setAttribute('role','search');
   const tabs=document.getElementById('tabs');
   if(tabs){
@@ -157,6 +161,8 @@
  const appT=document.getElementById('app');
  if(appT&&!appT.hasAttribute('tabindex'))appT.setAttribute('tabindex','-1');
  ensureStyle('#app:focus{outline:none}/*app-focus*/','app-focus');
+ /* T34: כיבוד העדפת הפחתת תנועה */
+ ensureStyle('@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}/*reduced-motion*/','reduced-motion');
 
  /* הרצה חוזרת אחרי כל רינדור של ה-SPA */
  let t=null;
