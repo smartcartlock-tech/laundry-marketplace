@@ -94,6 +94,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
   }
 }));
 app.use('/b', require('./routes/brand-landing')); // G3: עמוד נחיתה ממותג פר-מכבסה
+// G17.T5: דפי מדיניות סטטיים (מסומני דמו) — נגישים בלי התחברות, לפני נפילת ה-SPA
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'terms.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
 // eslint-disable-next-line no-unused-vars
