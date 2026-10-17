@@ -1,5 +1,5 @@
 /* הנהלת חשבונות אמיתית (לא דמו): לשונית "הנה״ח" בלוח הניהול — בעלים בלבד.
-   מסך מאוחד RTL: לוח (איזון, ממתינים להקצאה), מסמכים, הוצאות, בנק, דוחות.
+   מסך מאוחד RTL: לוח (איזון, המלצות הקצאה), מסמכים, הוצאות, בנק, דוחות.
    הנתונים מ-/api/t/:slug/bookkeeping/* — ההרשאה נאכפת בשרת (owner בלבד).
    בטיחות: כל טקסט דרך esc(), אין onclick inline — האזנה מרוכזת עם data-bk-act. */
 (function(){
@@ -35,6 +35,7 @@
       <tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td>
         <td>${d.doc_number ? d.doc_year + '-' + d.doc_number : '—'}</td>
         <td>${money(d.total)}${d.paid_amount && Number(d.paid_amount) > 0 ? `<div class="mut">שולם ${money(d.paid_amount)}</div>` : ''}</td><td>${pill(d.status_he, d.status === 'issued')}
+          ${d.allocation_warning ? `<div class="warn">${esc(d.allocation_warning)}</div>` : ''}
           ${d.fully_credited ? '<div class="mut">זוכה במלואו</div>' : ''}
           ${d.source_document_id ? `<div class="mut">מקור: ${esc((docs.documents.find(x => x.id === d.source_document_id) || {}).doc_number || d.source_document_id)}</div>` : ''}
           ${d.allocation_number ? `<div class="mut">מספר הקצאה: <b dir="ltr">${esc(d.allocation_number)}</b><br>הוזן ידנית · לא מאומת מול רשות המסים</div>` : ''}</td>
@@ -88,10 +89,10 @@
     <div class="card" style="border:2px solid #c26a12">
       <div class="sec">הנהלת חשבונות · מסמך דמו · בעלים בלבד</div>
       ${isMorasha ? `<div style="background:#fdf3e3;border:1px solid #e8c07a;border-radius:8px;padding:8px;font-weight:600">
-        חשבונית מס אינה נשלחת ללקוח בלי מספר הקצאה. מספר מבקשים באזור האישי של רשות המסים ומזינים כאן.</div>` : ''}
+        מספר הקצאה: כאשר השרת מציג המלצה, אפשר לבקש מספר באזור האישי של רשות המסים ולהזין ידנית. ההנפקה אינה חסומה, ומספר ידני אינו מאומת.</div>` : ''}
       <div class="kpis" style="margin-top:8px">
         <div class="kpi"><b>${tb.totals.balanced ? '✓' : '⚠️'}</b>${tb.totals.balanced ? 'ספר מאוזן' : 'ספר לא מאוזן'}</div>
-        <div class="kpi"><b>${pend.count}</b>ממתינים להקצאה</div>
+        <div class="kpi"><b>${pend.count}</b>המלצות הקצאה</div>
         <div class="kpi"><b>${money(pnl.net_profit)}</b>רווח נטו · <bdi dir="ltr">${esc(periodLabel)}</bdi></div>
         <div class="kpi"><b>${un.count}</b>תנועות בנק ממתינות</div>
       </div></div>
@@ -100,6 +101,7 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <select class="inp" id="bk-doc-kind" style="flex:1">${kinds.map(k => `<option value="${k[0]}">${k[1]}</option>`).join('')}</select>
         <input class="inp" id="bk-doc-cust" placeholder="שם לקוח" style="flex:2">
+        <select class="inp" id="bk-doc-customer-type" aria-label="סוג לקוח"><option value="">סוג לקוח לא צוין</option><option value="morasha">עוסק מורשה</option><option value="patur">עוסק פטור</option><option value="private">לקוח פרטי</option></select>
         <input class="inp" id="bk-doc-net" type="number" min="0" step="0.01" placeholder="נטו ₪" style="width:90px">
         <input class="inp" id="bk-doc-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">
         <button class="btn2 on" data-bk-act="create-doc">יצירת טיוטה</button>
@@ -168,7 +170,7 @@
       <div class="row" style="border-top:1px solid #e3edf0;margin-top:6px;padding-top:6px"><div><b>רווח נטו</b></div><div><b>${money(pnl.net_profit)}</b></div></div>
       ${vat.applicable ? `<div class="mut" style="margin-top:8px">מע״מ תקופה: עסקאות ${money(vat.vat_on_sales)} · תשומות ${money(vat.vat_on_inputs)} · יתרה <b>${money(vat.balance)}</b><br>${esc(vat.disclaimer)}</div>`
         : `<div class="mut" style="margin-top:8px">${esc(vat.note || '')}</div>`}
-      ${pend.count ? `<div class="sec" style="font-size:13px;margin-top:10px">ממתינים למספר הקצאה (${pend.count})</div>
+      ${pend.count ? `<div class="sec" style="font-size:13px;margin-top:10px">המלצות למספר הקצאה (${pend.count})</div>
         <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>
 
     ${window.bkParties ? window.bkParties.card(parties) : ''}
@@ -244,12 +246,12 @@
         await api(`${B}/documents`, { method:'POST', body:JSON.stringify({ kind:credit ? 'credit_note':'receipt', source_document_id:id, customer_name:source.customer_name, amount_net:amount, vat_amount:credit ? Number(source.vat_amount):0, notes:'מסמך דמו' }) });
         toast('טיוטה מקושרת נוצרה · מסמך דמו'); route();
       } else if (act === 'create-doc'){
-        const body = { kind: val('bk-doc-kind'), customer_name: val('bk-doc-cust'), amount_net: Number(val('bk-doc-net')), vat_amount: Number(val('bk-doc-vat') || 0) };
+        const body = { customer_dealer_type: val('bk-doc-customer-type') || undefined, kind: val('bk-doc-kind'), customer_name: val('bk-doc-cust'), amount_net: Number(val('bk-doc-net')), vat_amount: Number(val('bk-doc-vat') || 0) };
         await api(`${B}/documents`, { method: 'POST', body: JSON.stringify(body) }); toast('טיוטה נוצרה'); route();
       } else if (act === 'allocate'){
         const num = val('bk-alloc-' + id);
         await api(`${B}/documents/${id}/allocate`, { method: 'POST', body: JSON.stringify({ allocation_number: num }) });
-        toast('מספר הקצאה נרשם — אפשר להנפיק'); route();
+        toast('מספר ידני נשמר · לא מאומת מול רשות המסים'); route();
       } else if (act === 'issue'){
         await api(`${B}/documents/${id}/issue`, { method: 'POST' }); toast('המסמך הונפק ונרשם בספר'); route();
       } else if (act === 'cancel-doc'){
