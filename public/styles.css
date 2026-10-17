@@ -48,7 +48,7 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
 .otp input:focus{border-color:#0e7a8a}
 #tabs{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;z-index:50}
 #tabs .in{width:100%;max-width:480px;display:flex;background:#fff;border-top:1px solid #e2eaee;box-shadow:0 -2px 12px rgba(0,0,0,.06)}
-#tabs a{flex:1;text-align:center;padding:9px 0 10px;font-size:11px;color:#8a99a3;text-decoration:none}
+#tabs a{flex:1;min-width:0;text-align:center;padding:9px 2px 10px;font-size:11px;line-height:1.25;color:#8a99a3;text-decoration:none}
 #tabs a.on{color:#0e7a8a;font-weight:700}
 #tabs a .ic{font-size:18px;display:block;margin-bottom:2px}
 .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:#17303a;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:99;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}

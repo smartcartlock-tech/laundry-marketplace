@@ -17,3 +17,12 @@ test('orders filter bar: wrap, full-width select, touch targets >=44px', () => {
     assert.ok(!/(^|;)flex:1;/.test(st), id + ': בלי flex:1 חשוף שגורם לסחיטה');
   }
 });
+
+test('bottom tabs: 7 לשוניות לא גולשות מעבר לרוחב המסך (min-width:0)', () => {
+  const css = fs.readFileSync('public/styles.css', 'utf8');
+  const rule = css.match(/#tabs a\{([^}]*)\}/);
+  assert.ok(rule, 'כלל #tabs a לא נמצא');
+  assert.ok(rule[1].includes('min-width:0'), '#tabs a חייב min-width:0 כדי שהטקסט יכול להצטמצם ב-375');
+  const tabs = fs.readFileSync('public/js/tabs.js', 'utf8');
+  assert.ok(tabs.includes('החשבון שלי'), 'T19: הלשונית הקבועה קיימת');
+});
