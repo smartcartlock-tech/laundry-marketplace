@@ -56,14 +56,14 @@ async function botReply(message, user, req) {
     const p = takePending(pendKey(user, req, codeM));
     if (!p || p.action !== 'cancel') return { reply: `אין בקשת ביטול ממתינה לקוד ${codeM.toUpperCase()}. כתבו "בטל הזמנה ${codeM.toUpperCase()}" כדי להתחיל.` };
     const o = p.order;
-    // נעילה אופטימית: מבטלים רק אם הסטטוס עדיין new/confirmed ברגע האישור — מנצח אחד בלבד ב-race
-    const { rowCount } = await q("UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1 AND status IN ('new','confirmed')", [o.id]);
-    if (!rowCount) {
+    // T11: ביטול דרך שירות הביטול המשותף — אותן החזרות (נקודות/קופון/מנוי) והתראה לבעלים כמו באפליקציה
+    const r2 = await require('../lib/cancel-service').cancelOrder({ orderId: o.id, actorId: user ? user.id : null, note: 'בוטל דרך סימולציית הבוט באישור מפורש' });
+    if (!r2.ok) {
       const cur = await findOrderByCode(codeM);
       return { reply: `ההזמנה כבר בסטטוס "${ST_HE[cur ? cur.status : ''] || 'לא ידוע'}" — הביטול לא בוצע (ייתכן שאושר או בוטל במקביל).` };
     }
-    await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'cancelled',$2,'בוטל דרך סימולציית הבוט באישור מפורש')", [o.id, user ? user.id : null]);
-    return { reply: `ההזמנה אצל ${o.tenant_name} (קוד ${codeM.toUpperCase()}) בוטלה ✅ (סימולציה — נתוני דמו).` };
+    const { refundsHe } = require('../lib/cancel-service');
+    return { reply: `ההזמנה אצל ${o.tenant_name} (קוד ${codeM.toUpperCase()}) בוטלה ✅ — ${refundsHe(r2.refunds)}. (סימולציה — נתוני דמו).` };
   }
   if (/^(אישור שינוי|מאשר שינוי)/.test(low) && codeM) {
     const p = takePending(pendKey(user, req, codeM));

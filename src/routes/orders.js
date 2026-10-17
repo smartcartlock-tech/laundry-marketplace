@@ -5,7 +5,7 @@ const { notifyUser } = require('../notify');
 const { applyCourierRating } = require('../routes-engine');
 const { buildReceiptPDF } = require('../receipt');
 const { validateCoupon, findCoupon } = require('../coupons');
-const { ensureCurrentPeriod, applySubscriptionToOrder, restoreBags } = require('../subscriptions');
+const { ensureCurrentPeriod, applySubscriptionToOrder } = require('../subscriptions');
 const { uuidParams } = require('../validate');
 
 const r = express.Router();
@@ -251,29 +251,14 @@ r.get('/:id/receipt.pdf', uuidParams('id'), async (req, res) => {
   doc.pipe(res);
 });
 
-// ביטול על ידי לקוח (לפני איסוף)
+// ביטול על ידי לקוח (לפני איסוף) — T11: דרך שירות הביטול המשותף (אותן החזרות + התראה לבעלים T10)
 r.post('/:id/cancel', uuidParams('id'), async (req, res) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    // QA-flow: FOR UPDATE — תחרות מול סימון שליח; רק הצד הראשון מצליח
-    const { rows } = await client.query('SELECT * FROM orders WHERE id=$1 AND customer_id=$2 FOR UPDATE', [req.params.id, req.user.id]);
-    const order = rows[0];
-    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
-    if (!['new', 'confirmed'].includes(order.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'לא ניתן לבטל לאחר איסוף' }); }
-    await client.query(`UPDATE orders SET status='cancelled', updated_at=now() WHERE id=$1`, [order.id]);
-    await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'cancelled',$2,'בוטלה על ידי הלקוח')`, [order.id, req.user.id]);
-    // QA-flow: החזר נקודות שמומשו ושחרור שימוש בקופון
-    if (Number(order.points_redeemed) > 0)
-      await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
-        [order.tenant_id, order.customer_id, Number(order.points_redeemed), 'החזר נקודות בעקבות ביטול הזמנה', order.id]);
-    if (order.coupon_id)
-      await client.query('UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id=$1', [order.coupon_id]);
-    await restoreBags(client, order.id);
-    await client.query('COMMIT');
-    res.json({ ok: true });
-  } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
-  finally { client.release(); }
+  // בדיקת בעלות לפני השירות (השירות עצמו נועל ומאמת סטטוס)
+  const { rows } = await q('SELECT id FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  const r2 = await require('../lib/cancel-service').cancelOrder({ orderId: req.params.id, actorId: req.user.id, note: 'בוטלה על ידי הלקוח' });
+  if (r2.error) return res.status(r2.status || 500).json({ error: r2.error });
+  res.json({ ok: true });
 });
 
 // דירוג אחרי הזמנה
