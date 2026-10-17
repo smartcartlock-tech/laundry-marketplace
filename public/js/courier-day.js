@@ -293,12 +293,14 @@ async function vCourierProfile(){
   <label class="lbl">אזורי פעילות (מופרדים בפסיק)</label>
   <input class="inp" id="cp-areas" value="${esc((c.areas||[]).join(', '))}">
   <label class="lbl">שעות פעילות לפי יום</label>
-  ${DAYS_HE.map((d,i)=>{const a=av[String(i)]||{};return `<div style="display:flex;gap:6px;align-items:center;margin:4px 0">
+  ${DAYS_HE.map((d,i)=>{const a=av[String(i)]||{};return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0">
     <span style="min-width:52px">${d}</span>
     <input type="checkbox" id="cp-off-${i}" ${a.off?'checked':''} data-actc="courierProfileOff" data-a="${i}"><label for="cp-off-${i}" class="mut">סגור</label>
-    <input type="time" class="inp" id="cp-from-${i}" value="${a.from||'08:00'}" style="max-width:110px" ${a.off?'disabled':''}>
-    <span class="mut">עד</span>
-    <input type="time" class="inp" id="cp-to-${i}" value="${a.to||'18:00'}" style="max-width:110px" ${a.off?'disabled':''}>
+    <div style="display:flex;flex:1 1 240px;gap:6px;align-items:center;min-width:0">
+     <input type="time" class="inp" id="cp-from-${i}" value="${a.from||'08:00'}" style="flex:1;min-width:0;margin-bottom:0" ${a.off?'disabled':''}>
+     <span class="mut">עד</span>
+     <input type="time" class="inp" id="cp-to-${i}" value="${a.to||'18:00'}" style="flex:1;min-width:0;margin-bottom:0" ${a.off?'disabled':''}>
+    </div>
    </div>`}).join('')}
   <button class="btn" style="margin-top:10px" data-act="courierSaveProfile">שמירת פרופיל</button>
  </div>
