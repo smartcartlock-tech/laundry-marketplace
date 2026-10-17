@@ -449,7 +449,7 @@ r.post('/bookkeeping/expenses/:id/void', async (req, res) => {
   } finally { client.release(); }
 });
 
-// --- 092: מסמכי הכנסה. כלל ברזל: חשבונית מס (305/320) אינה מונפקת בלי מספר הקצאה ---
+// --- 092: מסמכי הכנסה. T44 replaces the original unconditional allocation gate. ---
 const DOC_KINDS = {
   tax_invoice: { code: 305, he: 'חשבונית מס', needsAllocation: true, morashaOnly: true },
   tax_invoice_receipt: { code: 320, he: 'חשבונית מס/קבלה', needsAllocation: true, morashaOnly: true },
@@ -465,16 +465,29 @@ const VAT_RATE = 0.18;
 const vatCeiling = (net) => Math.round(Number(net) * VAT_RATE * 100) / 100 + 0.01;
 const vatOverMsg = (net) => `מע"מ מעל השיעור החוקי (${(VAT_RATE*100).toFixed(0)}%): עד ${(Number(net)*VAT_RATE).toFixed(2)} ₪ לנטו ${Number(net).toFixed(2)} ₪`;
 
+// T44 owner decision 2026-10-17: replaces blanket allocation blocking.
+// Official: https://www.gov.il/he/service/request-assignment-number-for-tax-invoice
+// Net must be strictly above the date threshold AND customer explicitly registered morasha.
+// Advisory only. Connector remains off; a manual number is never described as verified.
+function allocationAdvice(d, date) {
+  const day = date || new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const threshold = day >= '2026-06-01' ? 5000 : day >= '2026-01-01' ? 10000 : day >= '2025-01-01' ? 20000 : null;
+  const recommended = ['tax_invoice','tax_invoice_receipt'].includes(d.kind) && d.customer_dealer_type === 'morasha' && threshold !== null && Number(d.amount_net) > threshold;
+  return { allocation_recommended: recommended, allocation_threshold: threshold,
+    allocation_warning: recommended && !d.allocation_number ? 'מומלץ לבקש מספר הקצאה: סכום הנטו מעל התקרה והלקוח עוסק מורשה. מספר ידני אינו מאומת; ההנפקה אינה חסומה.' : null };
+}
+
 function docStatusHe(d) {
   if (d.status === 'issued') return 'הונפק';
   if (d.status === 'cancelled') return 'בוטל';
-  return DOC_KINDS[d.kind].needsAllocation ? 'טיוטה — ממתין למספר הקצאה' : 'טיוטה';
+  return allocationAdvice(d).allocation_warning ? 'טיוטה — מומלץ מספר הקצאה' : 'טיוטה';
 }
 
 r.post('/bookkeeping/documents', async (req, res) => {
   const tid = req.tenant.id;
-  let { kind, customer_name, party_id, customer_tax_id, amount_net, vat_amount, lines, notes, source_document_id } = req.body || {};
+  let { kind, customer_name, party_id, customer_tax_id, amount_net, vat_amount, lines, notes, source_document_id, customer_dealer_type } = req.body || {};
   const K = DOC_KINDS[kind];
+  if (customer_dealer_type != null && !['morasha','patur','private'].includes(customer_dealer_type)) return res.status(400).json({error:'סוג עוסק של הלקוח לא תקין'});
   if (!K) return res.status(400).json({ error: 'סוג מסמך לא תקין' });
   if (K.morashaOnly && req.tenant.dealer_type !== 'morasha') {
     return res.status(400).json({ error: `עוסק פטור אינו מפיק ${K.he} — מפיק חשבונית עסקה (300)` });
@@ -496,7 +509,7 @@ r.post('/bookkeeping/documents', async (req, res) => {
     const { rows: [src] } = await q('SELECT * FROM bk_documents WHERE id=$1 AND tenant_id=$2', [source_document_id, tid]);
     if (!src) return res.status(404).json({ error: 'מסמך מקור לא נמצא' });
     if (src.status !== 'issued' || !['invoice','tax_invoice', 'tax_invoice_receipt'].includes(src.kind)) return res.status(409).json({ error: 'מקור חייב להיות חשבונית מונפקת' });
-    customer_name = src.customer_name; party_id = src.party_id; customer_tax_id = src.customer_tax_id ? safeDecryptField(src.customer_tax_id, 'customer_tax_id') : null;
+    customer_dealer_type = src.customer_dealer_type; customer_name = src.customer_name; party_id = src.party_id; customer_tax_id = src.customer_tax_id ? safeDecryptField(src.customer_tax_id, 'customer_tax_id') : null;
     if (kind === 'receipt' && src.kind === 'tax_invoice_receipt') return res.status(409).json({ error: 'חשבונית מס/קבלה כבר כוללת תשלום' });
     if (kind === 'credit_note' && (Math.abs(net-Number(src.amount_net)) > 0.004 || Math.abs(vat-Number(src.vat_amount)) > 0.004)) return res.status(400).json({ error: 'בשלב זה נתמך זיכוי מלא בלבד, בסכומי מסמך המקור' });
   }
@@ -518,10 +531,10 @@ r.post('/bookkeeping/documents', async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows: d } = await client.query(
-      `INSERT INTO bk_documents (tenant_id, party_id, customer_name, customer_tax_id, kind, amount_net, vat_amount, notes, created_by, source_document_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, kind, status`,
+      `INSERT INTO bk_documents (tenant_id, party_id, customer_name, customer_tax_id, kind, amount_net, vat_amount, notes, created_by, source_document_id, customer_dealer_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, kind, status, amount_net, customer_dealer_type`,
       [tid, party_id || null, String(customer_name).trim(), customer_tax_id ? encryptField(String(customer_tax_id)) : null,
-       kind, net.toFixed(2), vat.toFixed(2), notes || null, req.user.id, source_document_id || null]);
+       kind, net.toFixed(2), vat.toFixed(2), notes || null, req.user.id, source_document_id || null, customer_dealer_type || null]);
     if (kind === 'credit_note' && cleanLines.length === 0) {
       const { rows: originals } = await client.query('SELECT description,quantity,unit_price,total FROM bk_document_lines WHERE tenant_id=$1 AND document_id=$2',[tid,source_document_id]);
       cleanLines = originals;
@@ -533,21 +546,21 @@ r.post('/bookkeeping/documents', async (req, res) => {
     }
     await client.query('COMMIT');
     await audit(req, 'bk_doc_create', 'bk_document', d[0].id, { kind, source_document_id: source_document_id || null, total: (net + vat).toFixed(2) });
-    res.status(201).json({ document: { ...d[0], status_he: docStatusHe(d[0]) } });
+    res.status(201).json({ document: { ...d[0], status_he: docStatusHe(d[0]), ...allocationAdvice(d[0]) } });
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 });
 
 r.get('/bookkeeping/documents', async (req, res) => {
   const { rows } = await q(
     `SELECT d.id, d.kind, d.doc_year, d.doc_number, d.issue_date, d.status, d.customer_name,
-            d.amount_net, d.vat_amount, d.source_document_id, d.entry_id, (d.amount_net + d.vat_amount) AS total,
+            d.amount_net, d.vat_amount, d.customer_dealer_type, d.source_document_id, d.entry_id, (d.amount_net + d.vat_amount) AS total,
             (SELECT COALESCE(sum(p.amount_net),0) FROM bk_documents p WHERE p.tenant_id=d.tenant_id AND p.source_document_id=d.id AND p.kind='receipt' AND p.status='issued') AS paid_amount,
             EXISTS(SELECT 1 FROM bk_documents c WHERE c.tenant_id=d.tenant_id AND c.source_document_id=d.id AND c.kind='credit_note' AND c.status='issued') AS fully_credited,
             d.allocation_number, CASE WHEN d.allocation_number IS NULL THEN 'not_provided' ELSE 'manual_unverified' END AS allocation_verification_status,
             (d.allocation_number IS NOT NULL) AS has_allocation, d.created_at,
             (SELECT count(*)::int FROM bk_document_lines l WHERE l.document_id = d.id) AS lines
      FROM bk_documents d WHERE d.tenant_id=$1 ORDER BY d.created_at DESC LIMIT 500`, [req.tenant.id]);
-  res.json({ documents: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d) })) });
+  res.json({ documents: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d), ...allocationAdvice(d, d.issue_date ? d.issue_date.toISOString().slice(0,10) : undefined) })) });
 });
 
 // הזנת מספר הקצאה ידנית — הבעלים מעתיק מהאזור האישי ברשות (אין קריאה אוטומטית לרשות)
@@ -565,7 +578,7 @@ r.post('/bookkeeping/documents/:id/allocate', async (req, res) => {
   res.json({ allocated: true });
 });
 
-// הנפקה: מספר סידורי רציף + פקודת יומן. חשבונית מס בלי הקצאה נשארת טיוטה (409)
+// הנפקה: מספר סידורי רציף + פקודת יומן. T44: הקצאה היא אזהרה מותנית בלבד.
 r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
   const tid = req.tenant.id;
   const { rows: ds } = await q(`SELECT * FROM bk_documents WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
@@ -573,9 +586,6 @@ r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
   if (!d) return res.status(404).json({ error: 'מסמך לא נמצא' });
   if (d.status !== 'draft') return res.status(409).json({ error: 'ניתן להנפיק טיוטה בלבד' });
   const K = DOC_KINDS[d.kind];
-  if (K.needsAllocation && !d.allocation_number) {
-    return res.status(409).json({ error: 'טיוטה — ממתין למספר הקצאה. יש לבקש מספר באזור האישי של רשות המסים ולהזינו כאן' });
-  }
   const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
   if (await periodClosed(tid, todayIL)) return res.status(409).json({ error: 'התקופה הנוכחית סגורה — לא ניתן להנפיק' });
 
@@ -625,7 +635,7 @@ r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
       [year, docNumber, todayIL, e.id, d.id]);
     await client.query('COMMIT');
     await audit(req, 'bk_doc_issue', 'bk_document', d.id, { kind: d.kind, source_document_id: d.source_document_id, doc_number: docNumber, total: total.toFixed(2) });
-    res.json({ issued: true, doc_year: year, doc_number: docNumber, entry_no: e.entry_no });
+    res.json({ issued: true, doc_year: year, doc_number: docNumber, entry_no: e.entry_no, ...allocationAdvice(d, todayIL) });
   } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
 });
 
@@ -871,13 +881,13 @@ r.get('/bookkeeping/reports/vat', async (req, res) => {
 // דוח ראיה לרו"ח: מסמכי מס שממתינים למספר הקצאה
 r.get('/bookkeeping/reports/pending-allocation', async (req, res) => {
   const { rows } = await q(
-    `SELECT id, kind, customer_name, amount_net, vat_amount, (amount_net+vat_amount) AS total, created_at
-     FROM bk_documents WHERE tenant_id=$1 AND status='draft' AND kind IN ('tax_invoice','tax_invoice_receipt')
+    `SELECT id, kind, customer_name, customer_dealer_type, allocation_number, amount_net, vat_amount, (amount_net+vat_amount) AS total, created_at
+     FROM bk_documents WHERE tenant_id=$1 AND status='draft' AND allocation_number IS NULL AND kind IN ('tax_invoice','tax_invoice_receipt')
      ORDER BY created_at`, [req.tenant.id]);
   res.json({
-    pending: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d) })),
-    count: rows.length,
-    note: rows.length ? 'יש לבקש מספרי הקצאה באזור האישי של רשות המסים ולהזינם לכל מסמך לפני ההנפקה' : 'אין מסמכים ממתינים',
+    pending: rows.filter(d=>allocationAdvice(d).allocation_recommended).map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d), ...allocationAdvice(d) })),
+    count: rows.filter(d=>allocationAdvice(d).allocation_recommended).length,
+    note: rows.some(d=>allocationAdvice(d).allocation_recommended) ? 'מומלץ לבקש מספר הקצאה ולהזינו ידנית. ההנפקה אינה חסומה ואין אימות מול הרשות' : 'אין מסמכים עם המלצת הקצאה',
   });
 });
 
@@ -1039,3 +1049,6 @@ r.get('/bookkeeping/uniform-export/:id/bkmv', async (req, res) => {
 });
 
 module.exports = r;
+
+// Pure date/threshold rule exported for regression tests; no network access.
+module.exports.allocationAdvice = allocationAdvice;

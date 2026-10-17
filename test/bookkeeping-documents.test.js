@@ -21,13 +21,14 @@ test('092: מסמכים — טיוטה/הקצאה/הנפקה', async (t) => {
       lines: [{ description: 'כביסה חודשית', quantity: 10, unit_price: 100 }] } });
     assert.equal(res.status, 201, JSON.stringify(res.json));
     docId = res.json.document.id;
-    assert.match(res.json.document.status_he, /ממתין למספר הקצאה/);
+    assert.equal(res.json.document.status_he, 'טיוטה');
   });
 
-  await t.test('הנפקה בלי מספר הקצאה נחסמת', async () => {
-    const res = await api(`${B}/documents/${docId}/issue`, { method: 'POST', token: owner });
-    assert.equal(res.status, 409);
-    assert.match(res.json.error, /ממתין למספר הקצאה/);
+  await t.test('T44: לקוח ללא סיווג מורשה אינו מקבל אזהרת הקצאה', async () => {
+    const res = await api(`${B}/documents`, { token: owner });
+    const d = res.json.documents.find(x=>x.id===docId);
+    assert.equal(d.allocation_recommended,false);
+    assert.equal(d.allocation_warning,null);
   });
 
   await t.test('מספר הקצאה לא תקין נדחה; תקין מתקבל', async () => {

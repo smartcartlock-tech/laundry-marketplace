@@ -23,7 +23,7 @@ test('094: דוחות', async (t) => {
   await api(`${B}/documents/${d1.json.document.id}/allocate`, { method: 'POST', token: owner, body: { allocation_number: '123456789' } });
   await api(`${B}/documents/${d1.json.document.id}/issue`, { method: 'POST', token: owner });
   const d2 = await api(`${B}/documents`, { method: 'POST', token: owner, body: {
-    kind: 'tax_invoice', customer_name: 'לקוח ממתין', amount_net: 500, vat_amount: 90 } });
+    kind: 'tax_invoice', customer_name: 'לקוח ממתין', customer_dealer_type:'morasha', amount_net: 6000, vat_amount: 1080 } });
 
   await t.test('רווח והפסד: הכנסה 1000, הוצאה 100, רווח 900', async () => {
     const res = await api(`${B}/reports/pnl?from=2026-10-01&to=2026-10-31`, { token: owner });
@@ -48,7 +48,7 @@ test('094: דוחות', async (t) => {
     assert.equal(res.status, 200);
     assert.equal(res.json.count, 1);
     assert.equal(res.json.pending[0].customer_name, 'לקוח ממתין');
-    assert.match(res.json.pending[0].status_he, /ממתין למספר הקצאה/);
+    assert.match(res.json.pending[0].status_he, /מומלץ מספר הקצאה/);
     void d2;
   });
 
