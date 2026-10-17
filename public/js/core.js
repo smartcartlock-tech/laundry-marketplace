@@ -72,8 +72,11 @@ function xmodal({title,body,okText='אישור',cancelText='ביטול',fields})
 function xconfirm(msg,opts={}){return xmodal({title:opts.title||'אישור פעולה',body:msg,okText:opts.okText||'אישור'})}
 async function api(path,opts={}){
  let r;
- try{r=await fetch('/api'+path,{...opts,headers:{'Content-Type':'application/json',...(state.token?{Authorization:'Bearer '+state.token}:{})}})}
- catch(e){const err=new Error('אין חיבור לרשת — בדקו את החיבור ונסו שוב');err.status=0;throw err}
+ /* T1: fetch ללא timeout עלול להיתקע לנצח (שרת קם משנה/רשת תקועה) ולהשאיר "טוען…" — 20 שנ' ונופלים לכרטיס שגיאה */
+ const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),20000);
+ try{r=await fetch('/api'+path,{...opts,signal:ctl.signal,headers:{'Content-Type':'application/json',...(state.token?{Authorization:'Bearer '+state.token}:{})}})}
+ catch(e){clearTimeout(to);const err=new Error(e&&e.name==='AbortError'?'השרת לא מגיב — נסו שוב בעוד רגע':'אין חיבור לרשת — בדקו את החיבור ונסו שוב');err.status=0;throw err}
+ clearTimeout(to);
  const data=await r.json().catch(()=>({}));
  if(!r.ok){const err=new Error(data.error||('שגיאה '+r.status));err.status=r.status;throw err}
  return data;
