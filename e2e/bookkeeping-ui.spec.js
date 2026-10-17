@@ -57,4 +57,24 @@ test('T3/T55/T30 demo bookkeeping: supplier inline, balanced entry, reversal, mo
   await expect(page.locator('#bk-period-to')).toHaveValue('2024-02-29');
   await page.locator('[data-bk-act="period-reset"]').click();
   await expect(page.locator('#bk-period-from')).toHaveValue('');
+  await expect(page.locator('#bk-ledger-reports')).toContainText('מאזן בוחן');
+  await page.locator('#bk-ledger-account').selectOption('1000');
+  await page.locator('[data-bkj-act="account-ledger"]').click();
+  await expect(page.locator('#bk-account-ledger')).toContainText('יתרת סגירה');
+  const partyResult=await request.get('/api/t/achuza/bookkeeping/parties',{headers:{authorization:'Bearer '+auth.token}});
+  const createdParty=(await partyResult.json()).parties.find(p=>p.name===name);
+  await page.locator(`[data-bkp-act="ledger"][data-id="${createdParty.id}"]`).click();
+  await expect(page.locator('#bk-party-ledger')).toContainText('FIFO');
+  await expect(page.locator('#bk-party-ledger')).toContainText('לא על מועד פירעון חוזי');
+  const draft=await request.post('/api/t/achuza/bookkeeping/documents',{headers:{authorization:'Bearer '+auth.token},data:{kind:'invoice',customer_name:'PDF מסמך דמו',amount_net:25,vat_amount:0}});
+  expect(draft.status()).toBe(201);
+  const documentId=(await draft.json()).document.id;
+  expect((await request.post(`/api/t/achuza/bookkeeping/documents/${documentId}/issue`,{headers:{authorization:'Bearer '+auth.token}})).ok()).toBeTruthy();
+  await page.reload();
+  const download=page.waitForEvent('download');
+  await page.locator(`[data-bk-act="document-pdf"][data-id="${documentId}"]`).click();
+  const downloaded=await download;
+  const bytes=require('node:fs').readFileSync(await downloaded.path());
+  expect(bytes.subarray(0,5).toString()).toBe('%PDF-');
+
 });
