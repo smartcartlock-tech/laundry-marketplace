@@ -15,6 +15,8 @@
       api(`${B}/reports/pnl`), api(`${B}/reports/vat`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
       api(`/t/${slug}/settings`),
     ]);
+    // פקודות יומן — נטען רק כשמודול היומן (T55) קיים בדף
+    const ents = window.bkJournal ? await api(`${B}/entries`) : { entries: [] };
     // עוסק פטור: מסתירים סוגי חשבונית מס ובאנר הקצאה (השרת חוסם — כאן מונעים הצעה מבלבלת)
     const isMorasha = !!(sett.tenant && sett.tenant.dealer_type === 'morasha');
     const kinds = isMorasha ? KINDS : KINDS.filter(k => k[0] === 'invoice' || k[0] === 'receipt');
@@ -130,7 +132,10 @@
       ${vat.applicable ? `<div class="mut" style="margin-top:8px">מע״מ תקופה: עסקאות ${money(vat.vat_on_sales)} · תשומות ${money(vat.vat_on_inputs)} · יתרה <b>${money(vat.balance)}</b><br>${esc(vat.disclaimer)}</div>`
         : `<div class="mut" style="margin-top:8px">${esc(vat.note || '')}</div>`}
       ${pend.count ? `<div class="sec" style="font-size:13px;margin-top:10px">ממתינים למספר הקצאה (${pend.count})</div>
-        <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>`;
+        <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>
+
+    ${window.bkParties ? window.bkParties.card(parties) : ''}
+    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}`;
   }
 
   if (typeof window.vManage === 'function'){
