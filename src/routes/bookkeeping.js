@@ -318,11 +318,12 @@ r.post('/bookkeeping/expenses', expenseUpload.single('invoice'), async (req, res
   const amountNet = Number(req.body.amount_net), vat = Number(req.body.vat_amount || 0);
   if (!expense_date || !DATE_RE.test(expense_date)) return res.status(400).json({ error: 'תאריך לא תקין (YYYY-MM-DD)' });
   if (!description || String(description).trim().length < 2) return res.status(400).json({ error: 'תיאור הוצאה חסר' });
-  if (isNaN(amountNet) || amountNet <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
-  if (isNaN(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
+  if (!Number.isFinite(amountNet) || amountNet <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
+  if (!Number.isFinite(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
   if (vat > 0 && req.tenant.dealer_type !== 'morasha') {
     return res.status(400).json({ error: 'עוסק שאינו מורשה אינו מנכה מס תשומות — יש להזין מע"מ 0 ולכלול את מלוא הסכום בהוצאה' });
   }
+  if (vat > vatCeiling(amountNet)) return res.status(400).json({ error: `תשומות: ${vatOverMsg(amountNet)}` });
   const party = await getSupplier(tid, party_id);
   if (!party) return res.status(400).json({ error: 'כרטיס ספק לא נמצא' });
   const acct = await getExpenseAccount(tid, String(account_code || ''));
@@ -446,6 +447,12 @@ const DOC_KINDS = {
 };
 const ALLOC_RE = /^[0-9]{9,10}$/; // 9 הספרות הימניות מודפסות על החשבונית; מזהה מלא עד 10
 
+// T41: תקרת מע"מ חוקית (18% מ-1.1.2025) — חסימת שיעור שגוי מעל התקרה.
+// מרווח אגורה לעיגול מטבע בלבד; מע"מ נמוך מהתקרה מותר (סל מעורב/פטור). חל על מסמכים ועל תשומות.
+const VAT_RATE = 0.18;
+const vatCeiling = (net) => Math.round(Number(net) * VAT_RATE * 100) / 100 + 0.01;
+const vatOverMsg = (net) => `מע"מ מעל השיעור החוקי (${(VAT_RATE*100).toFixed(0)}%): עד ${(Number(net)*VAT_RATE).toFixed(2)} ₪ לנטו ${Number(net).toFixed(2)} ₪`;
+
 function docStatusHe(d) {
   if (d.status === 'issued') return 'הונפק';
   if (d.status === 'cancelled') return 'בוטל';
@@ -462,9 +469,10 @@ r.post('/bookkeeping/documents', async (req, res) => {
   }
   if (!customer_name || String(customer_name).trim().length < 2) return res.status(400).json({ error: 'שם לקוח חסר' });
   const net = Number(amount_net), vat = Number(vat_amount || 0);
-  if (isNaN(net) || net <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
-  if (isNaN(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
+  if (!Number.isFinite(net) || net <= 0) return res.status(400).json({ error: 'סכום נטו חייב להיות חיובי' });
+  if (!Number.isFinite(vat) || vat < 0) return res.status(400).json({ error: 'סכום מע"מ לא תקין' });
   if (vat > 0 && req.tenant.dealer_type !== 'morasha') return res.status(400).json({ error: 'עוסק פטור אינו גובה מע"מ' });
+  if (vat > vatCeiling(net)) return res.status(400).json({ error: vatOverMsg(net) });
   if (party_id) {
     const { rows: pr } = await q(`SELECT 1 FROM bk_parties WHERE id=$1 AND tenant_id=$2 AND kind='customer'`, [party_id, tid]);
     if (!pr[0]) return res.status(400).json({ error: 'כרטיס לקוח לא נמצא' });
