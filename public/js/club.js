@@ -30,7 +30,7 @@ async function vClub(){
    <div style="flex:1"><b>${esc(b.name)}</b><div class="mut">יתרה: <b style="color:#0e7a8a">${b.balance}</b> נקודות (שוות ₪${b.balance})</div></div></div>`).join('')||'<div class="card mut">עוד אין נקודות — כל הזמנה צוברת</div>'}
   <div class="sec">תנועות אחרונות</div>
   <div class="card">${d.recent.map(p=>`<div class="row"><div>${esc(p.name)}<div class="mut">${esc(({review_bonus:'בונוס על ביקורת'})[p.reason]||p.reason||'')}</div></div><div style="color:${p.delta>0?'#178a4c':'#c22'};font-weight:700">${p.delta>0?'+':''}${p.delta}</div></div>`).join('')||'<div class="mut">אין תנועות</div>'}</div>
-  <div class="card" style="text-align:center"><a href="#/sessions" style="color:#0e7a8a">🔒 מכשירים מחוברים וניתוק מרחוק</a></div>
+  <div class="card" style="text-align:center"><a class="btn2" href="#/sessions" style="display:block;text-align:center;min-height:44px;line-height:26px">🔒 מכשירים מחוברים וניתוק מרחוק</a></div>
  </div>`;
 }
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */

@@ -36,14 +36,14 @@ async function vOrder(id){
  if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id||(x.covered_order_ids||[]).includes(id))}catch(e){}}
  let myReports=[];
  if(isMine){try{const rr=await api('/orders/'+id+'/reports');myReports=rr.reports||[]}catch(e){}}
- return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
+ return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none;display:inline-block;padding:12px 14px;margin:-12px -14px" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
  <div class="body">
   ${o.payment_status==='paid_demo'?'<div class="card" role="status" style="text-align:center"><b>תשלום הדמו אושר</b><div class="mut" style="margin-top:4px">לא בוצע חיוב אמיתי. זהו אישור להדגמה בלבד.</div></div>':''}
   ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDT(evByStatus.cancelled?evByStatus.cancelled.created_at:o.updated_at)}</div></div>`:`<div class="card">
    <div class="tl">
     ${FLOW.map((s,i)=>{const ev=evByStatus[s];return `<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${ev?`<div class="mut">${fmtDT(ev.created_at)}</div>`:i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}${i===idx&&ev&&ev.note&&ev.note!=='הזמנה נוצרה'?`<div class="mut">${esc(ev.note)}</div>`:''}</div>`}).join('')}
    </div>
-   <div class="mut" style="text-align:center;margin-top:2px">${o.status==='delivered'?'ההזמנה הושלמה':'המעקב נבדק אוטומטית כל 20 שניות'} · <a href="#/orders/${id}" data-act="reroute" style="color:#0e7a8a">בדיקה נוספת עכשיו</a></div>
+   <div class="mut" style="text-align:center;margin-top:2px">${o.status==='delivered'?'ההזמנה הושלמה':'המעקב נבדק אוטומטית כל 20 שניות'} · <a href="#/orders/${id}" data-act="reroute" style="color:#0e7a8a;display:inline-block;padding:12px 8px;margin:-12px -8px">בדיקה נוספת עכשיו</a></div>
   </div>
   ${isMine?`<div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><b>עדכוני סטטוס בזמן אמת</b><div class="mut">התראה בכל שינוי סטטוס — גם כשהאפליקציה סגורה</div></div><button class="btn2 on" id="push-btn" data-act="pushSubscribe">🔔 הפעלה</button></div>`:''}`}
   ${isMine&&(o.status==='delivered'||o.status==='cancelled')?`<button class="btn" style="margin-bottom:12px" data-act="reorder" data-a="${esc(o.id)}" data-b="${esc(o.slug)}">↻ הזמנה חוזרת — אותם פריטים שוב</button>`:''}

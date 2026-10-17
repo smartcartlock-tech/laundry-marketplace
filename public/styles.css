@@ -32,7 +32,9 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
 .bar-wrap{background:#eef3f5;border-radius:10px;height:8px;overflow:hidden;margin-top:8px}
 .bar-fill{background:linear-gradient(90deg,#12869b,#0a4f5c);height:100%;transition:width .4s}
 .searchbar{display:flex;gap:8px;background:#fff;border-radius:24px;padding:4px 6px 4px 14px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.12)}
-.searchbar input{flex:1;border:none;outline:none;font-family:inherit;font-size:14px;padding:8px 0;background:transparent}
+.searchbar input{flex:1;border:none;outline:none;font-family:inherit;font-size:14px;padding:8px 0;background:transparent;min-height:44px}
+.searchbar .go{min-height:44px}
+details>summary{min-height:44px;display:flex;align-items:center;cursor:pointer} /* M09: מטרת מגע */
 .searchbar .go{background:#0e7a8a;color:#fff;border:none;border-radius:18px;padding:9px 18px;font-weight:700;font-family:inherit;cursor:pointer}
 .stepper{display:inline-flex;align-items:center;gap:10px;border:1px solid #d3e8ec;border-radius:9px;padding:3px 8px}
 .stepper button{border:none;background:none;color:#0e7a8a;font-size:16px;font-weight:800;cursor:pointer;padding:0 4px;font-family:inherit}

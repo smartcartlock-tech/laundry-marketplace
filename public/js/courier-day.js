@@ -93,7 +93,7 @@ async function vCourierDay(dayDate){
     <div>
      <span class="tag tb">${st.seq}</span> <b>${COURIER_KIND[st.kind]}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
      <div class="mut" style="margin-top:4px">${esc(st.stop_address)}${st.when?` · ${fmtDT(st.when)}`:''}</div>
-     <div class="mut">${st.kind==='collect'?esc(o.tenant_name):`${esc(o.customer_name||'לקוח')}${o.customer_phone?` · <a href="tel:${o.customer_phone}" style="color:#0e7a8a">${o.customer_phone}</a>`:''}`} · ${esc(o.tenant_name)}</div>
+     <div class="mut">${st.kind==='collect'?esc(o.tenant_name):`${esc(o.customer_name||'לקוח')}${o.customer_phone?` · <a href="tel:${o.customer_phone}" dir="ltr" style="color:#0e7a8a;unicode-bidi:isolate">${o.customer_phone}</a>`:''}`} · ${esc(o.tenant_name)}</div>
      ${o.items&&o.items.length?`<div class="mut">פריטים: ${o.items.map(x=>esc(x.name)+' ×'+x.qty).join(', ')}</div>`:''}
      ${!st.done&&st.kind!=='pickup'&&o.payment_method==='cash'&&o.payment_status!=='paid_cash'?`<div class="mut">💵 לגבות ₪${o.total} במזומן</div>`:''}
     </div>

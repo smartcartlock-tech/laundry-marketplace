@@ -31,6 +31,9 @@
           ? `<div class="note" style="margin-top:8px;color:#178a4c">המכבסה מוכנה לפעילות 🎉</div>`
           : `<div class="mut" style="margin-top:6px">אלו הפריטים שחסרים לפני שהמכבסה מוכנה ומאושרת.</div>`}${agreementHtml}</div>`;
       // עיגון גמיש: הכרטיס מוכנס מיד אחרי <div class="body"> — עמיד גם אם מבנה הלוח משתנה (למשל הוספת לוח זמינות לפני ה-subtabs)
+      /* M07: הכרטיס מוכנס אחרי תפריט הניהול (subtabs) — התפריט נשאר בראש ולא נדחף ל-y1109 */
+      const st = '<div class="subtabs">';
+      if (html.includes(st)) { const ci = html.indexOf('</div>', html.indexOf(st)); if (ci > 0) return html.slice(0, ci + 6) + card + html.slice(ci + 6); }
       const anchor = '<div class="body">';
       return html.includes(anchor) ? html.replace(anchor, anchor + card) : card + html;
     }catch(e){ return html; }

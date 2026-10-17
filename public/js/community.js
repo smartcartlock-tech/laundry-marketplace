@@ -194,7 +194,7 @@ async function vManage(sub){
      <select class="inp" id="w-kind" style="flex:1 1 100%"><option value="pickup">איסוף</option><option value="delivery">החזרה</option></select>
     </div>
     <button class="btn2 on" data-act="addWindow" data-a="${slug}" style="min-height:44px">הוספה</button></div>
-   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}<div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')}</div>`;
+   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} <span dir="ltr">${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</span><div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')}</div>`;
  } else if(sub==='coupons'){
   const d=await api(`/t/${slug}/coupons`);
   body=`<div class="card">
@@ -234,7 +234,7 @@ async function vManage(sub){
     <button class="btn2" data-act="togglePlan" data-a="${slug}" data-b="${p.id}" data-c="${!p.active}">${p.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין תוכניות מנוי עדיין</div>'}</div>
   <div class="sec">מנויים (${sb.subscriptions.length})</div>
   <div class="card">${sb.subscriptions.map(x=>`<div class="row"><div><b>${esc(x.customer_name||'')}</b> · ${esc(x.plan_name)} ${x.status==='paused'?'<span class="tag tb">מושהה</span>':''}
-    <div class="mut">${esc(x.customer_phone||'')} · נוצלו ${fmtQ(x.bags_used)}/${x.bags_per_month} שקים החודש · מתחדש ${fmtDate(x.period_end)}</div></div><div>₪${x.plan_price}</div></div>`).join('')||'<div class="mut">אין מנויים עדיין — שתפו עם הלקוחות את דף המכבסה</div>'}</div>`;
+    <div class="mut"><span dir="ltr">${esc(x.customer_phone||'')}</span> · נוצלו ${fmtQ(x.bags_used)}/${x.bags_per_month} שקים החודש · מתחדש ${fmtDate(x.period_end)}</div></div><div>₪${x.plan_price}</div></div>`).join('')||'<div class="mut">אין מנויים עדיין — שתפו עם הלקוחות את דף המכבסה</div>'}</div>`;
  } else if(sub==='biz'){
   body=await vManageBiz(slug);
  } else if(sub==='documents'){
@@ -258,7 +258,7 @@ async function vManage(sub){
     <div class="mut">${esc(o.customer_name||'')} · ${esc(o.address)}${o.pickup_at?' · איסוף '+fmtDT(o.pickup_at):''}</div></div>`).join(''):''}
   <div class="sec">שליחים (${d.couriers.length})</div>
   ${d.couriers.map(c=>{const onPct=c.pickups_30d?Math.round(100*c.ontime_30d/c.pickups_30d):null;return `<div class="card"><div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
-    <div class="mut">${esc(c.phone||'')} · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
+    <div class="mut"><span dir="ltr">${esc(c.phone||'')}</span> · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
     <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div>
     <button class="btn2" data-act="tenantRateCourier" data-a="${slug}" data-b="${c.id}" data-c="${esc(c.name)}">דירוג</button></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
   ${d.clusters&&d.clusters.length?`<div class="card"><div class="sec">קלאסטרים אזוריים (מסלולים משותפים קבועים)</div>
@@ -269,7 +269,7 @@ async function vManage(sub){
  } else if(sub==='customers'){
   const d=await api(`/t/${slug}/customers`);
   body=`<div class="card"><table class="tbl"><tr><th>לקוח</th><th>הזמנות</th><th>₪</th><th>נקודות</th></tr>
-   ${d.customers.map(c=>`<tr><td>${esc(c.name||'') }<div class="mut">${esc(c.phone||'')}</div></td><td>${c.orders}</td><td>${c.spent}</td><td>${c.points}</td></tr>`).join('')}</table></div>`;
+   ${d.customers.map(c=>`<tr><td>${esc(c.name||'') }<div class="mut" dir="ltr">${esc(c.phone||'')}</div></td><td>${c.orders}</td><td>${c.spent}</td><td>${c.points}</td></tr>`).join('')}</table></div>`;
  } else if(sub==='stats'){
   const d=await api(`/t/${slug}/reports`);
   const maxRev=Math.max(1,...d.weekly.map(w=>Number(w.revenue)));

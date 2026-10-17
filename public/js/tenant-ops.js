@@ -22,6 +22,9 @@
         <div class="sec" style="font-size:13px">איחורים (${d.late.length})</div>${lateRows}
         <div class="sec" style="font-size:13px">שליחים</div>${courierRows}</div>`;
       // עיגון גמיש (כלל DEVELOPMENT.md): מיד אחרי <div class="body"> — עמיד לשינויי מבנה של הלוח
+      /* M07: הכרטיס מוכנס אחרי תפריט הניהול (subtabs) — התפריט נשאר בראש ולא נדחף ל-y1109 */
+      const st = '<div class="subtabs">';
+      if (html.includes(st)) { const ci = html.indexOf('</div>', html.indexOf(st)); if (ci > 0) return html.slice(0, ci + 6) + card + html.slice(ci + 6); }
       const anchor = '<div class="body">';
       return html.includes(anchor) ? html.replace(anchor, anchor + card) : card + html;
     }catch(e){ return html; }

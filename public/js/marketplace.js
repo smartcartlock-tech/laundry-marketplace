@@ -60,7 +60,7 @@ async function vHome(q){
   ${!q&&store.get('searches',[]).length?`<div style="margin:0 2px 10px"><span class="mut">חיפושים אחרונים: </span>${store.get('searches',[]).map(h=>`<a class="chip" href="#/?q=${encodeURIComponent(h)}">${esc(h)}</a>`).join('')}<a href="#/" data-act="clearSearches" class="chip" style="color:#8a99a3">ניקוי ✕</a></div>`:''}
   ${laundries.length?`<div style="display:flex;gap:8px;align-items:center;margin:0 2px 10px">
    <button class="btn2 hf-mob" type="button" data-act="toggleSide">☰ סינון</button>
-   <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px" data-actc="homeFilter">
+   <select id="home-sort" class="inp" style="margin:0;flex:1;padding:8px 10px;font-size:13px;min-height:44px" data-actc="homeFilter">
     <option value="rec">מיון: מומלץ</option>
     <option value="price">מחיר — מהזול ליקר</option>
     <option value="rating">דירוג — מהגבוה לנמוך</option>
