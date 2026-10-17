@@ -169,7 +169,7 @@ html.dark .stars{filter:invert(1) hue-rotate(180deg)}
 /* A11Y 17.10: יעדי מגע >=44px במובייל — הרחבת אזור לחיצה (::before) בלי שינוי ויזואלי, לפי סריקת A */
 @media (max-width:768px){
   /* קישורי כותרת: התנתקות (ניהול), הגדרות התראות (הודעות), חזרה */
-  .hdr a{display:inline-flex;align-items:center;min-height:44px;margin-top:-12px;margin-bottom:-12px}
+  .hdr a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin-top:-12px;margin-bottom:-12px}
   /* קישורים שוליים קטנים: טלפון, צילום אישור, מקור לתקרה, /b/, כרטיס QR, הגדרות התראות בפרופיל */
   .mut a,.card a[href^="tel:"],.card a[target="_blank"],[data-act="routeRefresh"],a[data-act="logout"],.tbl a{position:relative;display:inline-block}
   .mut a::before,.card a[href^="tel:"]::before,.card a[target="_blank"]::before,[data-act="routeRefresh"]::before,a[data-act="logout"]::before,.tbl a::before{content:'';position:absolute;inset:-14px -16px}
@@ -177,7 +177,9 @@ html.dark .stars{filter:invert(1) hue-rotate(180deg)}
   a:has(>.tag){position:relative;display:inline-block}
   a:has(>.tag)::before{content:'';position:absolute;inset:-12px -8px}
   /* מתגי צ'קבוקס (שעות פעילות שליח וכו') — תיבה מוגדלת + הרחבת התווית */
-  input[type="checkbox"]{width:20px;height:20px;flex-shrink:0}
+  input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:16px;height:16px;border:2px solid #9db2bb;border-radius:5px;background:#fff;padding:12px;margin:-14px;flex-shrink:0;box-sizing:content-box;cursor:pointer;position:relative}
+  input[type="checkbox"]:checked{background:#0e7a8a;background-clip:content-box;border-color:#0e7a8a;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3L13 5' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center;background-origin:content-box;background-size:14px}
+  input[type="checkbox"]:disabled{opacity:.45}
   input[type="checkbox"]+label{position:relative;display:inline-block}
   input[type="checkbox"]+label::before{content:'';position:absolute;inset:-12px -14px}
 }
