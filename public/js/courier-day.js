@@ -39,7 +39,7 @@ window.addEventListener('online',async()=>{
 function cqBadge(){const q=cqGet();const n=q.length;const p=q.filter(x=>x.kind==='photo').length;return n?`<span class="tag" style="background:#fff3cd;color:#7a5c00">⏳ ${n} ${n===1?'פעולה ממתינה':'פעולות ממתינות'} לסנכרון${p?` (${p} ${p===1?'כולל צילום':'כולל צילומים'})`:''}</span>`:''}
 
 function courierSubtabs(on){
- return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a><a class="chip" href="#/notif-settings">🔔 התראות</a></div>`;
+ return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">ניווט</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a><a class="chip" href="#/notif-settings">🔔 התראות</a></div>`;
 }
 
 async function vCourierDay(dayDate){
@@ -243,7 +243,7 @@ async function courierDeclineOffer(offerId,createdAt){
  }catch(e){toast(e.message)}
 }
 
-/* מפת מסלול פשוטה: קישורי ניווט Waze + Google Maps לכל נקודה, ומסלול מלא מרובה נקודות */
+/* ניווט מסלול: קישורי ניווט Waze + Google Maps לכל נקודה, ומסלול מלא מרובה נקודות */
 async function vCourierMap(){
  if(!state.token)return needLogin();
  let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
@@ -253,9 +253,10 @@ async function vCourierMap(){
  const gm=a=>'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(a);
  const wz=a=>'https://waze.com/ul?q='+encodeURIComponent(a);
  const full=open.length>=2?gm(open[open.length-1].stop_address)+'&waypoints='+encodeURIComponent(open.slice(0,-1).map(s=>s.stop_address).join('|')):null;
- return `<div class="hdr"><h2>מפת מסלול</h2><p>${open.length} נקודות פתוחות · ${d.date}</p></div>
+ return `<div class="hdr"><h2>ניווט מסלול</h2><p>${open.length} נקודות פתוחות · ${d.date}</p></div>
  <div class="body">
  ${courierSubtabs('map')}
+ <div class="note" style="margin-bottom:10px">פתיחת ניווט לנקודות המסלול ב-Waze או ב-Google Maps. אין מפה מובנית במסך זה.</div>
  ${full?`<a class="btn" style="display:block;text-align:center;margin-bottom:10px" href="${full}" target="_blank">🗺️ מסלול מלא ב-Google Maps (${open.length} נקודות)</a>`:''}
  ${open.length?open.map(st=>`<div class="card">
    <span class="tag tb">${st.seq}</span> <b>${COURIER_KIND[st.kind]}</b>
