@@ -36,7 +36,7 @@ async function vHome(q){
   const om=await api('/orders/mine');
   const seen=store.get('orderStatus',{});
   orderNews=om.orders.filter(o=>seen[o.id]&&seen[o.id]!==o.status&&!['delivered','cancelled'].includes(seen[o.id])).slice(0,3);
-  const snap={};om.orders.forEach(o=>{snap[o.id]=o.status});store.set('orderStatus',snap);
+  const snap={};om.orders.forEach(o=>{snap[o.id]=o.status});if(om.orders.some(o=>seen[o.id]!==o.status)||Object.keys(seen).length!==om.orders.length)store.set('orderStatus',snap); /* T1: לא כותבים אם לא השתנה — מונע storage events מיותרים */
  }catch(e){}}
  /* E13.T8: היסטוריית חיפושים מקומית (עד 5) */
  if(q){let hs=store.get('searches',[]).filter(x=>x!==q);hs.unshift(q);store.set('searches',hs.slice(0,5))}

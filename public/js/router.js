@@ -84,7 +84,9 @@ async function route(){
 }
 window.addEventListener('hashchange',route);
 window.addEventListener('storage',e=>{
- if(e.key&&e.key.startsWith('wlm_')){
+ /* T1: רק מפתחות סשן ורק שינוי אמיתי — כתיבות cache של vHome (orderStatus/homeCache) לא מעוררות route,
+    אחרת שני טאבים מחזיקים לולאת רינדור אינסופית (ping-pong של storage events) */
+ if(e.key&&['wlm_token','wlm_me','wlm_memberships','wlm_courier'].includes(e.key)&&e.newValue!==e.oldValue){
   state.token=store.get('token',null);state.me=store.get('me',null);state.memberships=store.get('memberships',[]);state.courier=store.get('courier',null);
   route();
  }
