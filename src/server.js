@@ -39,6 +39,7 @@ app.use('/api/me/family', require('./routes/family').me); // CX-B3: מנוי מ�
 app.use('/api/family', require('./routes/family').pub); // CX-B3: הצטרפות בקישור
 app.use('/api', require('./routes/public'));
 app.use('/api/track', require('./routes/track')); // G3b: מעקב הזמנה ציבורי
+app.use('/api/tracking', require('./routes/tracking')); // T82: מעקב שליח חי (pings + מצב + פרוקסי אריחים)
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: דיווחי תקלות לקוח
 app.use('/api', require('./routes/issue-photos')); // E9.T1: תמונות תקלה
