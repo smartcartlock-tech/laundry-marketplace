@@ -31,6 +31,28 @@
   'of-to':'הזמנות עד תאריך',
   'of-text':'חיפוש בהזמנות — פריט, מכבסה או סכום'
  };
+ /* T22: הכרזת שינוי סטטוס הזמנה (מעקב חי) לקורא-מסך */
+ const orderStatusSeen={};
+ function announceOrderStatus(){
+  const m=location.hash.match(/^#\/orders\/([0-9a-f-]{16,})/);
+  if(!m)return;
+  const now=document.querySelector('#app .stop.now b');
+  if(!now)return;
+  const st=now.textContent.trim(), id=m[1];
+  if(!(id in orderStatusSeen)){orderStatusSeen[id]=st;return}
+  if(orderStatusSeen[id]===st)return;
+  orderStatusSeen[id]=st;
+  let lr=document.getElementById('a11y-live');
+  if(!lr){
+   lr=document.createElement('div');
+   lr.id='a11y-live';lr.className='sr-only';
+   lr.setAttribute('role','status');lr.setAttribute('aria-live','polite');
+   document.body.appendChild(lr);
+  }
+  lr.textContent='';
+  setTimeout(()=>{lr.textContent='סטטוס ההזמנה השתנה: '+st},60);
+ }
+
  function enhanceA11y(){
   /* label.lb ללא for — שיוך לשדה הראשון שאחריו עם id */
   document.querySelectorAll('label.lb:not([for])').forEach(lb=>{
@@ -67,6 +89,8 @@
     if(a.classList.contains('on'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
    });
   }
+  announceOrderStatus();
+  ensureStyle('.sr-only{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}/*sr-only*/','sr-only');
  }
 
  /* aria-invalid + ולידציית חובה לפני שליחה (עטיפה של הפונקציות הקיימות) */
