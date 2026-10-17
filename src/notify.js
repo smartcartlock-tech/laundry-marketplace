@@ -76,7 +76,7 @@ async function notifyUser(userId, tenantId, body, phone, title) {
     return;
   }
   // E9.T3: ניסיון push קודם — נפילה חזרה לוואטסאפ/לוג רק אם ה-push לא הצליח (ממצא 6: לא דורסים sent מוצלח)
-  try { const p = await sendPushToUser(userId, { title: 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
+  try { const p = await sendPushToUser(userId, { title: title || 'מכבסה בקליק', body }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
   if (!sent && phone) {
     const r = await sendWhatsApp(phone, body);
     if (r.sent || r.via === 'bot-simulated') { sent = true; channel = 'whatsapp'; }

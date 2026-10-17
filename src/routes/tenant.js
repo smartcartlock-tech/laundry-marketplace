@@ -78,7 +78,7 @@ r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
     const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
     if (cust[0]) {
       const HE = { confirmed:'אושרה', picked_up:'נאספה מהבית', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה. תודה!', cancelled:'בוטלה' };
-      notifyUser(cust[0].id, order.tenant_id, `הזמנתך ב${req.tenant.name} (#${order.id.slice(0,8)}) ${HE[status] || status}.`, cust[0].phone).catch(() => {});
+      notifyUser(cust[0].id, order.tenant_id, `הזמנתך ב${req.tenant.name} (#${order.id.slice(0,8)}) ${HE[status] || status}.`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[status] || status}`).catch(() => {});
     }
     res.json({ ok: true });
   } catch (e) {

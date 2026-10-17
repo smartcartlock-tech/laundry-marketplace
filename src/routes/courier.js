@@ -263,7 +263,7 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
   if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
   const HE = { picked_up: 'נאספה על ידי השליח', out_for_delivery: 'בדרך אליך', delivered: 'סומנה כהוחזרה. תודה!' };
-  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.`, cust[0].phone).catch(() => {});
+  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[newStatus]}`).catch(() => {});
   res.json({ ok: true, ...(windowViolation ? { window_violation: true } : {}) });
 });
 
