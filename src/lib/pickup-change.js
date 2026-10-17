@@ -51,7 +51,7 @@ async function changePickupWindow({ orderId, tenantId = null, newPickupAt, actor
       return { error: 'החלון אינו זמין. בחרו חלון איסוף מהרשימה המעודכנת', status: 409 };
     }
     await client.query('UPDATE orders SET pickup_at=$1, updated_at=now() WHERE id=$2', [at.toISOString(), order.id]);
-    const label = at.toLocaleString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+    const label = options.find(s => new Date(s.at).getTime() === at.getTime()).label;
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
       [order.id, order.status, actorId, note || `חלון איסוף שונה ל-${label}`]);
     await client.query('COMMIT');
