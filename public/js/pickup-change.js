@@ -5,7 +5,7 @@ async function editPickup(id, btn){
  try{
   const d=await api('/orders/'+id+'/pickup-options');
   if(!d.options.length){toast('אין חלונות איסוף זמינים כרגע. פנו למכבסה לתיאום');return}
-  const body='<label for="pickup-choice">בחרו חלון איסוף חדש</label><select id="pickup-choice" class="inp" name="pickup_at">'+d.options.map(s=>'<option value="'+esc(s.at)+'">'+esc(s.label)+'</option>').join('')+'</select><div class="mut">המכבסה והשליח המשובץ יקבלו עדכון. סביבת דמו.</div>';
+  const body='<label for="pickup-choice" style="display:block;margin:10px 0 6px">בחרו חלון איסוף חדש</label><select id="pickup-choice" class="inp" name="pickup_at">'+d.options.map(s=>'<option value="'+esc(s.at)+'">'+esc(s.label)+'</option>').join('')+'</select><div class="mut">המכבסה והשליח המשובץ יקבלו עדכון. סביבת דמו.</div>';
   const selected=await new Promise(resolve=>{
    const ov=document.createElement('div');ov.className='modal-ov';
    ov.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-label="שינוי חלון איסוף"><b>שינוי חלון איסוף</b>'+body+'<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="pc-ok">אישור שינוי</button><button class="btn2" id="pc-cancel">ביטול</button></div></div>';

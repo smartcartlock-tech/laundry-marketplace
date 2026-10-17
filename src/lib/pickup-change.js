@@ -19,8 +19,12 @@ async function pickupOptions(tenantId, orderId, db = { query: q }) {
         AND o.pickup_at >= ((d.day::date + w.start_time) AT TIME ZONE 'Asia/Jerusalem')
         AND o.pickup_at < ((d.day::date + w.end_time) AT TIME ZONE 'Asia/Jerusalem')) < w.capacity
     ORDER BY at LIMIT 30`, [tenantId, orderId]);
-  return rows.map(r => ({ at: new Date(r.at).toISOString(), label:
-    new Date(r.at).toLocaleString('he-IL', {timeZone:'Asia/Jerusalem', weekday:'long',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}) + '–' + r.end_time.slice(0,5) }));
+  return rows.map(r => {
+    const date = new Date(r.at);
+    const day = date.toLocaleDateString('he-IL', {timeZone:'Asia/Jerusalem',weekday:'long',day:'numeric',month:'numeric'});
+    const start = date.toLocaleTimeString('he-IL', {timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit'});
+    return {at:date.toISOString(), label:day+' · \u2066'+start+'–'+r.end_time.slice(0,5)+'\u2069'};
+  });
 }
 
 // משנה חלון איסוף עם נעילת שורה ואילוץ סטטוס. מחזיר { ok:true, order } או { error, status }.
