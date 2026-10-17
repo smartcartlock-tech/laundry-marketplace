@@ -99,10 +99,10 @@
       const html = await origO();
       const bar = `<div class="card" id="ord-filter" style="background:#eef7f8">
         <input class="inp" id="of-text" placeholder="חיפוש — פריט, מכבסה, סכום">
-        <div style="display:flex;gap:6px;margin-top:6px">
-          <select class="inp" id="of-status" style="flex:1"><option value="">כל הסטטוסים</option>${Object.values(STATUS_HE).map(s=>`<option>${s}</option>`).join('')}</select>
-          <input class="inp" type="date" id="of-from" title="מתאריך" style="flex:1">
-          <input class="inp" type="date" id="of-to" title="עד תאריך" style="flex:1">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <select class="inp" id="of-status" style="flex:1 1 100%;min-height:44px;margin-bottom:0"><option value="">כל הסטטוסים</option>${Object.values(STATUS_HE).map(s=>`<option>${s}</option>`).join('')}</select>
+          <input class="inp" type="date" id="of-from" title="מתאריך" style="flex:1 1 150px;min-height:44px;margin-bottom:0">
+          <input class="inp" type="date" id="of-to" title="עד תאריך" style="flex:1 1 150px;min-height:44px;margin-bottom:0">
         </div>
         <div class="mut" id="of-count" style="margin-top:4px"></div>
       </div>`;
