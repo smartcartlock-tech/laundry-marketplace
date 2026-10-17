@@ -23,3 +23,17 @@ test('receipt over outstanding amount is rejected without write',async()=>{
 test('fully credited source is not used',async()=>{
  const {source,posts,click}=setup();source.fully_credited=true;await click('source-credit');assert.equal(posts.length,0);
 });
+test('bimonth period computes leap February and tenant-specific key',async()=>{
+ const {sb,click}=setup();let saved;
+ sb.document.getElementById=id=>({value:({'bk-period-mode':'bimonth','bk-period-month':'2024-02'})[id]||''});
+ sb.store.set=(k,v)=>{saved={k,v}};
+ await click('period-preset');assert.equal(saved.k,'bkPeriod_x');assert.equal(saved.v.from,'2024-01-01');assert.equal(saved.v.to,'2024-02-29');
+});
+test('month range correctly ends in December, reversed custom range is rejected',async()=>{
+ const {sb,click}=setup();let saved;
+ sb.store.set=(k,v)=>{saved=v};
+ sb.document.getElementById=id=>({value:({'bk-period-mode':'month','bk-period-month':'2026-12'})[id]||''});
+ await click('period-preset');assert.equal(saved.from,'2026-12-01');assert.equal(saved.to,'2026-12-31');
+ saved=null;sb.document.getElementById=id=>({value:({'bk-period-from':'2026-10-10','bk-period-to':'2026-09-01'})[id]||''});
+ await click('period-custom');assert.equal(saved,null);
+});

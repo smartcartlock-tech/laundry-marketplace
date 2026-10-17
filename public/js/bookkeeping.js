@@ -9,10 +9,13 @@
 
   async function bookkeepingBody(slug){
     const B = `/t/${slug}/bookkeeping`;
+    const period = store.get('bkPeriod_' + slug, null);
+    const periodQuery = period && /^\d{4}-\d{2}-\d{2}$/.test(period.from) && /^\d{4}-\d{2}-\d{2}$/.test(period.to) ? `?from=${period.from}&to=${period.to}` : '';
+    const periodLabel = periodQuery ? `${period.from} - ${period.to}` : 'מתחילת שנה';
     const [accs, parties, docs, exps, bankTx, tb, pnl, vat, pend, uni, recon, sett] = await Promise.all([
       api(`${B}/accounts`), api(`${B}/parties`), api(`${B}/documents`), api(`${B}/expenses`),
       api(`${B}/bank/transactions`), api(`${B}/trial-balance`),
-      api(`${B}/reports/pnl`), api(`${B}/reports/vat`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
+      api(`${B}/reports/pnl${periodQuery}`), api(`${B}/reports/vat${periodQuery}`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
       api(`/t/${slug}/settings`),
     ]);
     // פקודות יומן — נטען רק כשמודול היומן (T55) קיים בדף
@@ -88,7 +91,7 @@
       <div class="kpis" style="margin-top:8px">
         <div class="kpi"><b>${tb.totals.balanced ? '✓' : '⚠️'}</b>${tb.totals.balanced ? 'ספר מאוזן' : 'ספר לא מאוזן'}</div>
         <div class="kpi"><b>${pend.count}</b>ממתינים להקצאה</div>
-        <div class="kpi"><b>${money(pnl.net_profit)}</b>רווח נטו מתחילת שנה</div>
+        <div class="kpi"><b>${money(pnl.net_profit)}</b>רווח נטו · ${esc(periodLabel)}</div>
         <div class="kpi"><b>${un.count}</b>תנועות בנק ממתינות</div>
       </div></div>
 
@@ -130,7 +133,16 @@
       </div>
       ${bankRows ? `<table class="tbl"><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>רישום מול חשבון</th></tr>${bankRows}</table>` : '<div class="mut">אין תנועות ממתינות</div>'}</div>
 
-    <div class="card"><div class="sec">דוחות · מתחילת שנה</div>
+    <div class="card"><div class="sec">דוחות · ${esc(periodLabel)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <select class="inp" id="bk-period-mode" aria-label="סוג תקופת דוח"><option value="month">חודש</option><option value="bimonth">חודשיים (ינואר-פברואר וכו׳)</option></select>
+        <input class="inp" id="bk-period-month" type="month" aria-label="חודש הדוח">
+        <button class="btn2" data-bk-act="period-preset">הצגת תקופה</button>
+        <input class="inp" id="bk-period-from" type="date" aria-label="תחילת תקופה" value="${periodQuery ? esc(period.from) : ''}">
+        <input class="inp" id="bk-period-to" type="date" aria-label="סיום תקופה" value="${periodQuery ? esc(period.to) : ''}">
+        <button class="btn2" data-bk-act="period-custom">טווח מותאם</button>
+        <button class="btn2" data-bk-act="period-reset">מתחילת שנה</button>
+      </div><div class="mut">התקופה חלה על רווח והפסד, מע״מ וייצוא רואה חשבון. נתונים לעיון בלבד · מסמך דמו.</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn2" data-bk-act="csv-accountant">ייצוא לרואה חשבון CSV</button>
       </div>
@@ -194,7 +206,23 @@
     if (btn.disabled) return;
     btn.disabled = true;
     try{
-      if (act === 'source-receipt' || act === 'source-credit') {
+      if (act === 'period-preset' || act === 'period-custom' || act === 'period-reset') {
+        const key = 'bkPeriod_' + m.slug;
+        if (act === 'period-reset') { store.del(key); route(); return; }
+        let from = val('bk-period-from'), to = val('bk-period-to');
+        if (act === 'period-preset') {
+          const month = val('bk-period-month');
+          if (!/^\d{4}-\d{2}$/.test(month)) { toast('בחרו חודש'); return; }
+          const [year, mm] = month.split('-').map(Number);
+          const count = val('bk-period-mode') === 'bimonth' ? 2 : 1;
+          const start = count === 2 ? Math.floor((mm - 1) / 2) * 2 + 1 : mm;
+          const end = start + count - 1;
+          from = `${year}-${String(start).padStart(2,'0')}-01`;
+          to = `${year}-${String(end).padStart(2,'0')}-${new Date(Date.UTC(year,end,0)).getUTCDate()}`;
+        }
+        if (!from || !to || from > to) { toast('בחרו טווח תאריכים תקין'); return; }
+        store.set(key, {from,to}); route();
+      } else if (act === 'source-receipt' || act === 'source-credit') {
         const current = await api(`${B}/documents`);
         const source = current.documents.find(d => d.id === id);
         if (!source || source.status !== 'issued' || source.fully_credited) { toast('מסמך המקור אינו זמין לתשלום או לזיכוי'); return; }
@@ -259,7 +287,9 @@
         await api(`${B}/bank/transactions/${id}/book`, { method: 'POST', body: JSON.stringify({ account_code: acc }) });
         toast('התנועה נרשמה בספר'); route();
       } else if (act === 'csv-accountant'){
-        downloadCsv(`${B}/accountant-export.csv`, 'bookkeeping-export.csv');
+        const p = store.get('bkPeriod_' + m.slug, null);
+        const query = p ? `?from=${encodeURIComponent(p.from)}&to=${encodeURIComponent(p.to)}` : '';
+        downloadCsv(`${B}/accountant-export.csv${query}`, 'bookkeeping-export.csv');
       } else if (act === 'uniform-gen'){
         const from = val('bk-uni-from'), to = val('bk-uni-to');
         if (!from || !to) { toast('לבחור טווח תאריכים'); return; }
