@@ -220,7 +220,8 @@ r.post('/bookkeeping/entries/:id/reverse', async (req, res) => {
      WHERE e.id=$1 AND e.tenant_id=$2`, [req.params.id, tid]);
   if (!orig[0]) return res.status(404).json({ error: 'פקודה לא נמצאה' });
   // T42: bypassing the originating workflow would leave an issued/posted object inconsistent.
-  if (['invoice', 'expense', 'bank'].includes(orig[0].source)) {
+  const {rows:linked}=await q('SELECT 1 FROM bk_expenses WHERE tenant_id=$1 AND (entry_id=$2 OR void_entry_id=$2) LIMIT 1',[tid,orig[0].id]);
+  if (linked.length || ['invoice', 'expense', 'bank'].includes(orig[0].source)) {
     return res.status(409).json({ error: 'פקודה מקושרת למסמך, הוצאה או בנק. יש להשתמש בזיכוי/ביטול דרך רשומת המקור', code: 'USE_SOURCE_REVERSAL' });
   }
   const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
