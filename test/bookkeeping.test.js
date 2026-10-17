@@ -103,9 +103,9 @@ test('bookkeeping: ליבת ספר כפול', async (t) => {
     const blocked = await api(`${B}/entries`, { method: 'POST', token: owner, body: {
       entry_date: '2026-10-15', description: 'מאוחר מדי',
       lines: [{ account_code: '1000', debit: 5 }, { account_code: '4000', credit: 5 }] } });
-    assert.equal(blocked.status, 409);
+    assert.equal(blocked.status, 400);
     const ok = await api(`${B}/entries`, { method: 'POST', token: owner, body: {
-      entry_date: '2026-11-01', description: 'חודש חדש',
+      entry_date: '2026-09-01', description: 'חודש פתוח קודם',
       lines: [{ account_code: '1000', debit: 5 }, { account_code: '4000', credit: 5 }] } });
     assert.equal(ok.status, 201);
   });

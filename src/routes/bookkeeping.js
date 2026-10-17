@@ -112,6 +112,17 @@ async function periodClosed(tid, dateStr) {
   return !!rows[0];
 }
 
+// T67: current-year posting only, never future or closed period. Draft storage is not posting.
+async function postingError(tid,date) {
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const parsed=new Date(date+'T00:00:00Z');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10)!==date)return 'תאריך רישום לא תקין';
+  if(date.slice(0,4)!==today.slice(0,4))return 'אין לרשום פקודה לשנה אחרת';
+  if(date>today)return 'אין לרשום פקודה בתאריך עתידי';
+  if(await periodClosed(tid,date))return 'התקופה סגורה — לא ניתן לרשום פקודה';
+  return null;
+}
+
 // --- פקודות יומן ---
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -143,7 +154,7 @@ r.post('/bookkeeping/entries', async (req, res) => {
   if (!Array.isArray(lines) || lines.length < 2 || lines.length > 50) return res.status(400).json({ error: 'פקודה דורשת לפחות 2 שורות (עד 50)' });
   const src = source || 'manual';
   if (!['manual','expense','bank'].includes(src)) return res.status(400).json({ error: 'source לא תקין' });
-  if (await periodClosed(tid, entry_date)) return res.status(409).json({ error: 'התקופה סגורה — לא ניתן לרשום פקודה' });
+  const dateError=await postingError(tid,entry_date);if(dateError)return res.status(400).json({error:dateError});
 
   // ולידציית שורות + איזון
   let sumD = 0, sumC = 0;
@@ -422,7 +433,7 @@ r.post('/bookkeeping/expenses/:id/post', async (req, res) => {
   const x = xs[0];
   if (!x) return res.status(404).json({ error: 'הוצאה לא נמצאה' });
   if (x.status !== 'draft') return res.status(409).json({ error: `לא ניתן לרשום הוצאה בסטטוס ${x.status}` });
-  if (await periodClosed(tid, x.expense_date.toISOString().slice(0, 10))) return res.status(409).json({ error: 'התקופה סגורה — לא ניתן לרשום' });
+  const dateError=await postingError(tid,x.expense_date.toISOString().slice(0,10));if(dateError)return res.status(400).json({error:dateError});
 
   const expAcct = await getExpenseAccount(tid, x.account_code);
   const vatAcct = x.vat_amount > 0 ? await acctByCode(tid, '2020') : null;
@@ -827,7 +838,7 @@ r.post('/bookkeeping/bank/transactions/:id/book', async (req, res) => {
   if (!tx) return res.status(404).json({ error: 'תנועה לא נמצאה' });
   if (tx.status !== 'unmatched') return res.status(409).json({ error: 'ניתן לרשום תנועה שלא שויכה בלבד' });
   const dateStr = tx.tx_date.toISOString().slice(0, 10);
-  if (await periodClosed(tid, dateStr)) return res.status(409).json({ error: 'התקופה סגורה — לא ניתן לרשום' });
+  const dateError=await postingError(tid,dateStr);if(dateError)return res.status(400).json({error:dateError});
   const counter = await acctByCode(tid, String(account_code || ''));
   const bank = await acctByCode(tid, '1010');
   if (!counter || !bank) return res.status(400).json({ error: 'חשבון נגדי לא קיים או תרשים לא אותחל' });
@@ -928,6 +939,24 @@ r.get('/bookkeeping/reports/vat', async (req, res) => {
     balance: (vatOut - vatIn).toFixed(2),
     disclaimer: 'דוח מחושב לעיון בלבד — אינו דיווח לרשות המסים. ההגשה והתשלום מתבצעים באזור האישי של רשות המסים (עד ה-19 בחודש מקוון).',
   });
+});
+
+// T73: 2026 exempt turnover ceiling verified 2026-10-17 with the official opening service.
+// https://www.gov.il/he/service/request-open-exempt-dealer-via-internet
+// A ceiling is never silently extrapolated to another year.
+r.get('/bookkeeping/reports/exempt-turnover',async(req,res)=>{
+  const currentYear=Number(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric'}).format(new Date()));
+  const year=req.query.year===undefined?currentYear:Number(req.query.year);
+  if(!Number.isInteger(year)||year<2000||year>2100)return res.status(400).json({error:'שנה לא תקינה'});
+  if(req.tenant.dealer_type!=='patur')return res.json({applicable:false,year,note:'מונה תקרת עוסק פטור מיועד לעוסק פטור בלבד'});
+  const {rows:[r]}=await q(`SELECT COALESCE(sum(l.credit-l.debit),0)::numeric(14,2) AS turnover FROM bk_lines l
+    JOIN bk_entries e ON e.id=l.entry_id AND e.tenant_id=l.tenant_id JOIN bk_accounts a ON a.id=l.account_id AND a.tenant_id=l.tenant_id
+    WHERE l.tenant_id=$1 AND a.type='income' AND e.entry_date BETWEEN $2 AND $3`,[req.tenant.id,`${year}-01-01`,`${year}-12-31`]);
+  const ceiling=year===2026?122833:null;const amount=Number(r.turnover);const ratio=ceiling===null?null:amount/ceiling;const approaching=ceiling!==null && Math.round(amount*100)>=Math.round(ceiling*80);
+  res.json({applicable:true,year,turnover:r.turnover,ceiling,percent:ratio===null?null:Number((ratio*100).toFixed(2)),remaining:ceiling===null?null:(ceiling-amount).toFixed(2),
+    alert:ratio===null?'unverified_year':ratio>=1?'at_or_over_limit':approaching?'approaching_limit':'below_warning',
+    warning:ratio===null?'תקרת השנה לא אומתה; יש לבדוק עם רואה החשבון':ratio>=1?'המחזור הגיע לתקרת עוסק פטור. יש לפנות לרואה החשבון ולרשות המסים להסדרת הסיווג':approaching?'המחזור הגיע ל-80% מתקרת עוסק פטור. מומלץ להיערך עם רואה החשבון':null,
+    basis:'posted_income_net_of_credits',note:'לפי תנועות הספר בלבד, ללא הכנסות ממערכות אחרות. אינו קביעה של סיווג המס',source_url:'https://www.gov.il/he/service/request-open-exempt-dealer-via-internet'});
 });
 
 // דוח ראיה לרו"ח: מסמכי מס שממתינים למספר הקצאה

@@ -1,0 +1,20 @@
+process.env.NODE_ENV='test';
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const {startApp,TEST_DB}=require('./helpers');const {Pool}=require('pg');
+test('T67 date gates and T73 verified turnover threshold',async t=>{
+ const {api,schema}=await startApp(t);const token=await api.login('+972500000003');const B='/api/t/achuza/bookkeeping';
+ const pool=new Pool({connectionString:TEST_DB,options:`-c search_path=${schema},public`});t.after(()=>pool.end());
+ await api(B+'/init',{method:'POST',token});
+ const entry=async(date,amount)=>api(B+'/entries',{method:'POST',token,body:{entry_date:date,description:'בדיקת מחזור דמו',lines:[{account_code:'1000',debit:amount},{account_code:'4000',credit:amount}]}});
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const year=Number(today.slice(0,4));
+ for(const date of [`${year-1}-12-31`,`${year+1}-01-01`,`${year}-02-30`])assert.equal((await entry(date,1)).status,400,date);
+ const tomorrow=new Date(Date.parse(today+'T12:00:00Z')+86400000).toISOString().slice(0,10);assert.equal((await entry(tomorrow,1)).status,400);
+ assert.equal((await api(B+'/reports/exempt-turnover',{token})).json.applicable,false);
+ await pool.query("UPDATE tenants SET dealer_type='patur' WHERE slug='achuza'");
+ const count=async()=>api(B+'/reports/exempt-turnover?year=2026',{token});
+ assert.equal((await count()).json.alert,'below_warning');
+ assert.equal((await entry(today,98266.40)).status,201);let r=(await count()).json;assert.equal(r.ceiling,122833);assert.equal(r.percent,80);assert.equal(r.alert,'approaching_limit');
+ assert.equal((await entry(today,24566.60)).status,201);r=(await count()).json;assert.equal(r.turnover,'122833.00');assert.equal(r.alert,'at_or_over_limit');assert.equal(r.remaining,'0.00');
+ assert.equal((await api(B+'/reports/exempt-turnover?year=2027',{token})).json.ceiling,null);
+ await api(B+'/periods/close',{method:'POST',token,body:{year,month:Number(today.slice(5,7))}});assert.equal((await entry(today,1)).status,400);
+});

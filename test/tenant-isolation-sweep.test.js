@@ -16,7 +16,7 @@ const TENANT_GETS = [
   '/bookkeeping/trial-balance', '/bookkeeping/periods',
   '/bookkeeping/expenses', '/bookkeeping/expenses/x/file', '/bookkeeping/documents', '/bookkeeping/documents/x/pdf',
   '/bookkeeping/bank/transactions', '/bookkeeping/bank/reconciliation',
-  '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
+  '/bookkeeping/reports/exempt-turnover', '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
   '/bookkeeping/accountant-export.csv',
   '/bookkeeping/uniform-export', '/bookkeeping/uniform-export/x/ini', '/bookkeeping/uniform-export/x/bkmv',
 ];
