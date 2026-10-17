@@ -123,7 +123,7 @@
       <div id="bk-new-sup" hidden style="gap:6px;flex-wrap:wrap;margin-bottom:8px;border:1px dashed #e3edf0;border-radius:8px;padding:6px">
         <input class="inp" id="bk-ns-name" placeholder="שם ספק (חובה)" style="flex:2">
         <input class="inp" id="bk-ns-taxid" inputmode="numeric" placeholder="מספר עוסק/ח.פ" style="width:120px">
-        <input class="inp" id="bk-ns-phone" placeholder="טלפון" style="width:120px">
+        <input class="inp" id="bk-ns-phone" type="tel" dir="ltr" placeholder="טלפון" style="width:120px;text-align:right">
         <button class="btn2 on" data-bkp-act="sup-create">צור ספק</button>
       </div>
       ${expRows ? `<table class="tbl"><tr><th>תאריך</th><th>ספק</th><th>תיאור</th><th>חשבון</th><th>סכום</th><th>סטטוס</th><th>פעולות</th></tr>${expRows}</table>` : '<div class="mut">אין הוצאות עדיין</div>'}</div>
