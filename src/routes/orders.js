@@ -261,6 +261,24 @@ r.post('/:id/cancel', uuidParams('id'), async (req, res) => {
   res.json({ ok: true });
 });
 
+r.get('/:id/pickup-options', uuidParams('id'), async (req, res) => {
+  const { rows } = await q('SELECT id, tenant_id, status FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
+  if (!rows[0]) return res.status(404).json({error:'הזמנה לא נמצאה'});
+  if (!['new','confirmed'].includes(rows[0].status)) return res.status(409).json({error:'לא ניתן לשנות חלון איסוף לאחר איסוף או ביטול'});
+  res.json({options: await require('../lib/pickup-change').pickupOptions(rows[0].tenant_id, rows[0].id)});
+});
+
+// T26: שינוי חלון איסוף על ידי הלקוח — דרך הלוגיקה המשותפת (T25: מתריע לבעלים ולשליח)
+r.post('/:id/pickup', uuidParams('id'), async (req, res) => {
+  const { rows } = await q('SELECT id FROM orders WHERE id=$1 AND customer_id=$2', [req.params.id, req.user.id]);
+  if (!rows[0]) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+  const r2 = await require('../lib/pickup-change').changePickupWindow({
+    orderId: req.params.id, newPickupAt: (req.body || {}).pickup_at,
+    actorId: req.user.id, note: 'חלון איסוף שונה על ידי הלקוח באפליקציה' });
+  if (r2.error) return res.status(r2.status || 500).json({ error: r2.error });
+  res.json({ ok: true, pickup_at: r2.order.pickup_at, label: r2.label });
+});
+
 // דירוג אחרי הזמנה
 r.post('/:id/review', uuidParams('id'), async (req, res) => {
   const { rating, text, tags: laundry_tags, courier_rating, courier_tags } = req.body || {};

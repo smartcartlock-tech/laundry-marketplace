@@ -33,7 +33,7 @@ const ST_HE = { new: 'חדשה', confirmed: 'אושרה', picked_up: 'נאספה
 
 async function findOrderByCode(code) {
   const { rows } = await q(
-    `SELECT o.id, o.status, o.pickup_at, o.tracking_code, t.name AS tenant_name FROM orders o
+    `SELECT o.id, o.tenant_id, o.status, o.pickup_at, o.tracking_code, t.name AS tenant_name FROM orders o
      JOIN tenants t ON t.id=o.tenant_id WHERE o.tracking_code=upper($1)`, [code]);
   return rows[0] || null;
 }
@@ -67,12 +67,13 @@ async function botReply(message, user, req) {
   }
   if (/^(אישור שינוי|מאשר שינוי)/.test(low) && codeM) {
     const p = takePending(pendKey(user, req, codeM));
-    const pick = (m.match(/([1-3])(?![0-9])/) || [])[1];
+    const pick = (m.match(/\s([1-3])\s*$/) || [])[1];
     if (!p || p.action !== 'reschedule' || !pick) return { reply: `אין בקשת שינוי ממתינה לקוד ${codeM.toUpperCase()}. כתבו "שנה חלון איסוף ${codeM.toUpperCase()}" כדי לראות אפשרויות.` };
     const slot = p.options[Number(pick) - 1];
-    const { rowCount } = await q("UPDATE orders SET pickup_at=$1, updated_at=now() WHERE id=$2 AND status NOT IN ('delivered','cancelled')", [slot.at, p.order.id]);
-    if (!rowCount) return { reply: 'ההזמנה כבר נמסרה או בוטלה במקביל — חלון האיסוף לא שונה.' };
-    await q("INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)", [p.order.id, p.order.status, user ? user.id : null, `חלון איסוף שונה דרך סימולציית הבוט ל-${slot.label}`]);
+    if (!slot) return { reply: 'אפשרות לא תקינה. בקשו חלונות איסוף מחדש.' };
+    // T25: דרך הלוגיקה המשותפת — מתריע לבעלים ולשליח המשובץ על החלון החדש
+    const r2 = await require('../lib/pickup-change').changePickupWindow({ orderId: p.order.id, newPickupAt: slot.at, actorId: user ? user.id : null, note: `חלון איסוף שונה דרך סימולציית הבוט ל-${slot.label}` });
+    if (!r2.ok) return { reply: r2.error || 'השינוי נכשל.' };
     return { reply: `חלון האיסוף להזמנה ${codeM.toUpperCase()} עודכן: ${slot.label} ✅ (סימולציה — נתוני דמו).` };
   }
   if (low.includes('בטל') && codeM) {
@@ -86,12 +87,9 @@ async function botReply(message, user, req) {
     const o = await findOrderByCode(codeM);
     if (!o) return { reply: `לא מצאתי הזמנה עם קוד מעקב ${codeM.toUpperCase()}.` };
     if (['delivered', 'cancelled'].includes(o.status)) return { reply: `ההזמנה בסטטוס "${ST_HE[o.status]}" — לא ניתן לשנות חלון איסוף.` };
-    const base = new Date(); const opts = [];
-    for (let d = 1; d <= 3 && opts.length < 3; d++) {
-      const day = new Date(base.getTime() + d * 24 * 3600 * 1000);
-      const label = day.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric', timeZone: 'Asia/Jerusalem' });
-      opts.push({ at: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), d % 2 ? 8 : 13)), label: `${label} ${d % 2 ? '08:00–12:00' : '12:00–17:00'}` });
-    }
+    if (!['new','confirmed'].includes(o.status)) return { reply: 'האיסוף כבר בוצע, אי אפשר לשנות חלון איסוף.' };
+    const opts = (await require('../lib/pickup-change').pickupOptions(o.tenant_id, o.id)).slice(0,3);
+    if (!opts.length) return { reply: 'אין חלונות איסוף זמינים כרגע. פנו למכבסה לתיאום.' };
     setPending(pendKey(user, req, codeM), { action: 'reschedule', order: o, options: opts });
     return { reply: `אפשרויות חלון איסוף חדש להזמנה ${codeM.toUpperCase()} אצל ${o.tenant_name}:\n` + opts.map((o2, i) => `${i + 1}) ${o2.label}`).join('\n') + `\nלאישור מפורש שלחו: "אישור שינוי ${codeM.toUpperCase()} <מספר האפשרות>". בתוקף ל-2 דקות.` };
   }

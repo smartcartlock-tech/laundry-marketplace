@@ -64,6 +64,7 @@ async function vOrder(id){
    </div>
    ${docs.length?'<div class="mut" style="margin-top:4px">מסמכים חשבונאיים מסומנים ״מסמך דמו״ עד לרישום התוכנה ברשות המסים.</div>':''}
   </div>`:''}
+  ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" data-act="editPickup" data-a="${esc(o.id)}">שינוי חלון איסוף</button>`:''}
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" data-act="cancelOrder" data-a="${esc(o.id)}">ביטול הזמנה</button>`:''}
   ${isMine?`<div class="card"><b>דיווח תקלה</b>
    ${myReports.map(rp=>`<div class="row"><div><span class="tag tb">${({damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'})[rp.kind]||rp.kind}</span> ${esc(rp.text)}
