@@ -1,10 +1,10 @@
-// C2: ייצוא מידע אישי מלא + מחיקת חשבון באנונימיזציה (תיקון 13)
+// C2 + G17.T6: ייצוא מידע אישי מלא + מחיקת חשבון ב-OTP עם חסימת הזמנה פעילה (תיקון 13)
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { startApp, TEST_DB } = require('./helpers');
 const { Client } = require('pg');
 
-test('C2: export מחזיר את כל המידע; delete מנמיך, חוסם ומבטל טוקן; ההזמנה נשמרת', async (t) => {
+test('C2+T6: export מחזיר את כל המידע; delete דורש OTP, חוסם על הזמנה פעילה, מנמיך ומבטל טוקן', async (t) => {
   const { api, schema } = await startApp(t);
   const phone = '+972500000601';
   const token = await api.login(phone, 'ישראל ישראלי');
@@ -32,8 +32,21 @@ test('C2: export מחזיר את כל המידע; delete מנמיך, חוסם ו
   assert.ok(exp.json.orders.find(o => o.id === oid), 'ההזמנה בייצוא');
   assert.equal(exp.json.orders[0].items.length, 1);
 
-  // מחיקה
-  const del = await api('/api/me', { method: 'DELETE', token });
+  // G17.T6: מחיקה דורשת OTP ייעודי; הזמנה פעילה חוסמת (409)
+  const noCode = await api('/api/me', { method: 'DELETE', token, body: {} });
+  assert.equal(noCode.status, 400, 'בלי קוד — 400');
+  const otp1 = await api('/api/me/delete/request-otp', { method: 'POST', token });
+  assert.equal(otp1.status, 200, JSON.stringify(otp1.json));
+  assert.ok(otp1.json.demoCode, 'במצב דמו הקוד מוצג');
+  const wrongCode = await api('/api/me', { method: 'DELETE', token, body: { code: '000000' } });
+  assert.equal(wrongCode.status, 401, 'קוד שגוי — 401');
+  const blocked = await api('/api/me', { method: 'DELETE', token, body: { code: otp1.json.demoCode } });
+  assert.equal(blocked.status, 409, 'הזמנה פעילה חוסמת');
+  assert.match(blocked.json.error, /הזמנות פעילות/);
+  // מבטלים את ההזמנה ומבקשים קוד חדש
+  await db.query(`UPDATE orders SET status='cancelled' WHERE id=$1`, [oid]);
+  const otp2 = await api('/api/me/delete/request-otp', { method: 'POST', token });
+  const del = await api('/api/me', { method: 'DELETE', token, body: { code: otp2.json.demoCode } });
   assert.equal(del.status, 200, JSON.stringify(del.json));
 
   // הטוקן מת מיד
