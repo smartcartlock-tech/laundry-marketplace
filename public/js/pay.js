@@ -5,7 +5,7 @@ async function vPay(orderId){
  const o=d.order;
  if(o.payment_status!=='pending')return `<div class="hdr" style="text-align:center"><div class="big">מכבסה בקליק</div></div>
   <div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">✅</div>
-   <b>ההזמנה #${o.short} כבר שולמה</b><div class="mut" style="margin:6px 0">${esc(o.tenant_name)} · ₪${o.total}</div>
+   <b>${o.payment_status==='paid_demo'?'תשלום הדמו אושר':'ההזמנה #'+esc(o.short)+' כבר שולמה'}</b>${o.payment_status==='paid_demo'?'<div class="mut" style="margin-top:4px">לא בוצע חיוב אמיתי. זהו אישור להדגמה בלבד.</div>':''}<div class="mut" style="margin:6px 0">${esc(o.tenant_name)} · ₪${o.total}</div>
    <button class="btn2" data-act="openPdfPublic" data-a="/pay/${o.id}/receipt.pdf">הורדת קבלה (PDF)</button></div></div>`;
  if(!d.payable)return `<div class="hdr" style="text-align:center"><div class="big">מכבסה בקליק</div></div>
   <div class="body"><div class="card mut" style="text-align:center">לא ניתן לשלם על הזמנה זו (סטטוס: ${HE[o.status]||o.status})</div></div>`;

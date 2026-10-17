@@ -51,6 +51,7 @@ async function vCheckout(slug){
    <select class="inp" id="co-delivery"><option value="">ללא העדפה</option>${winOpts('delivery')}</select>
    <label class="lb">אמצעי תשלום</label>
    <select class="inp" id="co-pay"><option value="cash">מזומן לשליח</option><option value="demo_online">תשלום מקוון (דמו — ללא סליקה אמיתית)</option></select>
+   <div class="mut">בבחירת תשלום מקוון בדמו, שליחת ההזמנה תאשר גם את תשלום הדמו. אין חיוב אמיתי ואין צורך בפרטי כרטיס.</div>
    <label class="lb">הערות</label>
    <input class="inp" id="co-notes" placeholder="כתם עקשן, קומה, קוד שער…">
   </div>
