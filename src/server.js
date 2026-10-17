@@ -58,6 +58,7 @@ app.use('/api/t/:slug', require('./routes/financials')); // נתונים פינ�
 app.use('/api/t/:slug', require('./routes/bookkeeping')); // הנה"ח אמיתית: ספר כפול, כרטיסים, מאזן, סגירת תקופה (בעלים בלבד)
 app.use('/api/courier', require('./routes/courier'));
 app.use('/api/courier', require('./routes/courier-day')); // מסך שליח: משימות/מסלול יום/אישור מסירה
+app.use('/api/dispatch', require('./routes/dispatch')); // T81: שיבוץ שליח אוטומטי (דמו)
 app.use('/api/delivery-confirmations', require('./routes/delivery-confirmations')); // צילומי אישור מסירה
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', require('./routes/apply')); // B2: טופס הצטרפות ציבורי

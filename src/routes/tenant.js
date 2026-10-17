@@ -75,6 +75,7 @@ r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
       await issueDocumentsForOrder(client, { tenant: full, order: ord[0], actorId: req.user.id });
     }
     await client.query('COMMIT');
+    if (status === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T81: הצעת שיבוץ אוטומטית כשההזמנה מוכנה לאיסוף (דמו)
     const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
     if (cust[0]) {
       const HE = { confirmed:'אושרה', picked_up:'נאספה מהבית', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה. תודה!', cancelled:'בוטלה' };

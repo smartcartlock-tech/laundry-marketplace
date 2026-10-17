@@ -56,13 +56,20 @@ async function vCourierDay(dayDate){
  const t=await api('/courier/tasks');
  const av=await api('/courier/availability').catch(()=>({online:true}));
  const offs=await api('/courier/offers').catch(()=>({offers:[]}));
+ const doffs=await api('/dispatch/offers').catch(()=>({offers:[]})); // T81: הצעות שיבוץ אוטומטי
  const pushOn=await courierPushState();
  const s=d.summary;
  return `<div class="hdr"><h2>מסלול יום</h2><p>${new Date().toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'long',timeZone:'Asia/Jerusalem'})} · ${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'}</p></div>
  <div class="body">
  ${courierSubtabs('day')}
- ${offs.offers.length?`<div class="card" style="border:2px solid #0e7a8a">
-  <b>🔔 ${offs.offers.length===1?'הצעת שיבוץ חדשה':offs.offers.length+' הצעות שיבוץ חדשות'}</b>
+ ${(offs.offers.length||doffs.offers.length)?`<div class="card" style="border:2px solid #0e7a8a">
+  <b>🔔 ${offs.offers.length+doffs.offers.length===1?'הצעת שיבוץ חדשה':(offs.offers.length+doffs.offers.length)+' הצעות שיבוץ חדשות'}</b>
+  ${doffs.offers.map(f=>`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e3eef0">
+   <b>איסוף</b> · ${esc(f.tenant_name)} · ${esc(f.address)} <span class="tag tb">שיבוץ אוטומטי</span>
+   <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="btn2 green" data-act="courierDispatchAccept" data-a="${f.offer_id}">✓ קבלת המשימה</button>
+    <button class="btn2" data-act="courierDispatchDecline" data-a="${f.offer_id}">✕ דחייה</button>
+   </div></div>`).join('')}
   ${offs.offers.map(f=>`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e3eef0">
    <b>${f.kind==='pickup'?'איסוף':'מסירה'}</b> · ${esc(f.tenant_name)} · ${esc(f.address)}
    <div class="mut">${f.items&&f.items.length?f.items.map(x=>esc(x.name)+' ×'+x.qty).join(', ')+' · ':''}התקבלה ${fmtDT(f.created_at)}</div>
@@ -111,6 +118,20 @@ async function vCourierDay(dayDate){
   ${t.tasks.in_laundry.map(o=>`<div class="card"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
    <div class="mut">${esc(o.address)} · החזרה תתאפשר כשההזמנה תסומנה "מוכנה"</div></div>`).join('')}`:''}
  </div>`;
+}
+
+/* T81: קבלה/דחייה של הצעת שיבוץ אוטומטי — ראשון שמאשר זוכה, דחייה מעבירה לשליח הבא */
+async function courierDispatchAccept(offerId){
+ try{
+  await api('/dispatch/offers/'+offerId+'/accept',{method:'POST',body:JSON.stringify({})});
+  toast('המשימה שובצה לך ✓');route();
+ }catch(e){toast(e.message);route()}
+}
+async function courierDispatchDecline(offerId){
+ try{
+  await api('/dispatch/offers/'+offerId+'/decline',{method:'POST',body:JSON.stringify({})});
+  toast('ההצעה נדחתה — תוצע לשליח הבא');route();
+ }catch(e){toast(e.message)}
 }
 
 async function courierToggleAvail(online){
@@ -348,6 +369,8 @@ onAct({
  courierPhotoDelivery:t=>courierPhotoDelivery(t.dataset.a),
  courierDayDate:t=>go('#/courier/day?date='+t.value), courierDayToday:()=>go('#/courier/day'),
  courierToggleAvail:t=>courierToggleAvail(t.dataset.a==='1'),
+ courierDispatchAccept:t=>courierDispatchAccept(t.dataset.a),
+ courierDispatchDecline:t=>courierDispatchDecline(t.dataset.a),
  courierProximity:()=>courierProximity(),
  courierAcceptOffer:t=>courierAcceptOffer(t.dataset.a,t.dataset.b),
  courierDeclineOffer:t=>courierDeclineOffer(t.dataset.a,t.dataset.b),
