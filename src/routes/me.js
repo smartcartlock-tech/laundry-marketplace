@@ -8,6 +8,7 @@ const { requireAuth } = require('../auth');
 const { sendCode } = require('../otp-provider');
 const { limiter } = require('../ratelimit');
 const { isDemo } = require('../config');
+const { sendWhatsApp, notifyUser } = require('../notify');
 
 const r = express.Router();
 
@@ -143,6 +144,11 @@ r.get('/export', requireAuth, async (req, res) => {
   ]);
   const u = { ...req.user };
   delete u.token_version;
+  // G17.T35: יומן ביקורת בלי PII (actor_id בלבד — בלי actor_label/טלפון) + הודעה ללקוח על הייצוא
+  await q(`INSERT INTO audit_log(actor_id, action, target_type) VALUES ($1,'me.export','user')`, [uid])
+    .catch(e => console.error('audit me.export:', e.message));
+  await notifyUser(uid, null, 'המידע האישי שלך ב״מכבסה בקליק״ יוצא כקובץ JSON. אם לא ביקשת זאת — פנה/י אלינו.', req.user.phone || req.user.email, 'ייצוא מידע אישי')
+    .catch(e => console.error('notify me.export:', e.message));
   res.json({
     exported_at: new Date().toISOString(),
     profile: u, // כולל consent_at (G17.T16)
@@ -188,6 +194,7 @@ r.delete('/', requireAuth, async (req, res) => {
     return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
   }
 
+  const delNotifyPhone = req.user.phone || null; // G17.T35: נלכד לפני ההשמטה — להודעת האישור
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -232,6 +239,15 @@ r.delete('/', requireAuth, async (req, res) => {
          phone='deleted_' || id::text, token_version=token_version+1, anonymized_at=now()
        WHERE id=$1`, [uid]);
     await client.query('COMMIT');
+    // G17.T35: יומן ביקורת בלי PII + הודעת אישור ללקוח (למספר שהיה רשום לפני ההשמטה; בדמו — סימולציה בלוג)
+    await q(`INSERT INTO audit_log(actor_id, action, target_type) VALUES ($1,'me.delete','user')`, [uid])
+      .catch(e => console.error('audit me.delete:', e.message));
+    if (delNotifyPhone) {
+      const body = 'חשבונך ב״מכבסה בקליק״ נמחק ועבר אנונימיזציה. הזמנות ומסמכים נשמרים מנותקי זהות לפי חובת שמירת הרשומות.';
+      const nr = await sendWhatsApp(delNotifyPhone, body).catch(() => ({ sent: false }));
+      await q('INSERT INTO notifications(user_id, channel, body, sent) VALUES ($1,$2,$3,$4)',
+        [uid, nr.sent ? 'whatsapp' : (nr.simulated ? 'whatsapp-sim' : 'log'), 'החשבון נמחק ועבר אנונימיזציה מלאה.', !!nr.sent]).catch(() => {});
+    }
     res.json({ ok: true, message: 'החשבון נמחק ועבר אנונימיזציה מלאה. הזמנות ומסמכים נשמרים לפי חובת שמירת הרשומות, מנותקים מהזהות.' });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
