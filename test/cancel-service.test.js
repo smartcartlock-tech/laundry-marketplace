@@ -77,3 +77,42 @@ test('T11: ביטול דרך הבוט — אותן החזרות כמו באפל�
   const check = await api(`/api/orders/${order.id}`, { token: customer });
   assert.equal(check.json.order.status, 'cancelled');
 });
+
+test('T11 המשך: ביטול בעלים דרך סטטוס — אותן החזרות דרך השירות המשותף', async (t) => {
+  const { api, schema } = await startApp(t);
+  const customer = await api.login('+972500000002');
+  const owner = await api.login('+972500000003');
+
+  const coupon = await api('/api/t/achuza/coupons', { method: 'POST', token: owner, body: { code: 'OWNERCANCEL', kind: 'amount', value: 5 } });
+  assert.equal(coupon.status, 201);
+  const order = await newBagOrder(api, customer, { redeem_points: true, coupon_code: 'OWNERCANCEL' });
+  assert.ok(Number(order.points_redeemed) > 0);
+
+  const cancel = await api(`/api/t/achuza/orders/${order.id}/status`, { method: 'POST', token: owner, body: { status: 'cancelled' } });
+  assert.equal(cancel.status, 200, JSON.stringify(cancel.json));
+
+  const ledger = await dbRefund(schema, order.id);
+  assert.ok(ledger.some(p => Number(p.delta) === Number(order.points_redeemed)), 'owner cancel refunds points');
+  const coupons = await api('/api/t/achuza/coupons', { token: owner });
+  assert.equal(Number(coupons.json.coupons.find(x => x.code === 'OWNERCANCEL').used_count), 0, 'owner cancel releases coupon');
+});
+
+test('T24: אישור ביטול בכתב ללקוח — באפליקציה ובבוט', async (t) => {
+  const { api } = await startApp(t);
+  const customer = await api.login('+972500000002');
+
+  const o1 = await newBagOrder(api, customer, { redeem_points: true });
+  await api(`/api/orders/${o1.id}/cancel`, { method: 'POST', token: customer });
+  await new Promise(r => setTimeout(r, 1200));
+  let msgs = await api('/api/messages', { token: customer });
+  const m1 = msgs.json.messages.find(x => x.body.includes(o1.tracking_code) && x.body.includes('ביטלת'));
+  assert.ok(m1, 'written cancel confirmation for app cancel');
+  assert.ok(m1.body.includes('הוחזרו'), 'refund details in customer confirmation');
+
+  const o2 = await newBagOrder(api, customer, { redeem_points: true });
+  await api('/api/bot-sim/chat', { method: 'POST', token: customer, body: { message: `בטל הזמנה ${o2.tracking_code}` } });
+  await api('/api/bot-sim/chat', { method: 'POST', token: customer, body: { message: `אישור ביטול ${o2.tracking_code}` } });
+  await new Promise(r => setTimeout(r, 1200));
+  msgs = await api('/api/messages', { token: customer });
+  assert.ok(msgs.json.messages.some(x => x.body.includes(o2.tracking_code) && x.body.includes('ביטלת')), 'written confirmation for bot cancel');
+});

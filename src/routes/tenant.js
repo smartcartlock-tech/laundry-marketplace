@@ -8,7 +8,7 @@ const { notifyUser } = require('../notify');
 const { applyCourierRating } = require('../routes-engine');
 const { issueDocumentsForOrder, creditDocument } = require('../documents');
 const { sendCsv } = require('../csv');
-const { restoreBags } = require('../subscriptions');
+require('../subscriptions');
 const { buildDocumentPDF, docVerificationImages } = require('../receipt');
 const { uuidParams } = require('../validate');
 
@@ -56,13 +56,8 @@ r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
       [order.id, status, req.user.id, note || null]);
     if (status === 'cancelled') {
-      await restoreBags(client, order.id);
-      // QA-flow: החזר נקודות שמומשו ושחרור שימוש בקופון (כמו בביטול לקוח)
-      if (Number(order.points_redeemed) > 0)
-        await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
-          [order.tenant_id, order.customer_id, Number(order.points_redeemed), 'החזר נקודות בעקבות ביטול הזמנה', order.id]);
-      if (order.coupon_id)
-        await client.query('UPDATE coupons SET used_count = GREATEST(0, used_count - 1) WHERE id=$1', [order.coupon_id]);
+      // T11 (המשך): החזרות דרך שירות הביטול המשותף — אותה לוגיקה בכל הנתיבים
+      await require('../lib/cancel-service').applyCancelRefunds(client, order);
     }
     if (status === 'delivered' && order.points_earned > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
