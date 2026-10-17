@@ -1,0 +1,10 @@
+const test=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
+function setup(){const handlers=[];const sb={window:{},document:{addEventListener:(t,f)=>handlers.push(f)},state:{memberships:[{slug:'x',role:'owner'}]},store:{get:()=>null},esc:s=>String(s??'').replaceAll('<','&lt;'),api:async()=>{},toast:()=>{},Number,String,Date,Set,console};vm.createContext(sb);vm.runInContext(fs.readFileSync('public/js/bookkeeping-journal.js','utf8'),sb);return sb;}
+test('party ledger shows opening, running and closing with posting-date aging, not due-date claims',()=>{
+ const sb=setup();const html=sb.window.bkJournal.ledger({party:{name:'<דמו>'},opening_balance:10,closing_balance:30,movements:[{entry_no:1,entry_date:'2026-10-01',description:'דמו',account_code:'1020',debit:20,credit:0,running_balance:30}],aging:{as_of:'2026-10-31',buckets:{'0_30':20,'31_60':10,'61_90':0,over_90:0},unapplied_credit:0,note:'לפי רישום'}},true);
+ assert.ok(html.includes('₪10.00')&&html.includes('₪30.00'));assert.ok(html.includes('FIFO'));assert.ok(html.includes('לא על מועד פירעון חוזי'));assert.ok(html.includes('&lt;דמו>'));assert.ok(!html.includes('<דמו>'));
+});
+test('trial balance uses API opening and closing; balance sheet and account choices rendered',async()=>{
+ const sb=setup();const calls=[];sb.api=async p=>{calls.push(p);return p.includes('trial-balance')?{accounts:[{code:'1000',name_he:'קופה',opening_balance:10,debit:5,credit:0,closing_balance:15}]}:{as_of:'2026-10-31',assets:[{code:'1000',name_he:'קופה',balance:15}],liabilities:[],equity:[],accumulated_profit:15,totals:{assets:15,liabilities:0,equity:15,balanced:true}}};
+ const html=await sb.window.bkJournal.reports('/t/x/bookkeeping','?from=2026-10-01&to=2026-10-31',{accounts:[{code:'1000',name_he:'קופה'}]});assert.ok(calls.every(p=>p.includes('to=2026-10-31')));assert.ok(html.includes('₪10.00')&&html.includes('₪15.00'));assert.ok(html.includes('value="1000"'));assert.ok(html.includes('מאוזן'));
+});

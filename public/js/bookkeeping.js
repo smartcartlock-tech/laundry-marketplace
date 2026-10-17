@@ -20,6 +20,7 @@
     ]);
     // פקודות יומן — נטען רק כשמודול היומן (T55) קיים בדף
     const ents = window.bkJournal ? await api(`${B}/entries`) : { entries: [] };
+    const ledgerReports = window.bkJournal ? await window.bkJournal.reports(B, periodQuery, accs).catch(() => '<div class="card">דוחות ספר ראשי עדיין אינם זמינים. נסו לרענן לאחר פריסת השרת.</div>') : '';
     // עוסק פטור: מסתירים סוגי חשבונית מס ובאנר הקצאה (השרת חוסם — כאן מונעים הצעה מבלבלת)
     const isMorasha = !!(sett.tenant && sett.tenant.dealer_type === 'morasha');
     const kinds = isMorasha ? KINDS : KINDS.filter(k => k[0] === 'invoice' || k[0] === 'receipt');
@@ -37,7 +38,7 @@
           ${d.fully_credited ? '<div class="mut">זוכה במלואו</div>' : ''}
           ${d.source_document_id ? `<div class="mut">מקור: ${esc((docs.documents.find(x => x.id === d.source_document_id) || {}).doc_number || d.source_document_id)}</div>` : ''}
           ${d.allocation_number ? `<div class="mut">מספר הקצאה: <b dir="ltr">${esc(d.allocation_number)}</b><br>הוזן ידנית · לא מאומת מול רשות המסים</div>` : ''}</td>
-        <td>${d.status === 'draft' && !d.has_allocation && d.kind.startsWith('tax')
+        <td>${d.status === 'issued' ? `<button class="btn2" data-bk-act="document-pdf" data-id="${d.id}">PDF · מסמך דמו</button>` : ''}${d.status === 'draft' && !d.has_allocation && d.kind.startsWith('tax')
             ? `<input class="inp" id="bk-alloc-${d.id}" placeholder="מספר הקצאה" style="width:110px">
                <button class="btn2" data-bk-act="allocate" data-id="${d.id}">הזנה</button>` : ''}
             ${d.status === 'issued' && ['invoice','tax_invoice'].includes(d.kind) && !d.fully_credited && Number(d.total) - Number(d.paid_amount || 0) > 0.004 ? `<button class="btn2" data-bk-act="source-receipt" data-id="${d.id}">קבלה לתשלום</button>` : ''}
@@ -171,7 +172,7 @@
         <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>
 
     ${window.bkParties ? window.bkParties.card(parties) : ''}
-    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}</section>`;
+    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}${ledgerReports}</section>`;
   }
 
   if (typeof window.vManage === 'function'){
@@ -206,7 +207,9 @@
     if (btn.disabled) return;
     btn.disabled = true;
     try{
-      if (act === 'period-preset' || act === 'period-custom' || act === 'period-reset') {
+      if (act === 'document-pdf') {
+        await openPdf(`${B}/documents/${encodeURIComponent(id)}/pdf`);
+      } else if (act === 'period-preset' || act === 'period-custom' || act === 'period-reset') {
         const key = 'bkPeriod_' + m.slug;
         if (act === 'period-reset') { store.del(key); route(); return; }
         let from = val('bk-period-from'), to = val('bk-period-to');

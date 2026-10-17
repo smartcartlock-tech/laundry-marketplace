@@ -12,7 +12,7 @@
         <td>${esc(moneyKind(p.kind))}</td><td>${esc(p.name)}</td>
         <td>${p.tax_id ? esc(p.tax_id) : '—'}</td><td>${esc(p.phone || '—')}</td>
         <td>${esc(p.email || '—')}</td>
-        <td>${p.active ? '<span class="st-pill st-delivered">פעיל</span>' : '<span class="st-pill st-cancelled">לא פעיל</span>'}</td>
+        <td>${p.active ? '<span class="st-pill st-delivered">פעיל</span>' : '<span class="st-pill st-cancelled">לא פעיל</span>'}</td><td><button class="btn2" data-bkp-act="ledger" data-id="${esc(p.id)}">כרטסת וגיול</button></td>
       </tr>`).join('');
     return `
     <div class="card" id="bk-parties-card"><div class="sec">כרטיסי ספקים ולקוחות</div>
@@ -32,8 +32,8 @@
       </details>
       <input class="inp" id="bk-p-search" placeholder="חיפוש כרטיס…" style="width:220px;margin-bottom:6px">
       <div style="overflow-x:auto">
-      ${rows ? `<table class="tbl" id="bk-p-table"><tr><th>סוג</th><th>שם</th><th>עוסק/ח.פ</th><th>טלפון</th><th>אימייל</th><th>סטטוס</th></tr>${rows}</table>`
-        : '<div class="mut">אין כרטיסים עדיין — צרו כרטיס ראשון למעלה</div>'}</div>
+      ${rows ? `<table class="tbl" id="bk-p-table"><tr><th>סוג</th><th>שם</th><th>עוסק/ח.פ</th><th>טלפון</th><th>אימייל</th><th>סטטוס</th><th>כרטסת</th></tr>${rows}</table>`
+        : '<div class="mut">אין כרטיסים עדיין — צרו כרטיס ראשון למעלה</div>'}</div><div id="bk-party-ledger" aria-live="polite"></div>
     </div>`;
   }
 
@@ -60,7 +60,13 @@
     btn.disabled = true;
     const B = `/t/${m.slug}/bookkeeping`;
     try{
-      if (act === 'create'){
+      if (act === 'ledger') {
+        const p = store.get('bkPeriod_' + m.slug, null);
+        const query = p ? `?from=${encodeURIComponent(p.from)}&to=${encodeURIComponent(p.to)}` : '';
+        const result = await api(`${B}/parties/${encodeURIComponent(btn.getAttribute('data-id'))}/ledger${query}`);
+        const box = document.getElementById('bk-party-ledger');
+        if (box) box.innerHTML = window.bkJournal.ledger(result, true);
+      } else if (act === 'create'){
         const body = {
           kind: val('bk-p-kind'), name: val('bk-p-name'),
           tax_id: val('bk-p-taxid') || undefined,

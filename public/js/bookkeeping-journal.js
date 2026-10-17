@@ -89,7 +89,24 @@
     </div>`;
   }
 
-  window.bkJournal = { card, _accOpts: '', _partyOpts: '' };
+  function ledger(data, party) {
+    const title = party ? data.party.name : `${data.account.code} · ${data.account.name_he}`;
+    const rows = (data.movements || []).map(x => `<tr><td>${esc(String(x.entry_date).slice(0,10))}</td><td>${esc(x.entry_no)}</td><td>${esc(x.description)}</td><td>${esc(x.account_code || '')}</td><td>${money(x.debit)}</td><td>${money(x.credit)}</td><td>${money(x.running_balance)}</td></tr>`).join('');
+    const aging = data.aging;
+    return `<h3>${esc(title)} · מסמך דמו</h3><p>יתרת פתיחה: ${money(data.opening_balance)} · יתרת סגירה: ${money(data.closing_balance)} · חיובי = חובה</p>
+      <div style="overflow-x:auto"><table class="tbl"><tr><th>תאריך</th><th>פקודה</th><th>תיאור</th><th>חשבון</th><th>חובה</th><th>זכות</th><th>יתרה רצה</th></tr>${rows || '<tr><td colspan="7">אין תנועות בתקופה</td></tr>'}</table></div>
+      ${aging ? `<h4>גיול לפי תאריך רישום (FIFO) ל-${esc(String(aging.as_of).slice(0,10))}</h4><div style="overflow-x:auto"><table class="tbl"><tr><th>0-30 ימים</th><th>31-60 ימים</th><th>61-90 ימים</th><th>מעל 90 ימים</th><th>זכות שלא יושמה</th></tr><tr>${['0_30','31_60','61_90','over_90'].map(k=>`<td>${money(aging.buckets[k])}</td>`).join('')}<td>${money(aging.unapplied_credit)}</td></tr></table></div><p class="mut">${esc(aging.note || '')} הגיול מבוסס על תאריך רישום, לא על מועד פירעון חוזי.</p>` : ''}`;
+  }
+  async function reports(B, query, accounts) {
+    const [tb, balance] = await Promise.all([api(`${B}/trial-balance${query}`), api(`${B}/reports/balance-sheet${query}`)]);
+    const opts = accounts.accounts.map(a=>`<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.name_he)}</option>`).join('');
+    const rows = tb.accounts.map(a=>`<tr><td>${esc(a.code)}</td><td>${esc(a.name_he)}</td><td>${money(a.opening_balance)}</td><td>${money(a.debit)}</td><td>${money(a.credit)}</td><td>${money(a.closing_balance)}</td></tr>`).join('');
+    const totalRows = ['assets','liabilities','equity'].map(k=>`<h4>${{assets:'נכסים',liabilities:'התחייבויות',equity:'הון'}[k]}</h4><table class="tbl">${(balance[k]||[]).map(a=>`<tr><td>${esc(a.code || '')} ${esc(a.name_he || '')}</td><td>${money(a.balance)}</td></tr>`).join('')}</table>`).join('');
+    return `<div class="card" id="bk-ledger-reports"><div class="sec">מאזן בוחן · מסמך דמו</div><p class="mut">לפי התקופה שנבחרה בדוחות. יתרות חיוביות הן חובה.</p><div style="overflow-x:auto"><table class="tbl"><tr><th>קוד</th><th>חשבון</th><th>פתיחה</th><th>חובה בתקופה</th><th>זכות בתקופה</th><th>סגירה</th></tr>${rows}</table></div>
+      <h3>מאזן ל-${esc(String(balance.as_of).slice(0,10))}</h3>${totalRows}<p>רווח נצבר: ${money(balance.accumulated_profit)}</p><p>נכסים ${money(balance.totals.assets)} · התחייבויות ${money(balance.totals.liabilities)} · הון ${money(balance.totals.equity)} · ${balance.totals.balanced ? 'מאוזן' : 'לא מאוזן'}</p>
+      <h3>ספר ראשי · כרטסת חשבון</h3><select class="inp" id="bk-ledger-account" aria-label="חשבון לכרטסת">${opts}</select><button class="btn2" data-bkj-act="account-ledger">הצגת כרטסת</button><div id="bk-account-ledger" aria-live="polite"></div></div>`;
+  }
+  window.bkJournal = { card, ledger, reports, _accOpts: '', _partyOpts: '' };
 
   const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
 
@@ -121,7 +138,13 @@
     btn.disabled = true;
     const B = `/t/${m.slug}/bookkeeping`;
     try{
-      if (act === 'add-line'){
+      if (act === 'account-ledger') {
+        const p = store.get('bkPeriod_' + m.slug, null);
+        const query = p ? `?from=${encodeURIComponent(p.from)}&to=${encodeURIComponent(p.to)}` : '';
+        const result = await api(`${B}/accounts/${encodeURIComponent(val('bk-ledger-account'))}/ledger${query}`);
+        const box = document.getElementById('bk-account-ledger');
+        if (box) box.innerHTML = ledger(result, false);
+      } else if (act === 'add-line'){
         const box = document.getElementById('bk-j-lines');
         if (box) box.insertAdjacentHTML('beforeend', lineRowHtml());
       } else if (act === 'filter'){
