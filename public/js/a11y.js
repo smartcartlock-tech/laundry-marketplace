@@ -51,6 +51,13 @@
    if(ce){ce.setAttribute('role','alert');ca.setAttribute('aria-invalid','true');ca.setAttribute('aria-describedby','co-address-err')}
    else{ca.removeAttribute('aria-invalid');ca.removeAttribute('aria-describedby')}
   }
+  /* T20: אלמנטים לא-אינטראקטיביים עם data-act (כרטיסי div לחיצים) — נגישים למקלדת */
+  document.querySelectorAll('[data-act]').forEach(el=>{
+   if(/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName))return;
+   if(el.querySelector('a,button,input,select,textarea'))return;
+   if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');
+   if(!el.hasAttribute('role'))el.setAttribute('role',el.dataset.a&&el.dataset.a.charAt(0)==='#'?'link':'button');
+  });
   const sb=document.querySelector('.searchbar');if(sb&&!sb.getAttribute('role'))sb.setAttribute('role','search');
   const tabs=document.getElementById('tabs');
   if(tabs){

@@ -42,6 +42,15 @@
     }
   }).observe(document.body, { childList: true });
 
+  // T20: Enter/Space מפעיל אלמנט data-act שאינו אינטראקטיבי מטבעו (div וכד')
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const t = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!t || /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    e.preventDefault();
+    t.click();
+  });
+
   document.addEventListener('keydown', (e) => {
     const ov = topOverlay();
     if (!ov) return;
