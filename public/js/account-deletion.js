@@ -25,6 +25,35 @@
   }
   wrapAccountHub();
 
+  /* ---- T35: ניקוי סלקטיבי — localStorage.clear() היה מוחק גם העדפות לא-אישיות ---- */
+  const KEEP_KEYS = new Set(['wlm_theme']); // העדפת מראה (בהיר/כהה) אינה מידע אישי
+  function clearPersonalStorage(){
+    const del = [];
+    for (let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if (k && k.startsWith('wlm_') && !KEEP_KEYS.has(k)) del.push(k);
+    }
+    del.forEach(k => localStorage.removeItem(k));
+    sessionStorage.clear();
+  }
+
+  /* ---- T35: מסך "החשבון נמחק" — כולל מה נשמר, במקום ריענון שקט לדף הבית ---- */
+  function showDeletedScreen(kept){
+    const app = document.getElementById('app');
+    if (!app){ location.hash = '#/'; location.reload(); return; }
+    app.innerHTML = `<div class="hdr"><h2>החשבון נמחק</h2></div>
+    <div class="body"><div class="card" style="text-align:center">
+      <div style="font-size:44px">👋</div>
+      <b>החשבון נמחק ועבר אנונימיזציה</b>
+      <div class="mut" style="margin:8px 0">לא ניתן להתחבר שוב לחשבון זה. אותו מספר יכול להירשם מחדש כחשבון חדש ונקי.</div>
+      <div style="text-align:right;margin-top:10px"><b>מה נשמר (מנותק מזהות, לפי חובת שמירת הרשומות):</b>
+        <ul style="margin:6px 0">${(kept || []).map(k => `<li style="margin:4px 0">${esc(k)}</li>`).join('')}</ul></div>
+      <button class="btn" id="deleted-home" style="margin-top:14px">לדף הבית</button>
+    </div></div>`;
+    document.getElementById('deleted-home').onclick = () => { location.hash = '#/'; location.reload(); };
+    window.scrollTo(0, 0);
+  }
+
   /* ---- T6/T7: זרימת מחיקה מחוזקת ---- */
   const li = (arr) => arr.map(x => `<li style="margin:4px 0">${x}</li>`).join('');
   async function deleteAccountFlow(){
@@ -73,11 +102,10 @@
         }
         throw new Error(d.error || 'המחיקה נכשלה');
       }
-      localStorage.clear();
-      toast('החשבון נמחק. תודה שהייתם איתנו.');
-      location.hash = '#/';
-      location.reload();
+      clearPersonalStorage(); // T35: סלקטיבי — שומר העדפות לא-אישיות
+      showDeletedScreen(prev.kept); // T35: מסך החשבון נמחק
     } catch(e){ toast(e.message); }
   }
   if (typeof onAct === 'function') onAct({ acctDelete: deleteAccountFlow });
+  window.__acctDel = { clearPersonalStorage, showDeletedScreen }; // חשיפה לטסטי vm
 })();

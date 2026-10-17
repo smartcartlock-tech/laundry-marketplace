@@ -101,6 +101,15 @@ test('G17.T7: אנונימיזציה מלאה — כל הטבלאות האישי
   const plan = (await db.query('SELECT id FROM subscription_plans LIMIT 1')).rows[0];
   if (plan) await db.query(`INSERT INTO subscriptions(tenant_id, plan_id, user_id, status) SELECT tenant_id, id, $1, 'active' FROM subscription_plans WHERE id=$2`, [uid, plan.id]);
 
+  // G17.T35: ייצוא נרשם ביומן ביקורת בלי PII + הודעה ללקוח
+  const exp = await api('/api/me/export', { token });
+  assert.equal(exp.status, 200);
+  const aud1 = await db.query(`SELECT actor_label, action FROM audit_log WHERE actor_id=$1 AND action='me.export'`, [uid]);
+  assert.equal(aud1.rows.length, 1, 'ייצוא נרשם ביומן');
+  assert.equal(aud1.rows[0].actor_label, null, 'בלי PII ביומן (actor_label ריק)');
+  const notif1 = await db.query('SELECT channel FROM notifications WHERE user_id=$1', [uid]);
+  assert.ok(notif1.rows.length >= 1, 'הודעת ייצוא ללקוח נרשמה');
+
   // מחיקה עם OTP
   const otp = await api('/api/me/delete/request-otp', { method: 'POST', token });
   assert.equal(otp.status, 200, JSON.stringify(otp.json));
@@ -121,7 +130,8 @@ test('G17.T7: אנונימיזציה מלאה — כל הטבלאות האישי
   assert.equal(await count('SELECT count(*)::int n FROM family_invites WHERE owner_user_id=$1', uid), 0, 'family_invites');
   assert.equal(await count('SELECT count(*)::int n FROM family_members WHERE owner_user_id=$1 OR member_user_id=$1', uid), 0, 'family_members');
   assert.equal(await count('SELECT count(*)::int n FROM reviews WHERE user_id=$1', uid), 0, 'reviews');
-  assert.equal(await count('SELECT count(*)::int n FROM notifications WHERE user_id=$1', uid), 0, 'notifications');
+  // T35: התראות קודמות נמחקו; נשארה רק הודעת האישור על המחיקה עצמה (נבדקת בסוף)
+  assert.equal(await count(`SELECT count(*)::int n FROM notifications WHERE user_id=$1 AND body NOT LIKE '%נמחק%'`, uid), 0, 'notifications');
   assert.equal(await count('SELECT count(*)::int n FROM user_messages WHERE user_id=$1', uid), 0, 'user_messages');
   assert.equal(await count('SELECT count(*)::int n FROM issue_report_photos WHERE report_id=$1', rep), 0, 'issue_report_photos');
   const repRow = (await db.query('SELECT text FROM issue_reports WHERE id=$1', [rep])).rows[0];
@@ -143,6 +153,13 @@ test('G17.T7: אנונימיזציה מלאה — כל הטבלאות האישי
   assert.equal(usr.name, null); assert.equal(usr.email, null); assert.equal(usr.google_sub, null);
   assert.match(usr.phone, /^deleted_/);
   assert.ok(usr.anonymized_at);
+
+  // G17.T35: מחיקה נרשמת ביומן בלי PII + הודעת אישור ללקוח נשמרת
+  const aud2 = await db.query(`SELECT actor_label FROM audit_log WHERE actor_id=$1 AND action='me.delete'`, [uid]);
+  assert.equal(aud2.rows.length, 1, 'מחיקה נרשמה ביומן');
+  assert.equal(aud2.rows[0].actor_label, null, 'בלי PII ביומן המחיקה');
+  const notif2 = await db.query(`SELECT channel FROM notifications WHERE user_id=$1 AND body LIKE '%נמחק%'`, [uid]);
+  assert.equal(notif2.rows.length, 1, 'הודעת אישור מחיקה נרשמה');
 
   // הטוקן מת
   assert.equal((await api('/api/me/export', { token })).status, 401);
