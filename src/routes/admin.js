@@ -219,7 +219,7 @@ r.post('/routes/auto-build', async (req, res) => {
 
 // E5.T3/T8: צפייה במסלולים לתאריך
 r.get('/routes', async (req, res) => {
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toISOString().slice(0, 10);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
   const { rows } = await q(
     `SELECT cr.id, cr.route_date, cr.combined, cr.status, u.name AS courier_name,
             count(rs.id)::int AS stops, count(DISTINCT rs.tenant_id)::int AS tenants,

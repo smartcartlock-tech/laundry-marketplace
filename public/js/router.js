@@ -70,6 +70,9 @@ async function route(){
   else if(parts[0]==='track')html=await vTrack(parts[1]); // G3b
   else html=`<div class="hdr"><h2>הדף לא נמצא</h2></div><div class="body"><div class="card" style="text-align:center"><div style="font-size:40px">🧺</div><b>404 — לא מצאנו את הדף הזה</b><div class="mut" style="margin:6px 0">הקישור אולי השתנה או שהוזן בטעות.</div><button class="btn" data-act="goHome">חזרה לדף הבית</button></div></div>`;
  }catch(e){
+  /* deep-link בטאב חדש: view שמוגדר ב-script שנטען אחרי router.js (כמו vTrack) עוד לא קיים —
+     משאירים את "טוען…" ומריצים route מחדש אחרי שכל הסקריפטים נטענו (load) */
+  if(e instanceof ReferenceError&&document.readyState!=='complete'&&!window.__routeWaitLoad){window.__routeWaitLoad=true;window.addEventListener('load',()=>route(),{once:true});return}
   if(e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();html=vLogin()}
   else html=`<div class="body"><div class="card warn">${esc(e.message)}</div></div>`;
  }

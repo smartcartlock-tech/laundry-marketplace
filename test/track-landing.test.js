@@ -59,3 +59,13 @@ test('G3b: מעקב הזמנה ציבורי לפי קוד — בלי התחבר�
   assert.equal(pub2.json.status, 'confirmed');
   await api('/api/orders/' + oid + '/cancel', { method: 'POST', token: customer });
 });
+
+test('deep-link guard: route ממתין ל-load כש-view מאוחר-טעינה חסר (vTrack race)', () => {
+  const fs = require('fs'), path = require('path');
+  const router = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'router.js'), 'utf8');
+  assert.ok(router.includes('__routeWaitLoad'), 'guard קיים ב-router.js');
+  assert.ok(router.match(/ReferenceError&&document\.readyState!=='complete'/), 'retry רק על ReferenceError לפני load');
+  // track.js נטען אחרי router.js ב-index.html — הבאג המקורי
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.ok(html.indexOf('/js/router.js') < html.indexOf('/js/track.js'), 'סדר טעינה משוחזר');
+});

@@ -11,7 +11,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 // טווח: ?days=N (1-366) או ?from=YYYY-MM-DD&to=YYYY-MM-DD (כולל). ברירת מחדל: 30 ימים אחרונים.
 function parseRange(query) {
   const day = d => d.toISOString().slice(0, 10);
-  const today = new Date();
+  // "היום" לפי יום העסק (Asia/Jerusalem) — אחרי חצות מקומי UTC עדיין אתמול והיום הנוכחי היה נשמט מהטווח
+  const today = new Date(new Date().toLocaleDateString('en-CA', { timeZone: TZ }) + 'T12:00:00Z');
   let to = ISO.test(query.to || '') ? new Date(query.to + 'T00:00:00Z') : new Date(day(today) + 'T00:00:00Z');
   let from;
   if (ISO.test(query.from || '')) from = new Date(query.from + 'T00:00:00Z');

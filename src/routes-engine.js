@@ -30,16 +30,22 @@ async function getSetting(key, fallback) {
   return rows[0] ? rows[0].value : fallback;
 }
 
+// יום העסק (Asia/Jerusalem) כמחרוזת YYYY-MM-DD — יציב בכל אזור-זמן של השרת
+function bizDate(d) {
+  return new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+}
+
 function weekStart(d) {
-  const dt = new Date(d);
-  dt.setDate(dt.getDate() - dt.getDay()); // ראשון
-  return dt.toISOString().slice(0, 10);
+  // ראשון של השבוע לפי Asia/Jerusalem. חשבון על צהריים ב-UTC כדי שדילוג שעון לא יזיז את התאריך.
+  const noon = new Date(bizDate(d) + 'T12:00:00Z');
+  noon.setUTCDate(noon.getUTCDate() - noon.getUTCDay());
+  return noon.toISOString().slice(0, 10);
 }
 
 // בניית מסלולים אוטומטית לתאריך: מאחד איסופים/החזרות לא משובצים לפי אזור (עיר),
 // משבץ שליח פלטפורמה/משותף מאושר לפי אזור פעילות וקדימות, ומסדר נקודות nearest-neighbor.
 async function buildRoutesForDate(dateStr) {
-  const day = dateStr || new Date().toISOString().slice(0, 10);
+  const day = dateStr || bizDate(new Date());
   const { rows: orders } = await q(
     `SELECT o.id, o.tenant_id, o.address, o.lat, o.lng, o.created_at, o.status,
             t.city, t.lat AS tenant_lat, t.lng AS tenant_lng
@@ -152,7 +158,7 @@ async function accrueStop(courierId, order, stopKind) {
   return { gross, commission, net };
 }
 
-module.exports = { buildRoutesForDate, accrueStop, nearestNeighbor, haversineKm, weekStart, getSetting };
+module.exports = { buildRoutesForDate, accrueStop, nearestNeighbor, haversineKm, weekStart, bizDate, getSetting };
 
 // E5.T7: עדכון דירוג מצטבר וקדימות שיבוץ — דירוג נמוך חוזר מוריד קדימות
 async function applyCourierRating(courierId, rating) {
