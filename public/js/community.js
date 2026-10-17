@@ -189,11 +189,11 @@ async function vManage(sub){
   body=`<div class="card">
     <label class="lb">חלון חדש</label>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-     <select class="inp" id="w-day" style="flex:1">${WD.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select>
-     <input class="inp" id="w-start" type="time" style="flex:1"><input class="inp" id="w-end" type="time" style="flex:1">
-     <select class="inp" id="w-kind" style="flex:1"><option value="pickup">איסוף</option><option value="delivery">החזרה</option></select>
+     <select class="inp" id="w-day" style="flex:1 1 100%">${WD.map((d,i)=>`<option value="${i}">${d}</option>`).join('')}</select>
+     <input class="inp" id="w-start" type="time" style="flex:1 1 40%;min-width:120px"><input class="inp" id="w-end" type="time" style="flex:1 1 40%;min-width:120px">
+     <select class="inp" id="w-kind" style="flex:1 1 100%"><option value="pickup">איסוף</option><option value="delivery">החזרה</option></select>
     </div>
-    <button class="btn2 on" data-act="addWindow" data-a="${slug}">הוספה</button></div>
+    <button class="btn2 on" data-act="addWindow" data-a="${slug}" style="min-height:44px">הוספה</button></div>
    <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} ${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}<div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')}</div>`;
  } else if(sub==='coupons'){
   const d=await api(`/t/${slug}/coupons`);

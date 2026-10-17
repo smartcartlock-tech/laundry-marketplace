@@ -26,8 +26,8 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
 .logo{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;color:#fff;font-weight:800;font-size:19px;flex-shrink:0}
 .logo.sm{width:34px;height:34px;font-size:15px;border-radius:9px}
 .lcard{display:flex;gap:12px;align-items:center}
-.kpis{display:flex;gap:8px;margin-bottom:12px}
-.kpi{flex:1;background:#fff;border:1px solid #e2eaee;border-radius:12px;padding:10px 6px;text-align:center}
+.kpis{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.kpi{flex:1 1 28%;min-width:96px;background:#fff;border:1px solid #e2eaee;border-radius:12px;padding:10px 6px;text-align:center}
 .kpi b{font-size:16px;display:block}
 .bar-wrap{background:#eef3f5;border-radius:10px;height:8px;overflow:hidden;margin-top:8px}
 .bar-fill{background:linear-gradient(90deg,#12869b,#0a4f5c);height:100%;transition:width .4s}
@@ -64,6 +64,7 @@ body{font-family:'Noto Sans Hebrew','Segoe UI',Arial,sans-serif;background:#eef2
  .body{max-width:1080px}
  .body .card{max-width:none}
  .kpis{max-width:none}
+ .kpi{flex:1 1 0;min-width:0}
  #tabs .in{position:static;background:transparent;box-shadow:none;justify-content:center;gap:26px}
  #tabs{position:fixed;top:0;bottom:auto;left:0;right:0;z-index:60;background:#0a4f5c}
  #app{padding-top:52px}
