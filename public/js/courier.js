@@ -23,7 +23,7 @@ async function vCourier(sub){
   <div class="sec">מסלול פעיל</div>
   ${route.route.map(o=>`<div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center">
-     <div>${o.route_seq?`<span class="tag tb">${o.route_seq}</span> `:''}<b>${esc(o.customer_name||'לקוח')}</b>${o.customer_phone?` · <a href="tel:${o.customer_phone}" style="color:#0e7a8a">${o.customer_phone}</a>`:''} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+     <div>${o.route_seq?`<span class="tag tb">${o.route_seq}</span> `:''}<b>${esc(o.customer_name||'לקוח')}</b>${o.customer_phone?` · <a href="tel:${o.customer_phone}" dir="ltr" style="color:#0e7a8a;unicode-bidi:isolate">${o.customer_phone}</a>`:''} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
       <div class="mut">${esc(o.address)}</div>
       <div class="mut">${esc(o.tenant_name)} · ${esc(o.tenant_address||'')}</div>
       ${o.items&&o.items.length?`<div class="mut">פריטים: ${o.items.map(x=>esc(x.name)+' ×'+x.qty).join(', ')}</div>`:''}

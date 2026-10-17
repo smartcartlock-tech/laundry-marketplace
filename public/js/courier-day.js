@@ -87,6 +87,7 @@ async function vCourierDay(dayDate){
   <div class="kpi"><b>${s.deliveries}</b>מסירות</div>
   <div class="kpi"><b>${s.done}</b>הושלמו</div>
  </div>
+ <div class="mut" style="margin:-2px 0 8px">"נותרו" סופר רק נקודות הדורשות פעולה עכשיו — הזמנות אצל המכבסה יצורפו למסלול כשיסומנו "מוכנה".</div>
  ${s.total===0?`<div class="card mut" style="text-align:center">אין נקודות במסלול היום. משימות חדשות מגיעות דרך <a href="#/courier" style="color:#0e7a8a">מסך המשימות</a>.</div>`:''}
  ${d.stops.map(st=>{const o=st.order;return `<div class="card"${st.done?' style="opacity:.65"':''}>
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -116,7 +117,12 @@ async function courierToggleAvail(online){
  try{
   await api('/courier/availability',{method:'POST',body:JSON.stringify({online})});
   toast(online?'סומנת כזמין — שיבוץ אוטומטי יכלול אותך':'סומנת כלא זמין — לא ישובצו לך מסלולים חדשים');route();
- }catch(e){toast(e.message)}
+ }catch(e){
+  if(e.status===0){
+   cqPush({path:'/courier/availability',opts:{method:'POST',body:JSON.stringify({online})}});
+   toast('אין חיבור — הסטטוס נשמר ויישלח אוטומטית כשיחזור החיבור');route();
+  }else toast(e.message);
+ }
 }
 
 function courierProximity(){
@@ -144,7 +150,7 @@ async function courierConfirmDelivery(orderId){
 }
 
 /* אישור מסירה בצילום: בחירת תמונה (נדחסת אוטומטית ע״י image-compress), שליחה כ-multipart.
-   דורש חיבור פעיל — קובץ לא נשמר בתור הלא מקוון. */
+   בכשל רשת התמונה נשמרת ב-IndexedDB (coffSavePhoto) ונכנסת לתור הסנכרון המאוחד — תישלח אוטומטית כשהחיבור יחזור. */
 function courierPhotoDelivery(orderId){
  const ov=document.createElement('div');ov.className='modal-ov';
  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה בצילום</b>
