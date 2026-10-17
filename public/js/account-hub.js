@@ -48,6 +48,7 @@
        <button class="btn2" data-act="acctEditName">✏️ עריכת שם</button>
        <a class="btn2" href="#/sessions">🔐 התחברויות פעילות</a>
       </div></div>
+     ${window.meContactSection?await window.meContactSection(u):''}
      <div class="card"><b>נקודות מועדון</b><div class="mut">יתרה כוללת: <b style="color:#0e7a8a">${pts}</b> נקודות (שוות ₪${pts})</div>
       <div style="margin-top:8px"><a class="btn2" href="#/club">★ למועדון</a></div></div>
      <div class="card"><b>הפעילות שלי</b>

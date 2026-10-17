@@ -1,7 +1,7 @@
 /* ---- tabs ---- */
 function renderTabs(route){
  const T=[['#/','⌂','בית']];
- if(state.token)T.push(['#/orders','▤','הזמנות'],['#/club','★','מועדון']);
+ if(state.token)T.push(['#/orders','▤','הזמנות'],['#/club','★','מועדון'],['#/account','☺','החשבון שלי']); // T19: כניסה קבועה מכל מסך
  if(state.courier)T.push(['#/courier','▸','שליח']);
  if(state.memberships&&state.memberships.length)T.push(['#/community','✦','קהילה'],['#/manage','⚙','ניהול']);
  if(state.me&&state.me.role==='admin')T.push(['#/admin','▣','אדמין']);
