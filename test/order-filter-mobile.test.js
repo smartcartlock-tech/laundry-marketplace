@@ -26,3 +26,10 @@ test('bottom tabs: 7 לשוניות לא גולשות מעבר לרוחב המס
   const tabs = fs.readFileSync('public/js/tabs.js', 'utf8');
   assert.ok(tabs.includes('החשבון שלי'), 'T19: הלשונית הקבועה קיימת');
 });
+
+test('M08: שדה הטלפון בהגדרות בעלים מוצג LTR (ספרות לא הפוכות)', () => {
+  const src = fs.readFileSync('public/js/community.js', 'utf8');
+  const m = src.match(/<input class="inp" id="s-phone"[^>]*>/);
+  assert.ok(m, 'שדה s-phone לא נמצא');
+  assert.ok(m[0].includes('dir="ltr"'), 's-phone חייב dir=ltr כדי ש-+972 לא יוצג הפוך ב-RTL');
+});

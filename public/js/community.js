@@ -303,7 +303,7 @@ async function vManage(sub){
   try{const td=await api(`/t/${slug}/settings`);if(td.tenant){l.dealer_type=td.tenant.dealer_type;l.dealer_id=td.tenant.dealer_id;l.invoice_mode=td.tenant.invoice_mode||'per_order'}}catch(e){}
   body=`<div class="card">
    <label class="lb">שם</label><input class="inp" id="s-name" value="${esc(l.name)}">
-   <label class="lb">טלפון</label><input class="inp" id="s-phone" value="${esc(l.phone||'')}">
+   <label class="lb">טלפון</label><input class="inp" id="s-phone" value="${esc(l.phone||'')}" dir="ltr" style="text-align:right">
    <label class="lb">כתובת</label><input class="inp" id="s-address" value="${esc(l.address||'')}">
    <label class="lb">עיר</label><input class="inp" id="s-city" value="${esc(l.city||'')}">
    <label class="lb">דמי שליחות ₪</label><input class="inp" id="s-fee" type="number" value="${l.delivery_fee||0}">
