@@ -9,7 +9,7 @@ function vBotSim() {
    🧪 <b>סביבת סימולציה</b> — הצ'אט וה"שליחה" כאן להדגמה בלבד. לא נשלחת שום הודעה אמיתית.
   </div>
   <div class="card">
-   <div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">
+   <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">
     <button class="btn2 on" id="bs-tab-chat" data-act="botSimTab" data-a="chat">צ'אט מדומה</button>
     <button class="btn2" id="bs-tab-out" data-act="botSimTab" data-a="out">דוא"ל/וואטסאפ מדומה</button>
    </div>
@@ -41,8 +41,8 @@ function vBotSim() {
 
 function botSimBubble(who, text) {
   const me = who === 'me';
-  return `<div style="align-self:${me ? 'flex-start' : 'flex-end'};max-width:85%;background:${me ? '#e3f2fd' : '#f1f8e9'};border-radius:12px;padding:7px 10px">
-   <div style="white-space:pre-wrap">${esc(text)}</div>
+  return `<div style="align-self:${me ? 'flex-start' : 'flex-end'};max-width:85%;min-width:0;overflow-wrap:anywhere;background:${me ? '#e3f2fd' : '#f1f8e9'};border-radius:12px;padding:7px 10px">
+   <div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</div>
    <div class="mut" style="font-size:10px">${me ? 'אתם' : 'בוט (סימולציה)'}</div></div>`;
 }
 
@@ -94,7 +94,7 @@ async function botOutList() {
     el.innerHTML = (d.messages || []).map(m => `<div style="border-top:1px solid #edf1f4;padding:6px 0">
      <b>${m.channel === 'email' ? '✉️' : '💬'} ${m.channel === 'email' ? esc(m.subject || '') : ''}</b>
      <span class="mut" style="font-size:11px"> אל: ${esc(m.recipient)} · ${new Date(m.created_at).toLocaleString('he-IL')} · סימולציה</span>
-     <div style="white-space:pre-wrap">${esc(m.body)}</div></div>`).join('')
+     <div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(m.body)}</div></div>`).join('')
      || '<div class="mut">עוד לא נרשמו הודעות מדומות</div>';
   } catch (e) { el.innerHTML = `<div class="mut">${esc(e.message)}</div>`; }
 }

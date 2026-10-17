@@ -12,12 +12,12 @@ async function vMessages() {
    <div class="card" id="msg-${m.id}" style="${m.read_at ? 'opacity:.65' : 'border-right:3px solid var(--acc,#0e7a8a)'}">
     <div style="display:flex;gap:8px;align-items:flex-start">
      <div style="font-size:20px">${MSG_ICON[m.kind] || '🔔'}</div>
-     <div style="flex:1">
+     <div style="flex:1;min-width:0;overflow-wrap:anywhere">
       <b>${esc(m.title)}</b>
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
       <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${new Date(m.created_at).toLocaleString('he-IL')}</div>
      </div>
-     <div style="display:flex;flex-direction:column;gap:4px">
+     <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
       <button class="btn2" style="font-size:11px" data-act="${m.read_at ? 'msgMarkUnread' : 'msgMarkRead'}" data-a="${m.id}">${m.read_at ? 'סמן כלא נקרא' : 'נקרא'}</button>
       <button class="btn2" style="font-size:11px;color:#b71c1c" data-act="msgDelete" data-a="${m.id}">מחק</button>
      </div>
