@@ -14,6 +14,8 @@ onAct({ adminOnboardStage:t=>adminOnboardStage(t.dataset.a,t.dataset.b),
 async function vAdmin(sub){
  if(!state.token)return needLogin();
  sub=sub||'overview';
+ const KNOWN=['overview','dash','onboarding','sla','tenants','couriers','routes','register','orders','weekly','audit'];
+ if(!KNOWN.includes(sub))sub='overview'; // תת-מסך לא מוכר — לא דף ריק
  const tabs=[['overview','תמונת מצב'],['dash','דשבורד מרכזי'],['onboarding','צינור קליטה'],['sla','התראות SLA'],['tenants','מכבסות'],['couriers','שליחים'],['routes','מסלולים'],['register','רישום שליח'],['orders','הזמנות'],['weekly','דוח שבועי'],['audit','יומן ביקורת']];
  let body='';
  if(sub==='dash'){
@@ -78,36 +80,6 @@ async function vAdmin(sub){
   body=`<div class="card"><table class="tbl"><tr><th>מכבסה</th><th>הזמנות</th><th>מחזור</th><th></th></tr>
    ${d.tenants.map(t=>`<tr><td><a href="#/admin/tenant/${t.id}" style="color:#0e7a8a;font-weight:600">${esc(t.name)}</a>${t.approved?'':' <span class="tag ta">ממתינה</span>'}<div class="mut">${esc(t.city||'')}</div></td><td>${t.orders}</td><td>₪${t.gmv}</td>
     <td>${t.approved?`<button class="btn2" data-act="adminTenant" data-a="${t.id}" data-b="suspend">השעיה</button>`:`<button class="btn2 green" data-act="adminTenant" data-a="${t.id}" data-b="approve">אישור</button>`}</td></tr>`).join('')}</table></div>`;
- } else if(sub==='coupons'){
-  const d=await api(`/t/${slug}/coupons`);
-  body=`<div class="card">
-    <label class="lb">קופון חדש</label>
-    <div style="display:flex;gap:8px"><input class="inp" id="cp-code" placeholder="קוד (למשל SAVE10)" style="flex:2">
-    <select class="inp" id="cp-kind" style="flex:1"><option value="percent">אחוז %</option><option value="amount">סכום ₪</option></select>
-    <input class="inp" id="cp-value" type="number" placeholder="ערך" style="flex:1"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-     <input class="inp" id="cp-min" type="number" placeholder="מינימום הזמנה ₪" style="flex:1">
-     <input class="inp" id="cp-usage" type="number" placeholder="מגבלת שימושים" style="flex:1">
-     <input class="inp" id="cp-peruser" type="number" placeholder="מגבלה ללקוח" style="flex:1">
-     <input class="inp" id="cp-exp" type="date" style="flex:1">
-    </div>
-    <button class="btn2 on" data-act="addCoupon" data-a="${slug}">יצירת קופון</button></div>
-   <div class="card">${d.coupons.map(c=>`<div class="row"><div style="${c.active?'':'opacity:.4'}"><b dir="ltr">${esc(c.code)}</b> — ${c.kind==='percent'?c.value+'%':'₪'+c.value}
-    <div class="mut">${c.min_order>0?'מינימום ₪'+c.min_order+' · ':''}${c.usage_limit?'עד '+c.usage_limit+' שימושים · ':''}${c.per_user_limit?c.per_user_limit+' ללקוח · ':''}${c.expires_at?'בתוקף עד '+new Date(c.expires_at).toLocaleDateString('he-IL')+' · ':''}מומש ${c.used_count||0}</div></div>
-    <button class="btn2" data-act="toggleCoupon" data-a="${slug}" data-b="${c.id}" data-c="${!c.active}">${c.active?'השבתה':'הפעלה'}</button></div>`).join('')||'<div class="mut">אין קופונים עדיין</div>'}</div>`;
- } else if(sub==='documents'){
-  const d=await api(`/t/${slug}/documents`);
-  const ST_HE={issued:'הופק',partially_credited:'זוכה חלקית',credited:'זוכה'};
-  const consBtn=`<button class="btn2 on" style="margin-bottom:10px" data-act="consolidatedModal" data-a="${slug}">🧾 הפק חשבונית מרכזת</button>`;
-  body=consBtn+(d.documents.length?`<div class="card docs-list">${d.documents.map(dc=>`<div class="row"><div>
-    <b>${dc.kind_he} ${dc.doc_number}/${dc.doc_year}</b> <span class="st-pill ${dc.status==='credited'?'st-cancelled':'st-delivered'}">${ST_HE[dc.status]||dc.status}</span>
-    <div class="mut">${fmtDT(dc.issued_at)} · ${esc(dc.customer_name||'לקוח')} · ₪${dc.total}${dc.orders_count?' · מכסה '+dc.orders_count+' הזמנות':''}${Number(dc.credited_amount)>0?' · זוכה ₪'+dc.credited_amount:''}${dc.allocation_number?' · הקצאה '+dc.allocation_number:''}</div></div>
-    <div class="docs-actions">
-     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf">מקור</button>
-     <button class="btn2" data-act="openPdf" data-a="/t/${slug}/documents/${dc.id}/pdf?copy=1">העתק</button>
-     ${dc.kind!=='credit'&&dc.status!=='credited'?`<button class="btn2" style="border-color:#f3c2c2;color:#c22" data-act="creditDoc" data-a="${slug}" data-b="${dc.id}" data-c="${dc.total}" data-d="${dc.credited_amount}">זיכוי</button>`:''}
-    </div></div>`).join('')}</div>`
-   :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
   const d=await api('/admin/couriers');
   const pd=await api('/admin/couriers/pending');
