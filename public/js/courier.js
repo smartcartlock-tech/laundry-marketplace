@@ -8,7 +8,7 @@ async function vCourier(sub){
  const [offers,route,profile]=await Promise.all([api('/courier/offers'),api('/courier/route'),api('/courier/profile')]);
  return `<div class="hdr"><h2>שלום ${esc(me.user.name||'')}</h2><p>${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'} · ${profile.stats.delivered} מסירות בוצעו</p></div>
  <div class="body">
- <div class="subtabs"><a class="chip on" href="#/courier">משימות</a><a class="chip" href="#/courier/day">מסלול יום</a><a class="chip" href="#/courier/earnings">רווחים</a></div>
+ <div class="subtabs"><a class="chip on" href="#/courier">משימות</a><a class="chip" href="#/courier/day">מסלול יום</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip" href="#/notif-settings">🔔 התראות</a></div>
  ${route.combined?`<div class="warn">🧭 מסלול משולב — איסופים/החזרות מכמה מכבסות ברצף אחד, בסדר הנקודות המומלץ</div>`:''}
   ${offers.offers.length?`<div class="sec">הצעות שיבוץ חדשות</div>${offers.offers.map(o=>`
    <div class="card"><b>${esc(o.tenant_name)}</b> — הזמנה <span dir="ltr">#${o.order_id.slice(0,8)}</span>
@@ -46,7 +46,7 @@ async function vCourierEarnings(me){
  const t=d.totals;
  return `<div class="hdr"><h2>הרווחים שלי</h2><p>תעריף ₪${d.rate_per_stop} לנקודה · עמלת פלטפורמה ${d.commission_pct}%</p></div>
  <div class="body">
- <div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip" href="#/courier/day">מסלול יום</a><a class="chip on" href="#/courier/earnings">רווחים</a></div>
+ <div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip" href="#/courier/day">מסלול יום</a><a class="chip on" href="#/courier/earnings">רווחים</a><a class="chip" href="#/notif-settings">🔔 התראות</a></div>
  <div class="kpis">
   <div class="kpi"><b>${t.stops}</b>נקודות</div>
   <div class="kpi"><b>₪${t.gross}</b>ברוטו</div>

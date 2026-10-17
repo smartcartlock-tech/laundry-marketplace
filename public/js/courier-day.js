@@ -39,7 +39,7 @@ window.addEventListener('online',async()=>{
 function cqBadge(){const q=cqGet();const n=q.length;const p=q.filter(x=>x.kind==='photo').length;return n?`<span class="tag" style="background:#fff3cd;color:#7a5c00">⏳ ${n} ${n===1?'פעולה ממתינה':'פעולות ממתינות'} לסנכרון${p?` (${p} ${p===1?'כולל צילום':'כולל צילומים'})`:''}</span>`:''}
 
 function courierSubtabs(on){
- return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a></div>`;
+ return `<div class="subtabs"><a class="chip" href="#/courier">משימות</a><a class="chip${on==='day'?' on':''}" href="#/courier/day">מסלול יום</a><a class="chip${on==='map'?' on':''}" href="#/courier/map">מפה</a><a class="chip" href="#/courier/earnings">רווחים</a><a class="chip${on==='history'?' on':''}" href="#/courier/history">היסטוריה</a><a class="chip${on==='profile'?' on':''}" href="#/courier/profile">פרופיל</a><a class="chip${on==='help'?' on':''}" href="#/courier/help">עזרה</a><a class="chip" href="#/notif-settings">🔔 התראות</a></div>`;
 }
 
 async function vCourierDay(dayDate){
@@ -56,6 +56,7 @@ async function vCourierDay(dayDate){
  const t=await api('/courier/tasks');
  const av=await api('/courier/availability').catch(()=>({online:true}));
  const offs=await api('/courier/offers').catch(()=>({offers:[]}));
+ const pushOn=await courierPushState();
  const s=d.summary;
  return `<div class="hdr"><h2>מסלול יום</h2><p>${new Date().toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'long',timeZone:'Asia/Jerusalem'})} · ${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'}</p></div>
  <div class="body">
@@ -72,6 +73,7 @@ async function vCourierDay(dayDate){
  </div>`:''}
  <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
   <button class="btn2${av.online?' green':''}" data-act="courierToggleAvail" data-a="${av.online?'0':'1'}">${av.online?'🟢 זמין לשיבוץ':'⚫ לא זמין (אופליין)'}</button>
+  ${pushOn?`<span class="tag green">🔔 התראות פעילות</span>`:`<button class="btn2" id="push-btn" data-act="pushSubscribe" title="התראה על משימה חדשה — גם כשהאפליקציה סגורה">🔔 הפעלת התראות</button>`}
   ${cqBadge()}
  </div>
  <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
@@ -174,6 +176,15 @@ function courierPhotoDelivery(orderId){
  };
 }
 
+/* T12: מצב מנוי התראות דחיפה של השליח (null = לא רשום) */
+async function courierPushState(){
+ try{
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return null;
+  const reg=await navigator.serviceWorker.getRegistration();
+  return reg?await reg.pushManager.getSubscription():null;
+ }catch(e){return null}
+}
+
 /* היסטוריה ורווחים: דירוג השליח, רווחים יומי/שבועי לפי משימה (דמו), היסטוריית משימות */
 async function vCourierHistory(period){
  if(!state.token)return needLogin();
@@ -263,6 +274,7 @@ async function vCourierProfile(){
  if(!state.token)return needLogin();
  let me;try{me=await api('/auth/me')}catch(e){return needLogin()}
  if(!me.courier||!me.courier.approved)return vCourier();
+ const pushOn=await courierPushState();
  const p=await api('/courier/profile');
  const c=p.courier, av=c.availability||{};
  return `<div class="hdr"><h2>פרופיל שליח</h2><p>${esc(me.user.name||'')} · ${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'}</p></div>
@@ -273,6 +285,7 @@ async function vCourierProfile(){
   <div class="kpi"><b>${p.stats.active}</b>משימות פעילות</div>
   <div class="kpi"><b>${Number(c.rating||0).toFixed(1)}</b>דירוג</div>
  </div>
+ <div class="card" style="display:flex;align-items:center;gap:10px"><div style="flex:1"><b>התראות על משימות חדשות</b><div class="mut">התראת דחיפה בכל שיבוץ — גם כשהאפליקציה סגורה. ניהול העדפות במסך <a href="#/notif-settings" style="color:#0e7a8a">הגדרות התראות</a>.</div></div>${pushOn?`<span class="tag green">🔔 פעילות</span>`:`<button class="btn2 on" id="push-btn" data-act="pushSubscribe">🔔 הפעלה</button>`}</div>
  <div class="card">
   <label class="lbl">כלי רכב</label>
   <input class="inp" id="cp-vehicle" value="${esc(c.vehicle||'')}">
@@ -330,5 +343,6 @@ onAct({
  courierAcceptOffer:t=>courierAcceptOffer(t.dataset.a,t.dataset.b),
  courierDeclineOffer:t=>courierDeclineOffer(t.dataset.a,t.dataset.b),
  courierProfileOff:t=>courierProfileOff(t),
- courierSaveProfile:()=>courierSaveProfile()
+ courierSaveProfile:()=>courierSaveProfile(),
+ pushSubscribe:()=>pushSubscribe()
 });
