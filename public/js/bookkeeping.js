@@ -57,8 +57,26 @@
     const pnlExpRows = pnl.expenses.map(r => `<tr><td>${r.code}</td><td>${esc(r.name_he)}</td><td>${money(r.net)}</td></tr>`).join('');
 
     return `
+    <section id="bk-workspace" dir="rtl" aria-label="הנהלת חשבונות">
+    <style>
+      #bk-workspace { min-width:0; max-width:100%; }
+      #bk-workspace .card { min-width:0; max-width:100%; overflow-x:auto; box-sizing:border-box; }
+      #bk-workspace .inp { box-sizing:border-box; min-width:0; max-width:100%; }
+      #bk-workspace .tbl { width:100%; }
+      #bk-workspace .tbl th, #bk-workspace .tbl td { overflow-wrap:anywhere; }
+      #bk-workspace summary { cursor:pointer; }
+      @media(max-width:600px) {
+        #bk-workspace .inp { flex:1 0 100% !important; width:100% !important; min-width:100% !important; }
+        #bk-workspace .btn2 { min-height:44px; }
+        #bk-workspace input[type=file] { max-width:100%; }
+        #bk-workspace .tbl { min-width:560px; }
+        #bk-workspace .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+        #bk-workspace .bk-j-line { border-bottom:1px solid #e3edf0; padding-bottom:8px; }
+        #bk-workspace .btn2 { white-space:normal; }
+      }
+    </style>
     <div class="card" style="border:2px solid #c26a12">
-      <div class="sec">הנהלת חשבונות אמיתית — בעלים בלבד</div>
+      <div class="sec">הנהלת חשבונות · מסמך דמו · בעלים בלבד</div>
       ${isMorasha ? `<div style="background:#fdf3e3;border:1px solid #e8c07a;border-radius:8px;padding:8px;font-weight:600">
         חשבונית מס אינה נשלחת ללקוח בלי מספר הקצאה. מספר מבקשים באזור האישי של רשות המסים ומזינים כאן.</div>` : ''}
       <div class="kpis" style="margin-top:8px">
@@ -135,7 +153,7 @@
         <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>
 
     ${window.bkParties ? window.bkParties.card(parties) : ''}
-    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}`;
+    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}</section>`;
   }
 
   if (typeof window.vManage === 'function'){

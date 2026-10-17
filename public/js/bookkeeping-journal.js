@@ -44,6 +44,8 @@
         action = `<span class="mut">בוצע סטורנו (#${reversalByOrig[e.id]})</span>`;
       } else if (e.source === 'reversal') {
         action = `<span class="mut">פקודת סטורנו${e.reversal_of ? ` ל-#${entries.find(x => x.id === e.reversal_of) ? (entries.find(x => x.id === e.reversal_of).entry_no) : ''}` : ''}</span>`;
+      } else if (e.source === 'bank') {
+        action = `<span class="mut">תיקון באמצעות מסך הבנק</span>`;
       } else if (e.source === 'expense') {
         action = `<span class="mut">ביטול דרך מסך ההוצאות</span>`;
       } else {
