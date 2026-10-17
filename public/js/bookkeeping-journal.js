@@ -19,6 +19,7 @@
   }
 
   function card(entsRes, accsRes, partiesRes){
+    window.bkJournal._accs = accsRes; window.bkJournal._parties = partiesRes;
     const entries = (entsRes && entsRes.entries) || [];
     const accs = ((accsRes && accsRes.accounts) || []).filter(a => a.active);
     const parties = ((partiesRes && partiesRes.parties) || []).filter(p => p.active);
@@ -46,7 +47,7 @@
       } else if (e.source === 'expense') {
         action = `<span class="mut">ביטול דרך מסך ההוצאות</span>`;
       } else {
-        action = `<span class="mut">סטורנו מסמך דרך זיכוי — בהמתנה (T42)</span>`;
+        action = `<span class="mut">ביטול מסמך באמצעות זיכוי בלבד</span>`;
       }
       return `
       <tr class="bk-j-row" data-date="${esc(String(e.entry_date).slice(0, 10))}">
@@ -108,32 +109,35 @@
     el.textContent = `חובה ${d.toFixed(2)} · זכות ${c.toFixed(2)}` + (Math.abs(d - c) <= 0.004 && d > 0 ? ' · מאוזנת ✓' : '');
   });
 
-  function applyFilter(){
-    const from = val('bk-j-from'), to = val('bk-j-to');
-    document.querySelectorAll('#bk-j-table .bk-j-row').forEach((tr) => {
-      const d = tr.getAttribute('data-date') || '';
-      tr.style.display = (!from || d >= from) && (!to || d <= to) ? '' : 'none';
-    });
-  }
-
   document.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('[data-bkj-act]');
     if (!btn) return;
     const act = btn.getAttribute('data-bkj-act');
     const mems = state.memberships || [];
     const m = mems.find(x => x.slug === store.get('lastTenant','')) || mems[0];
-    if (!m) return;
+    if (!m || m.role !== 'owner' || btn.disabled) return;
+    btn.disabled = true;
     const B = `/t/${m.slug}/bookkeeping`;
     try{
       if (act === 'add-line'){
         const box = document.getElementById('bk-j-lines');
         if (box) box.insertAdjacentHTML('beforeend', lineRowHtml());
       } else if (act === 'filter'){
-        applyFilter();
+        const from = val('bk-j-from'), to = val('bk-j-to');
+        if (from && to && from > to) { toast('תאריך ההתחלה מאוחר מתאריך הסיום'); return; }
+        const query = new URLSearchParams();
+        if (from) query.set('from', from); if (to) query.set('to', to);
+        const result = await api(`${B}/entries?${query}`);
+        const panel = document.getElementById('bk-journal-card');
+        if (panel) {
+          panel.outerHTML = card(result, window.bkJournal._accs, window.bkJournal._parties);
+          document.getElementById('bk-j-from').value = from;
+          document.getElementById('bk-j-to').value = to;
+        }
       } else if (act === 'clear-filter'){
         const f = document.getElementById('bk-j-from'), t = document.getElementById('bk-j-to');
         if (f) f.value = ''; if (t) t.value = '';
-        applyFilter();
+        route();
       } else if (act === 'submit-entry'){
         const desc = val('bk-j-desc');
         if (desc.length < 2) { toast('תיאור פקודה חסר'); return; }
@@ -143,7 +147,7 @@
           const debit = Number(row.querySelector('.bk-j-debit').value || 0);
           const credit = Number(row.querySelector('.bk-j-credit').value || 0);
           if (!debit && !credit) return; // שורה ריקה — מדלגים
-          if ((debit > 0) === (credit > 0)) { bad = 'כל שורה חייבת להיות חובה או זכות בלבד'; return; }
+          if (!Number.isFinite(debit) || !Number.isFinite(credit) || debit < 0 || credit < 0 || (debit > 0) === (credit > 0)) { bad = 'כל שורה חייבת להיות חובה או זכות בלבד'; return; }
           lines.push({
             account_code: row.querySelector('.bk-j-acc').value,
             party_id: row.querySelector('.bk-j-party').value || undefined,
@@ -156,16 +160,17 @@
         const { d, c } = sums();
         if (Math.abs(d - c) > 0.004 || d <= 0) { toast(`פקודה לא מאוזנת: חובה ${d.toFixed(2)} מול זכות ${c.toFixed(2)}`); return; }
         const body = {
-          entry_date: val('bk-j-date') || new Date().toISOString().slice(0, 10),
+          entry_date: val('bk-j-date') || new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()),
           description: desc, lines,
         };
         await api(`${B}/entries`, { method: 'POST', body: JSON.stringify(body) });
         toast('הפקודה נרשמה'); route();
       } else if (act === 'reverse'){
-        if (!confirm(`לבצע סטורנו לפקודה ${btn.getAttribute('data-no')}? תיווצר פקודת היפוכה חדשה.`)) return;
+        if (!await xconfirm(`לבצע סטורנו לפקודה ${esc(btn.getAttribute('data-no'))}? תיווצר פקודת היפוכה חדשה.`)) return;
         const r = await api(`${B}/entries/${btn.getAttribute('data-id')}/reverse`, { method: 'POST' });
         toast(`בוצע סטורנו — פקודה ${r.reversal.entry_no}`); route();
       }
     }catch(e){ toast(e.message || 'שגיאה'); }
+    finally { btn.disabled = false; }
   });
 })();

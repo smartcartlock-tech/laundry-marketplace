@@ -44,9 +44,9 @@
   // חיפוש חי בטבלת הכרטיסים
   document.addEventListener('input', (ev) => {
     if (!ev.target || ev.target.id !== 'bk-p-search') return;
-    const term = ev.target.value.trim();
+    const term = ev.target.value.trim().toLocaleLowerCase();
     document.querySelectorAll('#bk-p-table .bk-p-row').forEach((tr) => {
-      tr.style.display = !term || (tr.getAttribute('data-name') || '').includes(term) ? '' : 'none';
+      tr.style.display = !term || (tr.getAttribute('data-name') || '').toLocaleLowerCase().includes(term) ? '' : 'none';
     });
   });
 
@@ -56,7 +56,8 @@
     const act = btn.getAttribute('data-bkp-act');
     const mems = state.memberships || [];
     const m = mems.find(x => x.slug === store.get('lastTenant','')) || mems[0];
-    if (!m) return;
+    if (!m || m.role !== 'owner' || btn.disabled) return;
+    btn.disabled = true;
     const B = `/t/${m.slug}/bookkeeping`;
     try{
       if (act === 'create'){
@@ -80,9 +81,18 @@
           phone: val('bk-ns-phone') || undefined,
         };
         if (!body.name || body.name.length < 2) { toast('שם ספק חסר'); return; }
-        await api(`${B}/parties`, { method: 'POST', body: JSON.stringify(body) });
-        toast('הספק נוצר — בחרו אותו בטופס ההוצאה'); route();
+        const result = await api(`${B}/parties`, { method: 'POST', body: JSON.stringify(body) });
+        const select = document.getElementById('bk-exp-sup');
+        if (select && result.party && result.party.id) {
+          const option = document.createElement('option');
+          option.value = result.party.id; option.textContent = result.party.name || body.name;
+          select.appendChild(option); select.value = result.party.id;
+          const panel = document.getElementById('bk-new-sup');
+          if (panel) { panel.hidden = true; panel.style.display = ''; }
+          toast('הספק נוצר ונבחר להוצאה');
+        } else { toast('הספק נוצר'); route(); }
       }
     }catch(e){ toast(e.message || 'שגיאה'); }
+    finally { btn.disabled = false; }
   });
 })();

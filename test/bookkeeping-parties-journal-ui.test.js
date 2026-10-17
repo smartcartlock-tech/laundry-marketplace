@@ -75,7 +75,7 @@ function makeSandbox(overrides = {}){
     api: overrides.api || (async (p) => canned(p)),
     esc: (s) => String(s),
     toast: overrides.toast || (() => {}), route: () => {}, downloadCsv: () => {},
-    confirm: () => true,
+    xconfirm: async () => true,
     fetch: async () => { throw new Error('fetch לא צפוי'); },
     URL, FormData, Promise, Number, String, Date, Set, console,
   };
@@ -112,7 +112,7 @@ test('סטורנו: כפתור רק לפקודה ידנית שלא סווטרנ�
   assert.ok(!html.includes('data-bkj-act="reverse" data-id="e2"'), 'פקודת מסמך — בלי כפתור סטורנו (ממתין ל-T42)');
   assert.ok(!html.includes('data-bkj-act="reverse" data-id="e3"'), 'פקודה שסווטרנה — בלי כפתור נוסף');
   assert.ok(!html.includes('data-bkj-act="reverse" data-id="e4"'), 'פקודת סטורנו — בלי כפתור');
-  assert.ok(html.includes('T42'), 'פקודת מסמך מסומנת כממתינה ל-T42');
+  assert.ok(html.includes('באמצעות זיכוי בלבד'), 'פקודת מסמך מפנה לזיכוי');
   assert.ok(html.includes('בוצע סטורנו (#10)'), 'פקודה שסווטרנה מסומנת עם מספר הסטורנו');
 });
 
@@ -210,4 +210,40 @@ test('handler: סטורנו שולח POST לנתיב reverse', async () => {
   assert.strictEqual(calls.length, 1);
   assert.ok(calls[0][0].endsWith('/bookkeeping/entries/e1/reverse'));
   assert.strictEqual(calls[0][1].method, 'POST');
+});
+
+test('inline supplier selects the created party without clearing expense inputs', async () => {
+  const option = {};
+  const select = { value: '', appendChild: o => { select.option = o; } };
+  const panel = { hidden: false, style: {} };
+  const sb = makeSandbox({ inputs: {
+    'bk-ns-name': { value: 'ספק דמו' }, 'bk-exp-sup': select, 'bk-new-sup': panel,
+  }, api: async () => ({ party: { id: 'created', name: 'ספק דמו' } }) });
+  sb.document.createElement = () => option;
+  sb.route = () => { throw new Error('must not reset expense form'); };
+  vm.runInContext(SRC_PARTIES, sb);
+  await sb.__listeners.click[0](clickWith({ 'data-bkp-act': 'sup-create' }));
+  assert.strictEqual(select.value, 'created');
+  assert.strictEqual(option.textContent, 'ספק דמו');
+  assert.strictEqual(panel.hidden, true);
+});
+
+test('negative and nonfinite journal amounts never POST', async () => {
+  const calls = [];
+  const sb = makeSandbox({ inputs: { 'bk-j-desc': { value: 'בדיקה' } }, api: async (...args) => calls.push(args) });
+  vm.runInContext(SRC_JOURNAL, sb);
+  for (const amount of ['-10', 'NaN', 'Infinity']) {
+    sb.document.querySelectorAll = () => [journalLine('6010', amount, ''), journalLine('1010', '', amount)];
+    await sb.__listeners.click[0](clickWith({ 'data-bkj-act': 'submit-entry' }));
+  }
+  assert.strictEqual(calls.length, 0);
+});
+
+test('journal date range queries server, including history outside latest 500 entries', async () => {
+  const calls = [];
+  const sb = makeSandbox({ inputs: { 'bk-j-from': { value: '2025-01-01' }, 'bk-j-to': { value: '2025-01-31' } }, api: async (p) => { calls.push(p); return { entries: [] }; } });
+  sb.URLSearchParams = URLSearchParams;
+  vm.runInContext(SRC_JOURNAL, sb);
+  await sb.__listeners.click[0](clickWith({ 'data-bkj-act': 'filter' }));
+  assert.strictEqual(calls[0], '/t/x/bookkeeping/entries?from=2025-01-01&to=2025-01-31');
 });
