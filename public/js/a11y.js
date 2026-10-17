@@ -160,6 +160,9 @@
  /* T21: יעד הדילוג חייב להיות focusable כדי שהפוקוס יעבור לתוכן */
  const appT=document.getElementById('app');
  if(appT&&!appT.hasAttribute('tabindex'))appT.setAttribute('tabindex','-1');
+ /* ה-href מפעיל את ה-router של ה-SPA — מונעים ניווט ומעבירים פוקוס ידנית */
+ const skL=document.querySelector('.skip-link');
+ if(skL&&appT)skL.addEventListener('click',e=>{e.preventDefault();appT.focus()});
  ensureStyle('#app:focus{outline:none}/*app-focus*/','app-focus');
  /* T34: כיבוד העדפת הפחתת תנועה */
  ensureStyle('@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}/*reduced-motion*/','reduced-motion');
