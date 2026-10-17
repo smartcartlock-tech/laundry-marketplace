@@ -91,7 +91,7 @@
       <div class="kpis" style="margin-top:8px">
         <div class="kpi"><b>${tb.totals.balanced ? '✓' : '⚠️'}</b>${tb.totals.balanced ? 'ספר מאוזן' : 'ספר לא מאוזן'}</div>
         <div class="kpi"><b>${pend.count}</b>ממתינים להקצאה</div>
-        <div class="kpi"><b>${money(pnl.net_profit)}</b>רווח נטו · ${esc(periodLabel)}</div>
+        <div class="kpi"><b>${money(pnl.net_profit)}</b>רווח נטו · <bdi dir="ltr">${esc(periodLabel)}</bdi></div>
         <div class="kpi"><b>${un.count}</b>תנועות בנק ממתינות</div>
       </div></div>
 
@@ -133,10 +133,10 @@
       </div>
       ${bankRows ? `<table class="tbl"><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>רישום מול חשבון</th></tr>${bankRows}</table>` : '<div class="mut">אין תנועות ממתינות</div>'}</div>
 
-    <div class="card"><div class="sec">דוחות · ${esc(periodLabel)}</div>
+    <div class="card"><div class="sec">דוחות · <bdi dir="ltr">${esc(periodLabel)}</bdi></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-        <select class="inp" id="bk-period-mode" aria-label="סוג תקופת דוח"><option value="month">חודש</option><option value="bimonth">חודשיים (ינואר-פברואר וכו׳)</option></select>
-        <input class="inp" id="bk-period-month" type="month" aria-label="חודש הדוח">
+        <select class="inp" id="bk-period-mode" aria-label="סוג תקופת דוח"><option value="month" ${period && period.mode === 'month' ? 'selected' : ''}>חודש</option><option value="bimonth" ${period && period.mode === 'bimonth' ? 'selected' : ''}>חודשיים (ינואר-פברואר וכו׳)</option></select>
+        <input class="inp" id="bk-period-month" type="month" aria-label="חודש הדוח" value="${period && period.month ? esc(period.month) : ''}">
         <button class="btn2" data-bk-act="period-preset">הצגת תקופה</button>
         <input class="inp" id="bk-period-from" type="date" aria-label="תחילת תקופה" value="${periodQuery ? esc(period.from) : ''}">
         <input class="inp" id="bk-period-to" type="date" aria-label="סיום תקופה" value="${periodQuery ? esc(period.to) : ''}">
@@ -221,7 +221,7 @@
           to = `${year}-${String(end).padStart(2,'0')}-${new Date(Date.UTC(year,end,0)).getUTCDate()}`;
         }
         if (!from || !to || from > to) { toast('בחרו טווח תאריכים תקין'); return; }
-        store.set(key, {from,to}); route();
+        store.set(key, {from,to,mode:val('bk-period-mode'),month:val('bk-period-month')}); route();
       } else if (act === 'source-receipt' || act === 'source-credit') {
         const current = await api(`${B}/documents`);
         const source = current.documents.find(d => d.id === id);
