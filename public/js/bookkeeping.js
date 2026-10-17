@@ -24,6 +24,19 @@
     // עוסק פטור: מסתירים סוגי חשבונית מס ובאנר הקצאה (השרת חוסם — כאן מונעים הצעה מבלבלת)
     const isMorasha = !!(sett.tenant && sett.tenant.dealer_type === 'morasha');
     const kinds = isMorasha ? KINDS : KINDS.filter(k => k[0] === 'invoice' || k[0] === 'receipt');
+    const reportYear = periodQuery ? period.from.slice(0,4) : new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric'}).format(new Date());
+    let turnoverCard = '';
+    if (!isMorasha) {
+      try {
+        const turnover = await api(`${B}/reports/exempt-turnover?year=${encodeURIComponent(reportYear)}`);
+        if (turnover.applicable) turnoverCard = `<div class="card" id="bk-exempt-turnover"><div class="sec">מחזור עוסק פטור · ${esc(turnover.year)} · מסמך דמו</div>
+          <p>מחזור: ${money(turnover.turnover)}${turnover.ceiling != null ? ` · תקרה: ${money(turnover.ceiling)} · ניצול: ${Number(turnover.percent).toFixed(1)}% · יתרה: ${money(turnover.remaining)}` : ' · התקרה לשנה זו אינה מאומתת'}</p>
+          ${turnover.warning ? `<p class="warn">${esc(turnover.warning)}</p>` : ''}
+          <p class="mut">${esc(turnover.note || '')}</p><p class="mut">בסיס החישוב: ${esc(turnover.basis || '')}</p>
+          ${/^https:\/\//.test(turnover.source_url || '') ? `<a href="${esc(turnover.source_url)}" target="_blank" rel="noopener noreferrer">מקור לתקרה</a>` : ''}</div>`;
+      } catch(e) { turnoverCard = '<div class="card"><div class="mut">דוח מחזור עוסק פטור אינו זמין כרגע.</div></div>'; }
+    }
+
     const supOpts = parties.parties.filter(p => p.kind === 'supplier' && p.active)
       .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     const expAccOpts = accs.accounts.filter(a => a.type === 'expense')
@@ -174,7 +187,7 @@
         <table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>סכום</th></tr>${pend.pending.map(d => `<tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td><td>${money(d.total)}</td></tr>`).join('')}</table>` : ''}</div>
 
     ${window.bkParties ? window.bkParties.card(parties) : ''}
-    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}${ledgerReports}</section>`;
+    ${window.bkJournal ? window.bkJournal.card(ents, accs, parties) : ''}${ledgerReports}${turnoverCard}</section>`;
   }
 
   if (typeof window.vManage === 'function'){

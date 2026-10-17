@@ -9,6 +9,7 @@ const vm = require('vm');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'bookkeeping.js'), 'utf8');
 
 function canned(pathname, dealerType){
+  if (pathname.includes('/reports/exempt-turnover?')) return { applicable:true,year:2026,turnover:'1000',ceiling:null,percent:null,remaining:null,alert:'unverified_year',note:'הערת מחזור תמיד מוצגת',basis:'posting',warning:'שנה לא מאומתת' };
   if (pathname.endsWith('/settings')) return { tenant: { dealer_type: dealerType } };
   if (pathname.endsWith('/accounts')) return { accounts: [] };
   if (pathname.endsWith('/parties')) return { parties: [] };
@@ -50,6 +51,9 @@ test('עוסק פטור: בלי חשבונית מס/חשבונית מס-קבלה
   assert.ok(!html.includes('כאשר השרת מציג המלצה'), 'באנר ההקצאה מוסתר לפטור');
   assert.ok(html.includes('value="invoice"') && html.includes('value="receipt"'), 'חשבונית עסקה וקבלה נשארות');
   assert.ok(!html.includes('id="bk-exp-vat"'), 'שדה מע״מ בטופס ההוצאה מוסתר לפטור');
+  assert.ok(html.includes('הערת מחזור תמיד מוצגת'));
+  assert.ok(html.includes('התקרה לשנה זו אינה מאומתת'));
+  assert.ok(!html.includes('ניצול: 0.0%'));
   assert.ok(html.includes('הנה״ח'), 'שבב הנה״ח מוצג לבעלים');
 });
 
