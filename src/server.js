@@ -44,6 +44,7 @@ app.use('/api/orders', require('./routes/order-reports')); // E7.T3+E9.T1: די�
 app.use('/api', require('./routes/issue-photos')); // E9.T1: תמונות תקלה
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/verify', require('./routes/verify'));
+app.use('/api/t/:slug/reminders', require('./routes/reminders')); // T84: internal inbox only
 app.use('/api/t/:slug/business-accounts', require('./routes/business'));
 app.use('/api/t/:slug', require('./routes/tenant'));
 app.use('/api/t/:slug', require('./routes/issues')); // E9.T1: טיפול מכבסה בתקלות
@@ -136,5 +137,6 @@ const PORT = process.env.PORT || 3000;
       console.log('[db] admin bootstrap done');
     }
   }
+  require('./reminders').start(); // T84: after migrations, demo only, minute scan
   const srv = app.listen(PORT, () => console.log(`[server] listening on :${srv.address().port}`));
 })().catch(e => { console.error('boot failed', e); process.exit(1); });

@@ -9,8 +9,8 @@ function renderTemplate(text, vars = {}) {
 }
 
 // רישום הודעה פנימית למשתמש (מופיעה במרכז ההודעות שלו)
-async function postUserMessage(userId, { tenantId = null, kind = 'system', title, body, data = {} }) {
-  const { rows } = await q(
+async function postUserMessage(userId, { tenantId = null, kind = 'system', title, body, data = {} }, query = q) {
+  const { rows } = await query(
     'INSERT INTO user_messages(user_id, tenant_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at',
     [userId, tenantId, kind, title, body, data]);
   return rows[0];
