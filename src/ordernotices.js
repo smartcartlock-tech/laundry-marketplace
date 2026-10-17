@@ -14,7 +14,7 @@ async function notifyCourierNewTask(courierUser, tenant, order, mode = 'assign')
     'מכבסה': tenant.name, 'כתובת': order.address,
   });
   const body = t ? t.body : `משימה חדשה: הזמנה ${order.tracking_code || order.id} ב${tenant.name}. כתובת: ${order.address}`;
-  await notifyUser(courierUser.id, tenant.id, body, courierUser.phone, t ? t.title : undefined);
+  await notifyUser(courierUser.id, tenant.id, body, courierUser.phone, t ? t.title : undefined, { url: './#/courier' }); // deep-link: לחיצה על ה-push מובילה למסך השליח
 }
 
 // בעלי/צוות המכבסה מקבלים הודעה על הזמנה חדשה שהתקבלה
