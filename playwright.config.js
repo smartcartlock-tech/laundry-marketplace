@@ -36,6 +36,7 @@ module.exports = defineConfig({
       PGSCHEMA: 'e2e',
       SEED_DEMO: 'true',
       DEMO_OTP: 'true',
+      OTP_SCREEN_CODE: 'true',
       JWT_SECRET: 'e2e-secret',
       TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '',
       GOOGLE_CLIENT_ID: '', GEMINI_API_KEY: '',

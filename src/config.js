@@ -4,4 +4,7 @@ const MODE = (process.env.APP_MODE || 'demo').trim() === 'pilot' ? 'pilot' : 'de
 // G5: בדמו — הודעות יוצאות אמיתיות (וואטסאפ/מייל) רק למספרים ברשימת ההיתר (בקשת המשתמש: מספר חיים).
 // ריק = כל השליחות בדמו מדומות בלבד. ב-pilot אין הגבלה.
 const DEMO_NOTIFY_ALLOWLIST = (process.env.DEMO_NOTIFY_ALLOWLIST || '').split(',').map(x => x.trim()).filter(Boolean);
-module.exports = { MODE, isPilot: MODE === 'pilot', isDemo: MODE === 'demo', DEMO_NOTIFY_ALLOWLIST };
+// חיים 17.10 23:38: אין להציג קוד OTP על המסך/בתגובה לאף מספר בפרוד.
+// מנגנון מבודד לסביבת test/e2e בלבד: OTP_SCREEN_CODE=true מועבר ע"י helpers/playwright בלבד.
+const SCREEN_OTP = () => MODE === 'demo' && process.env.DEMO_OTP !== 'false' && process.env.OTP_SCREEN_CODE === 'true';
+module.exports = { MODE, isPilot: MODE === 'pilot', isDemo: MODE === 'demo', DEMO_NOTIFY_ALLOWLIST, SCREEN_OTP };

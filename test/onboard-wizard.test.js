@@ -55,7 +55,7 @@ test('extract: mocked Gemini returns confidence fields end-to-end', async (t) =>
 
   const port = 5500 + (process.pid % 200) + Math.floor(Math.random() * 90);
   const schema = 'test_' + Math.random().toString(36).slice(2, 8);
-  const env = { ...process.env, DATABASE_URL: TEST_DB, PGSCHEMA: schema, SEED_DEMO: 'true', DEMO_OTP: 'true',
+  const env = { ...process.env, DATABASE_URL: TEST_DB, PGSCHEMA: schema, SEED_DEMO: 'true', DEMO_OTP: 'true', OTP_SCREEN_CODE: 'true',
     PORT: String(port), JWT_SECRET: 'test-secret', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '',
     GEMINI_API_KEY: 'fake-key', GEMINI_BASE_URL: `http://127.0.0.1:${srv.address().port}/` };
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'src', 'server.js')], { env });

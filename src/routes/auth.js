@@ -19,9 +19,9 @@ function otpMatches(row, code) {
   return row.code === code; // שורות מדור קדם (פגות תוך 10 דקות בכל מקרה)
 }
 const { limiter } = require('../ratelimit');
-const { isDemo } = require('../config');
+const { SCREEN_OTP } = require('../config');
 // A2: קוד דמו מוצג רק במצב demo — ב-pilot לעולם לא (גם אם DEMO_OTP=true ב-env)
-const DEMO_OTP = () => isDemo && process.env.DEMO_OTP !== 'false';
+const DEMO_OTP = SCREEN_OTP;
 
 function normalizeTarget(raw) {
   const t = String(raw || '').trim();
@@ -38,6 +38,39 @@ const normalizeBody = (req, res, next) => {
   next();
 };
 const ipLimit = (scope, max) => limiter(scope, max, 10 * 60 * 1000, (req) => req.ip);
+// חיים 17.10 23:38: מספרי דמו נכנסים בלי אימות כלל (בלי קוד, בלי SMS, בלי הצגת קוד).
+// רשימה סגורה בלבד — לא תבנית. מנהל מערכת (+972500000001) לא כלול: נשאר עם SMS אמיתי.
+// פעיל רק כשמנגנון קוד-על-המסך כבוי (פרוד); בסביבת בדיקות (OTP_SCREEN_CODE=true) הזרימה הרגילה נשמרת לטסטים.
+const OPEN_DEMO_LOGIN = new Set((process.env.OPEN_DEMO_LOGIN_PHONES || '+972500000002,+972500000003,+972500000004,+972500000031')
+  .split(',').map(s => s.trim()).filter(Boolean));
+// מציאת/יצירת משתמש + סשן + טוקן — משותף ל-verify ולכניסה הישירה של מספרי דמו
+async function finishLogin(target, req, res, { direct = false } = {}) {
+  const isEmail = target.includes('@');
+  let { rows: u } = isEmail
+    ? await q('SELECT * FROM users WHERE email=$1', [target])
+    : await q('SELECT * FROM users WHERE phone=$1', [target]);
+  let isNew = false;
+  if (!u[0]) {
+    // E3.T4: שיוך מקור לקוח — הרשמה מדף ממותג נרשמת כ'לקוח שלה' של אותה מכבסה
+    let signupSource = null, signupTenant = null;
+    if (req.body.signup_source === 'branded' && req.body.signup_slug) {
+      const { rows: bt } = await q('SELECT id FROM tenants WHERE slug=$1 AND approved', [req.body.signup_slug]);
+      if (bt[0]) { signupSource = 'branded'; signupTenant = bt[0].id; }
+    }
+    const ins = isEmail
+      ? await q('INSERT INTO users(email, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant])
+      : await q('INSERT INTO users(phone, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant]);
+    u = ins.rows;
+    isNew = true;
+  } else if (req.body.name && req.body.name.trim() && !u[0].name) {
+    // השלמת שם רק אם חסר — לא דורסים שם קיים של משתמש (QA2.T1)
+    const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
+    u = upd.rows;
+  }
+  const jti = await require('../sessions').createSession(req, u[0].id);
+  res.json({ ok: true, ...(direct ? { direct: true } : {}), token: sign(u[0], jti), user: publicUser(u[0]), is_new: isNew });
+}
+
 r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000), ipLimit('otp-request-ip', 30), async (req, res) => {
   if (Array.isArray(req.body.target) || (req.body.target !== undefined && typeof req.body.target !== 'string')) {
     return res.status(400).json({ error: 'target חייב להיות מחרוזת בודדת' });
@@ -46,6 +79,16 @@ r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000),
     const { kind, target } = normalizeTarget(req.body.target);
     if (!target || target.length < 5) return res.status(400).json({ error: 'מספר טלפון או אימייל לא תקין' });
     if (kind === 'phone' && !/^\+972\d{8,9}$/.test(target)) return res.status(400).json({ error: 'מספר טלפון ישראלי לא תקין' });
+    if (kind === 'phone' && OPEN_DEMO_LOGIN.has(target) && !SCREEN_OTP()) {
+      return finishLogin(target, req, res, { direct: true });
+    }
+    // חיים 17.10: מנהל המערכת (+972500000001) עם קוד קבוע מ-ADMIN_STATIC_CODE (env סודי בלבד) — בלי SMS.
+    // ה-hash נשמר ב-otp_codes כמו OTP רגיל: נעילה אחרי 3 ניסיונות, תפוגה, השוואה בזמן קבוע ב-verify.
+    if (kind === 'phone' && target === '+972500000001' && process.env.ADMIN_STATIC_CODE && !SCREEN_OTP()) {
+      await q("INSERT INTO otp_codes(channel, target, code, code_hash, expires_at) VALUES ($1,$2,$3,$4, now() + ($5 || ' minutes')::interval)",
+        ['static', target, null, hashOtp(process.env.ADMIN_STATIC_CODE), String(Number(process.env.OTP_EXPIRY_MINUTES || 5))]);
+      return res.json({ ok: true, channel: 'static' });
+    }
     const code = String(crypto.randomInt(100000, 999999));
     // A4: ספק OTP מוחלף (src/otp-provider.js) — whatsapp/בוט אם מוגדר, demo רק במצב demo
     const delivery = await sendCode(target, code, { kind, demoOtp: DEMO_OTP() });
@@ -74,30 +117,7 @@ r.post('/otp/verify', normalizeBody, limiter('otp-verify', 10, 10 * 60 * 1000), 
       return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
     }
     await q('UPDATE otp_codes SET consumed=true WHERE id=$1', [row.id]);
-    const isEmail = target.includes('@');
-    let { rows: u } = isEmail
-      ? await q('SELECT * FROM users WHERE email=$1', [target])
-      : await q('SELECT * FROM users WHERE phone=$1', [target]);
-    let isNew = false;
-    if (!u[0]) {
-      // E3.T4: שיוך מקור לקוח — הרשמה מדף ממותג נרשמת כ'לקוח שלה' של אותה מכבסה
-      let signupSource = null, signupTenant = null;
-      if (req.body.signup_source === 'branded' && req.body.signup_slug) {
-        const { rows: bt } = await q('SELECT id FROM tenants WHERE slug=$1 AND approved', [req.body.signup_slug]);
-        if (bt[0]) { signupSource = 'branded'; signupTenant = bt[0].id; }
-      }
-      const ins = isEmail
-        ? await q('INSERT INTO users(email, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant])
-        : await q('INSERT INTO users(phone, name, signup_source, signup_tenant_id) VALUES ($1,$2,$3,$4) RETURNING *', [target, req.body.name || null, signupSource, signupTenant]);
-      u = ins.rows;
-      isNew = true;
-    } else if (req.body.name && req.body.name.trim() && !u[0].name) {
-      // השלמת שם רק אם חסר — לא דורסים שם קיים של משתמש (QA2.T1)
-      const upd = await q('UPDATE users SET name=$2 WHERE id=$1 RETURNING *', [u[0].id, req.body.name.trim()]);
-      u = upd.rows;
-    }
-    const jti = await require('../sessions').createSession(req, u[0].id);
-    res.json({ token: sign(u[0], jti), user: publicUser(u[0]), is_new: isNew });
+    return finishLogin(target, req, res);
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
 

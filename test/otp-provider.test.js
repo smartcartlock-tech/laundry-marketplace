@@ -65,7 +65,7 @@ test('pilot + bot down (auto): 503, no silent demo fallback', async (t) => {
 
 test('demo + bot simulated: code shown on screen (demo keeps working)', async (t) => {
   const bot = await stubBot(t, { status: 'simulated' });
-  const { post } = await startWith(t, { APP_MODE: 'demo', BOT_OUTBOUND_URL: bot.url, BOT_OUTBOUND_KEY: 'k' });
+  const { post } = await startWith(t, { APP_MODE: 'demo', BOT_OUTBOUND_URL: bot.url, BOT_OUTBOUND_KEY: 'k', OTP_SCREEN_CODE: 'true' }); // קוד על המסך רק עם דגל הבדיקות (כלל חדש 17.10)
   const r = await post('/api/auth/otp/request', { target: '+972509920004' });
   assert.equal(r.status, 200);
   assert.match(String(r.json.demoCode), /^\d{6}$/, 'בדמו הקוד מוצג כרגיל');

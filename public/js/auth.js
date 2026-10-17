@@ -27,8 +27,9 @@ async function requestOtp(){
  try{
   const target=$('#login-target').value.trim();if(!target)return toast('הזינו טלפון או אימייל');
   const r=await api('/auth/otp/request',{method:'POST',body:JSON.stringify({target})});
+  if(r.token)return finishLogin(r); // כניסה ישירה (מספרי דמו בלבד — בלי קוד)
   $('#otp-area').innerHTML=`
-   ${r.demoCode?`<div class="warn" style="margin-top:12px">קוד הדגמה שלך: <b style="font-size:18px">${r.demoCode}</b></div>`:`<div class="note" style="margin-top:12px">קוד נשלח אליך ב${r.channel==='whatsapp'?'וואטסאפ':'אימייל'}</div>`}
+   ${r.demoCode?`<div class="warn" style="margin-top:12px">קוד הדגמה שלך: <b style="font-size:18px">${r.demoCode}</b></div>`:`<div class="note" style="margin-top:12px">${r.channel==='static'?'הזינו את קוד המנהל הקבוע':'קוד נשלח אליך ב'+(r.channel==='whatsapp'?'וואטסאפ':r.channel==='sms'?'SMS':'אימייל')}</div>`}
    <label class="lb">קוד (6 ספרות)</label>
    <input class="inp" id="login-code" inputmode="numeric" maxlength="6" placeholder="הקוד שהתקבל" autocomplete="one-time-code">
    <label class="lb">שם (בהרשמה ראשונה)</label>
@@ -36,13 +37,16 @@ async function requestOtp(){
    <button class="btn" data-act="verifyOtp">כניסה</button>`;
  }catch(e){toast(e.message)}
 }
+async function finishLogin(r){
+ state.token=r.token;state.me=r.user;state.memberships=[];state.courier=null;save();
+ if(r.is_new)toast('ברוכים הבאים למכבסה בקליק! ההרשמה הושלמה');
+ try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){}
+ const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);
+}
 async function verifyOtp(){
  try{
   const r=await api('/auth/otp/verify',{method:'POST',body:JSON.stringify({target:$('#login-target').value.trim(),code:$('#login-code').value.trim(),name:$('#login-name').value.trim(),signup_source:state.brandSlug?'branded':undefined,signup_slug:state.brandSlug||undefined})});
-  state.token=r.token;state.me=r.user;state.memberships=[];state.courier=null;save();
-  if(r.is_new)toast('ברוכים הבאים למכבסה בקליק! ההרשמה הושלמה');
-  try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save()}catch(e){}
-  const rt=store.get('returnTo','#/');store.del('returnTo');go(rt);
+  await finishLogin(r);
  }catch(e){toast(e.message)}
 }
 function needLogin(){store.set('returnTo',location.hash||'#/');return vLogin()}

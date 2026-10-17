@@ -29,6 +29,7 @@ async function startApp(t) {
     PGSCHEMA: schema,
     SEED_DEMO: 'true',
     DEMO_OTP: 'true',
+    OTP_SCREEN_CODE: 'true', // קוד על המסך רק בסביבת בדיקות
     PORT: '0',
     JWT_SECRET: 'test-secret',
     TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', TWILIO_WHATSAPP_FROM: '',

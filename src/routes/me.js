@@ -7,7 +7,7 @@ const { q, pool } = require('../db');
 const { requireAuth } = require('../auth');
 const { sendCode } = require('../otp-provider');
 const { limiter } = require('../ratelimit');
-const { isDemo } = require('../config');
+const { SCREEN_OTP } = require('../config');
 const { sendWhatsApp, notifyUser } = require('../notify');
 
 const r = express.Router();
@@ -16,7 +16,7 @@ const r = express.Router();
 const OTP_HMAC_KEY = () => process.env.OTP_SECRET || process.env.JWT_SECRET || 'dev-insecure-secret';
 const hashOtp = (code) => crypto.createHmac('sha256', OTP_HMAC_KEY()).update(String(code)).digest('hex');
 // A2: קוד דמו מוצג רק במצב demo — ב-pilot לעולם לא
-const DEMO_OTP = () => isDemo && process.env.DEMO_OTP !== 'false';
+const DEMO_OTP = SCREEN_OTP;
 
 /* ---------- G17.T7: מפות המחיקה/השמירה — מכוסות בטסט (רשימת טבלאות מלאה) ---------- */
 // טבלאות שנמחקות לחלוטין במחיקת חשבון (user_id או יעד טלפון/אימייל)

@@ -6,7 +6,7 @@ const { q } = require('../db');
 const { requireAuth } = require('../auth');
 const { sendCode } = require('../otp-provider');
 const { limiter } = require('../ratelimit');
-const { isDemo } = require('../config');
+const { SCREEN_OTP } = require('../config');
 
 const r = express.Router();
 r.use(requireAuth);
@@ -20,7 +20,7 @@ function otpMatches(row, code) {
   }
   return row.code === code;
 }
-const DEMO_OTP = () => isDemo && process.env.DEMO_OTP !== 'false';
+const DEMO_OTP = SCREEN_OTP;
 
 function normalize(kind, raw) {
   const t = String(raw || '').trim();
