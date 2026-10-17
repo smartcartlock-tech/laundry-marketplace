@@ -1,6 +1,6 @@
 /* ---- C4: הסכמה לתנאי שימוש ומדיניות פרטיות בצ'ק-אאוט ראשון ----
    מזריק צ'קבוקס מעל כפתור האישור כשהמשתמש טרם אישר, וחוסם שליחה בלעדיו.
-   (הקישורים לדפי המדיניות יתווספו כשהדפים יפורסמו — כרגע טיוטה, רק טקסט.) */
+   G17.T5: הקישורים חיים — /terms ו-/privacy סטטיים (מסומני דמו), נפתחים בטאב חדש. */
 (function(){
  let need=null; // null = עוד לא נבדק
  async function refresh(){
@@ -16,7 +16,7 @@
   w.id='co-consent-wrap';w.className='card';
   w.innerHTML='<label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;cursor:pointer">'
    +'<input type="checkbox" id="co-consent" style="margin-top:3px">'
-   +'<span>קראתי ואני מסכים/ה לתנאי השימוש ולמדיניות הפרטיות של השירות</span></label>';
+   +'<span>קראתי ואני מסכים/ה ל<a href="/terms" target="_blank" rel="noopener">תנאי השימוש</a> ול<a href="/privacy" target="_blank" rel="noopener">מדיניות הפרטיות</a> של השירות (טיוטת דמו)</span></label>';
   btn.before(w);
  }
  function wrap(){
@@ -37,4 +37,13 @@
  wrap();
  new MutationObserver(function(){wrap();inject()}).observe(document.body,{childList:true,subtree:true});
  document.addEventListener('DOMContentLoaded',inject);
+})();
+
+/* G17.T6/T7: טעינת מודול מחיקת החשבון המחוזקת (OTP + מסך מה נשמר).
+   נטען דינמית ולא מתג ב-index.html: sw-guard דורש שכל תג יהיה ב-precache של sw.js,
+   ו-sw.js בבעלות G בלבד — המודול דורש רשת בכל מקרה, לכן לא צריך precache. */
+(function(){
+ const s=document.createElement('script');
+ s.src='/js/account-deletion.js';
+ document.body.appendChild(s);
 })();
