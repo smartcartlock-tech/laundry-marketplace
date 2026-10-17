@@ -198,7 +198,7 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   line(pdf, tenant.name);
   pdf.font('he').fontSize(10).fillColor('#444');
   const dealerBits = [];
-  if (tenant.dealer_id) dealerBits.push(`ח.פ/ע.מ: \u2066${tenant.dealer_id}\u2069`);
+  if (tenant.dealer_id) dealerBits.push(`ח.פ/ע.מ: ${tenant.dealer_id}`);
   if (tenant.dealer_type) dealerBits.push(tenant.dealer_type === 'morasha' ? 'עוסק מורשה' : 'עוסק פטור');
   line(pdf, [tenant.address, tenant.city].filter(Boolean).join(', ') + (dealerBits.length ? ' · ' + dealerBits.join(' · ') : ''));
 
