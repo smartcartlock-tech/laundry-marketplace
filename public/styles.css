@@ -182,4 +182,6 @@ html.dark .stars{filter:invert(1) hue-rotate(180deg)}
   input[type="checkbox"]:disabled{opacity:.45}
   input[type="checkbox"]+label{position:relative;display:inline-block}
   input[type="checkbox"]+label::before{content:'';position:absolute;inset:-12px -14px}
+  /* T85: רשימת הפריטים של איסוף קבוע — ביטול תיבת ה-40px הגלובלית שמכסה את שמות הפריטים במובייל */
+  input[type="checkbox"].rp-item{padding:2px;margin:0;width:18px;height:18px}
 }

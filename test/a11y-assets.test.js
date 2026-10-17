@@ -44,6 +44,10 @@ test('a11y.js: טפסי ניהול (פריט/חלון/קופון) — aria-inval
   assert.match(pub('styles.css'), /\.field-err/, 'error style exists');
 });
 
+test('styles.css: T85 — צ\'קבוקסי rp-item פטורים מההגדלה הגלובלית במובייל', () => {
+  assert.match(pub('styles.css'), /input\[type="checkbox"\]\.rp-item\{padding:2px;margin:0/, 'rp-item override exists');
+});
+
 test('styles.css: מצב כהה — כוכבים מקבלים היפוך חוזר לניגודיות', () => {
   assert.match(pub('styles.css'), /html\.dark \.stars\{filter:invert/, 'stars re-inverted in dark mode');
 });
