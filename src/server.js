@@ -46,6 +46,8 @@ app.use('/api', require('./routes/issue-photos')); // E9.T1: תמונות תקל
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/verify', require('./routes/verify'));
 app.use('/api/t/:slug/reminders', require('./routes/reminders')); // T84: internal inbox only
+app.use('/api/t/:slug/recurring-pickup', require('./routes/recurring-pickup').tenantRouter); // T85: איסוף קבוע לצרכן
+app.use('/api/me/recurring-pickups', require('./routes/recurring-pickup').meRouter); // T85
 app.use('/api/t/:slug/business-accounts', require('./routes/business'));
 app.use('/api/t/:slug', require('./routes/tenant'));
 app.use('/api/t/:slug', require('./routes/issues')); // E9.T1: טיפול מכבסה בתקלות
@@ -107,7 +109,10 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 // eslint-disable-next-line no-unused-vars
 // E4.T2: job הזמנות חוזרות — רץ בהפעלה ואחת לשעה (שרת יחיד ב-Render)
 const { generateDueOrders } = require('./recurring');
-const runRecurring = () => generateDueOrders(require('./db').q).catch(e => console.error('[recurring]', e.message));
+const { generateDueConsumerPickups } = require('./consumer-recurring'); // T85
+const runRecurring = () => generateDueOrders(require('./db').q)
+  .then(() => generateDueConsumerPickups(require('./db').q))
+  .catch(e => console.error('[recurring]', e.message));
 const { issueMonthlyInvoices } = require('./billing');
 require('./retention').startRetention(); // C3: מחיקת נתונים שפגו/ישנים
 require('./backup-crypto').startDailyBackup(); // גיבוי יומי מוצפן
