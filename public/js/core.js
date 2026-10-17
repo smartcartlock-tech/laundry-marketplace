@@ -30,7 +30,7 @@ async function applyBrandTheme(slug){
   const mf=document.querySelector('link[rel=manifest]');if(mf)mf.href='/api/laundries/'+slug+'/manifest.webmanifest';
  }catch(e){}
 }
-function save(){store.set('token',state.token);store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier);syncCartCloud()}
+function save(){if(state.token)store.set('token',state.token);else store.del('token');store.set('me',state.me);store.set('cart',state.cart);store.set('memberships',state.memberships);store.set('courier',state.courier);syncCartCloud()} /* T78: טוקן null נמחק מהאחסון (לא "null") */
 /* E14.T1: עגלה בענן — דחיפה מדולדלת אחרי כל שינוי סל (מחוברים בלבד) */
 let cartSyncTimer=null;
 function syncCartCloud(){

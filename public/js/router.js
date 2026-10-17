@@ -91,7 +91,7 @@ window.addEventListener('storage',e=>{
 });
 (async()=>{
  try{state.cfg=await api('/config')}catch(e){state.cfg={}}
- if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save();await adoptCloudCart()}catch(e){state.token=null;state.me=null;save()}}
+ if(state.token){try{const me=await api('/auth/me');state.me=me.user;state.memberships=me.memberships||[];state.courier=me.courier||null;save();await adoptCloudCart()}catch(e){if(e&&e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();toast('פג תוקף החיבור — התחברו שוב')}/* T78: תקלה זמנית (רשת/שרת) — הטוקן נשמר, ה-route יציג שגיאה במקום ניתוק שקט */}}
  route();
 })();
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
