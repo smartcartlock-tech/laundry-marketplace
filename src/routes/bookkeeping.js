@@ -11,13 +11,20 @@ const multer = require('multer');
 const { fileFilter, verifyFile, IMAGES } = require('../uploads');
 
 const r = express.Router({ mergeParams: true });
-r.use(requireAuth, requireTenantOwner, loadTenant);
+r.use(requireAuth, requireTenantOwner, loadTenant, requireBookOwner);
 
 // טעינת הטננט ל-req.tenant אחרי בדיקת ההרשאה המשותפת
 async function loadTenant(req, res, next) {
   const { rows } = await q('SELECT * FROM tenants WHERE slug=$1', [req.params.slug]);
   if (!rows[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
   req.tenant = rows[0];
+  next();
+}
+
+// T66: no platform-admin override for private books. Actual owner membership is required.
+async function requireBookOwner(req, res, next) {
+  const { rows } = await q("SELECT 1 FROM tenant_members WHERE tenant_id=$1 AND user_id=$2 AND role='owner'", [req.tenant.id, req.user.id]);
+  if (!rows[0]) return res.status(403).json({ error: 'ספרי הנהלת חשבונות זמינים לבעל המכבסה בלבד' });
   next();
 }
 
