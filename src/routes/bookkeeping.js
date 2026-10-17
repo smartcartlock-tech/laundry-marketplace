@@ -205,9 +205,13 @@ r.post('/bookkeeping/entries', async (req, res) => {
 r.post('/bookkeeping/entries/:id/reverse', async (req, res) => {
   const tid = req.tenant.id;
   const { rows: orig } = await q(
-    `SELECT e.id, e.entry_no, e.entry_date, e.description FROM bk_entries e
+    `SELECT e.id, e.entry_no, e.entry_date, e.description, e.source FROM bk_entries e
      WHERE e.id=$1 AND e.tenant_id=$2`, [req.params.id, tid]);
   if (!orig[0]) return res.status(404).json({ error: 'פקודה לא נמצאה' });
+  // T42: bypassing the originating workflow would leave an issued/posted object inconsistent.
+  if (['invoice', 'expense', 'bank'].includes(orig[0].source)) {
+    return res.status(409).json({ error: 'פקודה מקושרת למסמך, הוצאה או בנק. יש להשתמש בזיכוי/ביטול דרך רשומת המקור', code: 'USE_SOURCE_REVERSAL' });
+  }
   const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
   if (await periodClosed(tid, todayIL)) return res.status(409).json({ error: 'התקופה הנוכחית סגורה — לא ניתן לבצע סטורנו' });
   const { rows: dup } = await q(`SELECT 1 FROM bk_entries WHERE reversal_of=$1`, [orig[0].id]);
