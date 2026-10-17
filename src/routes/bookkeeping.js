@@ -243,25 +243,61 @@ r.post('/bookkeeping/entries/:id/reverse', async (req, res) => {
 });
 
 // --- מאזן בוחן ---
-r.get('/bookkeeping/trial-balance', async (req, res) => {
-  let { from, to } = req.query || {};
-  if (from && !DATE_RE.test(from)) return res.status(400).json({ error: 'תאריך from לא תקין' });
-  if (to && !DATE_RE.test(to)) return res.status(400).json({ error: 'תאריך to לא תקין' });
-  const { rows } = await q(
-    `SELECT a.code, a.name_he, a.type,
-            COALESCE(sum(l.debit),0)::numeric(12,2) AS debit,
-            COALESCE(sum(l.credit),0)::numeric(12,2) AS credit
-     FROM bk_accounts a
-     LEFT JOIN bk_lines l ON l.account_id = a.id AND l.tenant_id = a.tenant_id
-     LEFT JOIN bk_entries e ON e.id = l.entry_id
-     WHERE a.tenant_id=$1 AND a.active
-       ${from ? 'AND (e.entry_date >= $2 OR e.id IS NULL)' : ''}
-       ${to ? `AND (e.entry_date <= $${from ? 3 : 2} OR e.id IS NULL)` : ''}
-     GROUP BY a.id ORDER BY a.code`,
-    [req.tenant.id, ...(from ? [from] : []), ...(to ? [to] : [])]);
-  const totals = rows.reduce((t, x) => ({ d: t.d + Number(x.debit), c: t.c + Number(x.credit) }), { d: 0, c: 0 });
-  res.json({ accounts: rows, totals: { debit: totals.d.toFixed(2), credit: totals.c.toFixed(2), balanced: Math.abs(totals.d - totals.c) < 0.005 } });
+async function detailedTrial(tid, from, to) {
+  const { rows } = await q(`SELECT a.code,a.name_he,a.type,
+    COALESCE(sum(l.debit-l.credit) FILTER (WHERE e.entry_date < $2),0)::numeric(14,2) AS opening_balance,
+    COALESCE(sum(l.debit) FILTER (WHERE e.entry_date BETWEEN $2 AND $3),0)::numeric(14,2) AS debit,
+    COALESCE(sum(l.credit) FILTER (WHERE e.entry_date BETWEEN $2 AND $3),0)::numeric(14,2) AS credit
+    FROM bk_accounts a LEFT JOIN bk_lines l ON l.account_id=a.id AND l.tenant_id=a.tenant_id
+    LEFT JOIN bk_entries e ON e.id=l.entry_id AND e.tenant_id=l.tenant_id
+    WHERE a.tenant_id=$1 GROUP BY a.id ORDER BY a.code`,[tid,from,to]);
+  return rows.map(r=>({...r, closing_balance:(Number(r.opening_balance)+Number(r.debit)-Number(r.credit)).toFixed(2)}));
+}
+r.get('/bookkeeping/trial-balance', async (req,res)=>{
+  const p=dateRange(req);if(p.error)return res.status(400).json({error:p.error});
+  // Legacy no-range caller expects full-book movement, not current-year movement.
+  const from=req.query.from || '0001-01-01';
+  const accounts=await detailedTrial(req.tenant.id,from,p.to);
+  const sum=key=>accounts.reduce((v,a)=>v+Number(a[key]),0);
+  const d=sum('debit'),c=sum('credit');
+  res.json({from,to:p.to,accounts,totals:{debit:d.toFixed(2),credit:c.toFixed(2),opening_balance:sum('opening_balance').toFixed(2),closing_balance:sum('closing_balance').toFixed(2),balanced:Math.abs(d-c)<0.005 && Math.abs(sum('closing_balance'))<0.005}});
 });
+r.get('/bookkeeping/reports/balance-sheet',async(req,res)=>{
+  const p=dateRange(req);if(p.error)return res.status(400).json({error:p.error});
+  const accounts=await detailedTrial(req.tenant.id,'0001-01-01',p.to);
+  const select=type=>accounts.filter(a=>a.type===type).map(a=>({...a,balance:(Number(a.closing_balance)*(type==='asset'?1:-1)).toFixed(2)}));
+  const assets=select('asset'),liabilities=select('liability'),equity=select('equity');
+  const total=rs=>rs.reduce((v,a)=>v+Number(a.balance),0);
+  const retained=accounts.filter(a=>['income','expense'].includes(a.type)).reduce((v,a)=>v-Number(a.closing_balance),0);
+  res.json({as_of:p.to,assets,liabilities,equity,accumulated_profit:retained.toFixed(2),totals:{assets:total(assets).toFixed(2),liabilities:total(liabilities).toFixed(2),equity:(total(equity)+retained).toFixed(2),balanced:Math.abs(total(assets)-total(liabilities)-total(equity)-retained)<0.005}});
+});
+
+// T47/T69: account and party ledgers. Debit-positive running balance; supplier aging is credit-positive.
+async function ledgerResponse(req,res,party) {
+  const p=dateRange(req);if(p.error)return res.status(400).json({error:p.error});
+  const tid=req.tenant.id;
+  const {rows:[entity]}=await q(party?'SELECT id,kind,name FROM bk_parties WHERE id::text=$1 AND tenant_id=$2':'SELECT id,code,name_he,type FROM bk_accounts WHERE code=$1 AND tenant_id=$2',[party?req.params.id:req.params.code,tid]);
+  if(!entity)return res.status(404).json({error:party?'כרטיס לא נמצא':'חשבון לא נמצא'});
+  const {rows}=await q(`SELECT l.id,e.id AS entry_id,e.entry_no,e.entry_date,e.description,e.source,l.debit,l.credit,a.code AS account_code
+    FROM bk_lines l JOIN bk_entries e ON e.id=l.entry_id AND e.tenant_id=l.tenant_id
+    JOIN bk_accounts a ON a.id=l.account_id AND a.tenant_id=l.tenant_id
+    WHERE l.tenant_id=$1 AND ${party?"l.party_id=$2 AND a.code IN ('1020','2000')":"l.account_id=$2"} AND e.entry_date <= $3
+    ORDER BY e.entry_date,e.entry_no,l.id`,[tid,entity.id,p.to]);
+  let balance=0,opening=0;const movements=[];
+  for(const l of rows){balance+=Number(l.debit)-Number(l.credit);if(l.entry_date.toISOString().slice(0,10)<p.from){opening=balance;}else movements.push({...l,running_balance:balance.toFixed(2)});}
+  const out={from:p.from,to:p.to,opening_balance:opening.toFixed(2),closing_balance:balance.toFixed(2),movements};
+  if(party){
+    // FIFO netting of credits against oldest charges, explicitly aged by posting date (no due-date data).
+    const sign=entity.kind==='supplier'?-1:1;let credits=0;const charges=[];
+    for(const l of rows){const delta=(Number(l.debit)-Number(l.credit))*sign;if(delta>0)charges.push({date:l.entry_date,amount:delta});else credits-=delta;}
+    const buckets={'0_30':0,'31_60':0,'61_90':0,'over_90':0};
+    for(const charge of charges){const applied=Math.min(credits,charge.amount);credits-=applied;const unpaid=charge.amount-applied;const days=Math.floor((Date.parse(p.to+'T00:00:00Z')-new Date(charge.date).getTime())/86400000);const key=days<=30?'0_30':days<=60?'31_60':days<=90?'61_90':'over_90';buckets[key]+=unpaid;}
+    out.party=entity;out.aging={as_of:p.to,basis:'posting_date_fifo',note:'גיול לפי תאריך רישום וזקיפת תשלומים לחוב הישן תחילה, לא לפי מועד פירעון',buckets:Object.fromEntries(Object.entries(buckets).map(([k,v])=>[k,v.toFixed(2)])),unapplied_credit:credits.toFixed(2),balance:(balance*sign).toFixed(2)};
+  }else out.account=entity;
+  res.json(out);
+}
+r.get('/bookkeeping/parties/:id/ledger',(req,res)=>ledgerResponse(req,res,true));
+r.get('/bookkeeping/accounts/:code/ledger',(req,res)=>ledgerResponse(req,res,false));
 
 // --- סגירת תקופה ---
 r.post('/bookkeeping/periods/close', async (req, res) => {
@@ -563,6 +599,20 @@ r.get('/bookkeeping/documents', async (req, res) => {
   res.json({ documents: rows.map(d => ({ ...d, kind_he: DOC_KINDS[d.kind].he, status_he: docStatusHe(d), ...allocationAdvice(d, d.issue_date ? d.issue_date.toISOString().slice(0,10) : undefined) })) });
 });
 
+// T14: same E12 PDF template, permanent demo mark, no public verification URL for bk records.
+r.get('/bookkeeping/documents/:id/pdf',async(req,res)=>{
+  const {rows:[d]}=await q('SELECT * FROM bk_documents WHERE id::text=$1 AND tenant_id=$2',[req.params.id,req.tenant.id]);
+  if(!d)return res.status(404).json({error:'מסמך לא נמצא'});
+  if(d.status!=='issued')return res.status(409).json({error:'ניתן להוריד מסמך מונפק בלבד'});
+  const {rows:ls}=await q('SELECT description,quantity,unit_price FROM bk_document_lines WHERE document_id=$1 AND tenant_id=$2 ORDER BY id',[d.id,req.tenant.id]);
+  let note='מסמך דמו בלבד. מספר הקצאה ידני אינו מאומת מול רשות המסים.';
+  if(d.source_document_id){const {rows:[src]}=await q('SELECT kind,doc_year,doc_number FROM bk_documents WHERE id=$1 AND tenant_id=$2',[d.source_document_id,req.tenant.id]);if(src)note+=` מקור: ${DOC_KINDS[src.kind].he} ${src.doc_year}-${src.doc_number}`;}
+  const {buildDocumentPDF,collectPdf}=require('../receipt');
+  const pdf=buildDocumentPDF({doc:{...d,amount:d.amount_net,vat:d.vat_amount,total:Number(d.amount_net)+Number(d.vat_amount),issued_at:d.issue_date},tenant:req.tenant,customer:{name:d.customer_name},items:ls.map(l=>({name:l.description,qty:l.quantity,price:l.unit_price})),copy:true,note});
+  const buf=await collectPdf(pdf);
+  res.type('application/pdf').set('Content-Disposition',`attachment; filename="bookkeeping-${d.doc_year}-${d.doc_number}.pdf"`).send(buf);
+});
+
 // הזנת מספר הקצאה ידנית — הבעלים מעתיק מהאזור האישי ברשות (אין קריאה אוטומטית לרשות)
 r.post('/bookkeeping/documents/:id/allocate', async (req, res) => {
   const num = String((req.body || {}).allocation_number || '').replace(/[^0-9]/g, '');
@@ -825,6 +875,8 @@ function dateRange(req) {
   const nowIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
   if (!from) from = `${nowIL.getFullYear()}-01-01`;
   if (!to) to = nowIL.toISOString().slice(0, 10);
+  if (from > to) return {error:'תאריך התחלה מאוחר מתאריך הסיום'};
+  for(const d of [from,to]) { const parsed=new Date(d+'T00:00:00Z'); if(!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10)!==d)return {error:'תאריך לא תקין'}; }
   return { from, to };
 }
 

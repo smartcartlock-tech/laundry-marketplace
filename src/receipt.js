@@ -151,7 +151,7 @@ module.exports = { buildReceiptPDF, drawRtl, splitRuns };
 
 // E12.T2: PDF למסמך חשבונאי (חשבונית עסקה / קבלה / זיכוי) — כולל חותמת דמו תמידית
 // עד לרישום התוכנה ברשות המסים, וסימון "העתק" בהפקה חוזרת.
-const KIND_TITLE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
+const KIND_TITLE = { tax_invoice: 'חשבונית מס', tax_invoice_receipt: 'חשבונית מס/קבלה', credit_note: 'חשבונית מס זיכוי', invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
 const bwipjs = require('bwip-js');
 const APP_BASE_URL = process.env.APP_BASE_URL || 'https://laundry-marketplace-ay5h.onrender.com';
 

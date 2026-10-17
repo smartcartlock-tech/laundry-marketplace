@@ -12,16 +12,16 @@ const TENANT_GETS = [
   '/settlement/sequence-check', '/settlement/monthly-summary.pdf', '/settlement/accountant-export.csv',
   '/export/orders.csv', '/export/customers.csv', '/export/courier-payments.csv',
   '/business-accounts', '/financials', '/analytics', '/reports',
-  '/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries',
+  '/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/accounts/1020/ledger', '/bookkeeping/parties/x/ledger', '/bookkeeping/reports/balance-sheet', '/bookkeeping/entries',
   '/bookkeeping/trial-balance', '/bookkeeping/periods',
-  '/bookkeeping/expenses', '/bookkeeping/expenses/x/file', '/bookkeeping/documents',
+  '/bookkeeping/expenses', '/bookkeeping/expenses/x/file', '/bookkeeping/documents', '/bookkeeping/documents/x/pdf',
   '/bookkeeping/bank/transactions', '/bookkeeping/bank/reconciliation',
   '/bookkeeping/reports/pnl', '/bookkeeping/reports/vat', '/bookkeeping/reports/pending-allocation',
   '/bookkeeping/accountant-export.csv',
   '/bookkeeping/uniform-export', '/bookkeeping/uniform-export/x/ini', '/bookkeeping/uniform-export/x/bkmv',
 ];
 // מודול הנה"ח (K) — בדיקה שגם staff (חבר, לא בעלים) נדחה, לא רק זר
-const BOOKKEEPING_GETS = ['/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/entries', '/bookkeeping/trial-balance', '/bookkeeping/periods'];
+const BOOKKEEPING_GETS = ['/bookkeeping/accounts', '/bookkeeping/parties', '/bookkeeping/accounts/1020/ledger', '/bookkeeping/parties/x/ledger', '/bookkeeping/reports/balance-sheet', '/bookkeeping/entries', '/bookkeeping/trial-balance', '/bookkeeping/periods'];
 const BOOKKEEPING_WRITES = [['POST', '/bookkeeping/init'], ['POST', '/bookkeeping/accounts'], ['POST', '/bookkeeping/parties'], ['POST', '/bookkeeping/entries'], ['POST', '/bookkeeping/periods/close']];
 
 const TENANT_WRITES = [
