@@ -17,6 +17,8 @@
     const s=document.createElement('script');
     s.src='/vendor/leaflet/leaflet.js';
     s.onload=()=>{
+     // אייקון מפורש עם נתיבים מוחלטים — Icon.Default משחר imagePath שזוהה אוטומטית ל-iconUrl ומייצר URL כפול
+     L.Icon.Default.imagePath='';
      L.Icon.Default.mergeOptions({
       iconUrl:'/vendor/leaflet/images/marker-icon.png',
       iconRetinaUrl:'/vendor/leaflet/images/marker-icon-2x.png',
@@ -55,7 +57,7 @@
   try{await loadLeaflet()}catch(e){card.style.display='none';return}
   const map=L.map('tr-map-canvas',{attributionControl:false});
   L.tileLayer('/api/tracking/tiles/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-  const marker=L.marker([32.08,34.78]).addTo(map);
+  const marker=L.marker([32.08,34.78],{icon:L.icon({iconUrl:'/vendor/leaflet/images/marker-icon.png',iconRetinaUrl:'/vendor/leaflet/images/marker-icon-2x.png',shadowUrl:'/vendor/leaflet/images/marker-shadow.png',iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]})}).addTo(map);
   const circle=L.circle([32.08,34.78],{radius:0}).addTo(map);
   let placed=false;
   async function refresh(){

@@ -80,11 +80,11 @@
    try{await L('/threads/'+cur.id+'/close',{method:'POST'});toast('השרשור נסגר');refresh()}catch(e){toast(e.message)}
   },
   // לקוח: פתיחת צ'אט מהזמנה (a=slug, b=orderId) או שרשור קיים (a=threadId, b=שם מכבסה)
-  scOrder:async(a,b)=>{try{const d=await L('/threads',{method:'POST',body:JSON.stringify({slug:a,order_id:b||undefined})});openOverlay(d.thread.id,'customer')}catch(e){toast(e.message)}},
-  scOpenThread:(a,b)=>openOverlay(a,'customer',b),
-  // מכבסה/אדמין: פתיחת שרשור מהתיבה (a=threadId, b=כותרת)
-  scOpenManage:(a,b)=>openOverlay(a,'laundry',b),
-  scOpenAdmin:(a,b)=>openOverlay(a,'admin',b),
+  scOrder:async(t)=>{const a=t.dataset.a,b=t.dataset.b;try{const d=await L('/threads',{method:'POST',body:JSON.stringify({slug:a,order_id:b||undefined})});openOverlay(d.thread.id,'customer')}catch(e){toast(e.message)}},
+  scOpenThread:t=>openOverlay(t.dataset.a,'customer',t.dataset.b),
+  // מכבסה/אדמין: פתיחת שרשור מהתיבה (data-a=threadId, data-b=כותרת)
+  scOpenManage:t=>openOverlay(t.dataset.a,'laundry',t.dataset.b),
+  scOpenAdmin:t=>openOverlay(t.dataset.a,'admin',t.dataset.b),
   scNewChat:async()=>{
    const sel=document.getElementById('sc-laund');if(!sel||!sel.value)return toast('בחרו מכבסה');
    try{const d=await L('/threads',{method:'POST',body:JSON.stringify({slug:sel.value})});openOverlay(d.thread.id,'customer',sel.options[sel.selectedIndex].textContent)}catch(e){toast(e.message)}
