@@ -30,10 +30,15 @@
     const docRows = docs.documents.map(d => `
       <tr><td>${esc(d.kind_he)}</td><td>${esc(d.customer_name)}</td>
         <td>${d.doc_number ? d.doc_year + '-' + d.doc_number : '—'}</td>
-        <td>${money(d.total)}</td><td>${pill(d.status_he, d.status === 'issued')}</td>
+        <td>${money(d.total)}${d.paid_amount && Number(d.paid_amount) > 0 ? `<div class="mut">שולם ${money(d.paid_amount)}</div>` : ''}</td><td>${pill(d.status_he, d.status === 'issued')}
+          ${d.fully_credited ? '<div class="mut">זוכה במלואו</div>' : ''}
+          ${d.source_document_id ? `<div class="mut">מקור: ${esc((docs.documents.find(x => x.id === d.source_document_id) || {}).doc_number || d.source_document_id)}</div>` : ''}
+          ${d.allocation_number ? `<div class="mut">מספר הקצאה: <b dir="ltr">${esc(d.allocation_number)}</b><br>הוזן ידנית · לא מאומת מול רשות המסים</div>` : ''}</td>
         <td>${d.status === 'draft' && !d.has_allocation && d.kind.startsWith('tax')
             ? `<input class="inp" id="bk-alloc-${d.id}" placeholder="מספר הקצאה" style="width:110px">
                <button class="btn2" data-bk-act="allocate" data-id="${d.id}">הזנה</button>` : ''}
+            ${d.status === 'issued' && ['invoice','tax_invoice'].includes(d.kind) && !d.fully_credited && Number(d.total) - Number(d.paid_amount || 0) > 0.004 ? `<button class="btn2" data-bk-act="source-receipt" data-id="${d.id}">קבלה לתשלום</button>` : ''}
+            ${isMorasha && d.status === 'issued' && ['invoice','tax_invoice','tax_invoice_receipt'].includes(d.kind) && !d.fully_credited ? `<button class="btn2" data-bk-act="source-credit" data-id="${d.id}">זיכוי מלא (330)</button>` : ''}
             ${d.status === 'draft' ? `<button class="btn2 on" data-bk-act="issue" data-id="${d.id}">הנפקה</button>
               <button class="btn2" data-bk-act="cancel-doc" data-id="${d.id}">ביטול</button>` : ''}</td></tr>`).join('');
 
@@ -185,8 +190,28 @@
     const m = mems.find(x => x.slug === store.get('lastTenant','')) || mems[0];
     if (!m) return;
     const B = `/t/${m.slug}/bookkeeping`;
+    if (btn.disabled) return;
+    btn.disabled = true;
     try{
-      if (act === 'create-doc'){
+      if (act === 'source-receipt' || act === 'source-credit') {
+        const current = await api(`${B}/documents`);
+        const source = current.documents.find(d => d.id === id);
+        if (!source || source.status !== 'issued' || source.fully_credited) { toast('מסמך המקור אינו זמין לתשלום או לזיכוי'); return; }
+        const credit = act === 'source-credit';
+        const remaining = Math.round((Number(source.total) - Number(source.paid_amount || 0)) * 100) / 100;
+        let amount = Number(source.amount_net);
+        if (credit) {
+          if (!await xconfirm(`ליצור טיוטת זיכוי מלא למסמך ${esc(source.doc_year)}-${esc(source.doc_number)} על סך ${money(source.total)}? מסמך דמו בלבד. המקור נשאר בספר.`)) return;
+        } else {
+          if (remaining <= 0) { toast('לא נותרה יתרה לתשלום'); return; }
+          const input = await xmodal({ title: 'קבלה לתשלום · מסמך דמו', body: `מסמך ${esc(source.doc_year)}-${esc(source.doc_number)} · יתרה ${money(remaining)}. תיווצר טיוטה בלבד, ללא גביית כסף.`, fields: [{id:'amount', label:'סכום התשלום הכולל', type:'number', value:String(remaining)}], okText:'יצירת טיוטה' });
+          if (!input) return;
+          amount = Number(input.amount);
+          if (!Number.isFinite(amount) || amount <= 0 || amount > remaining + 0.004) { toast('סכום התשלום חייב להיות חיובי ועד היתרה'); return; }
+        }
+        await api(`${B}/documents`, { method:'POST', body:JSON.stringify({ kind:credit ? 'credit_note':'receipt', source_document_id:id, customer_name:source.customer_name, amount_net:amount, vat_amount:credit ? Number(source.vat_amount):0, notes:'מסמך דמו' }) });
+        toast('טיוטה מקושרת נוצרה · מסמך דמו'); route();
+      } else if (act === 'create-doc'){
         const body = { kind: val('bk-doc-kind'), customer_name: val('bk-doc-cust'), amount_net: Number(val('bk-doc-net')), vat_amount: Number(val('bk-doc-vat') || 0) };
         await api(`${B}/documents`, { method: 'POST', body: JSON.stringify(body) }); toast('טיוטה נוצרה'); route();
       } else if (act === 'allocate'){
@@ -245,5 +270,6 @@
         downloadCsv(`${B}/uniform-export/${id}/bkmv`, 'BKMVDATA.zip');
       }
     }catch(e){ toast(e.message || 'שגיאה'); }
+    finally { btn.disabled = false; }
   });
 })();

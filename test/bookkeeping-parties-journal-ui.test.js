@@ -49,7 +49,7 @@ function canned(pathname){
   ] };
   if (pathname.endsWith('/parties')) return PARTIES;
   if (pathname.endsWith('/entries')) return ENTRIES;
-  if (pathname.endsWith('/documents')) return { documents: [] };
+  if (pathname.endsWith('/documents')) return { documents: [{ id:'doc-demo',kind:'tax_invoice',kind_he:'חשבונית מס',customer_name:'לקוח דמו',status:'issued',status_he:'הונפק',doc_year:2026,doc_number:3,total:118,amount_net:100,vat_amount:18,allocation_number:'123456789',allocation_verification_status:'manual_unverified',paid_amount:20 }] };
   if (pathname.endsWith('/expenses')) return { expenses: [] };
   if (pathname.endsWith('/bank/transactions')) return { transactions: [] };
   if (pathname.endsWith('/trial-balance')) return { totals: { balanced: true } };
@@ -88,6 +88,8 @@ test('רינדור: כרטיס כרטיסים + כרטיס יומן מצורפי
   vm.runInContext(SRC_BK, sb); vm.runInContext(SRC_PARTIES, sb); vm.runInContext(SRC_JOURNAL, sb);
   const html = await sb.window.vManage('bookkeeping');
   // T3 — כרטיסים
+  assert.ok(html.includes('123456789') && html.includes('לא מאומת מול רשות המסים'));
+  assert.ok(html.includes('data-bk-act="source-credit"') && html.includes('data-bk-act="source-receipt"'));
   assert.ok(html.includes('id="bk-parties-card"'), 'כרטיס הכרטיסים מצורף');
   assert.ok(html.includes('ספק בדיקה') && html.includes('לקוח בדיקה'), 'שורות כרטיסים מוצגות');
   assert.ok(html.includes('id="bk-p-search"'), 'שדה חיפוש קיים');
