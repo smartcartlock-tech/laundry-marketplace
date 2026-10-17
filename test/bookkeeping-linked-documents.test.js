@@ -1,0 +1,43 @@
+process.env.NODE_ENV='test';
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const {startApp,TEST_DB}=require('./helpers');const {Pool}=require('pg');
+test('T40/T2 linked partial payments and full credit note remain balanced and tenant-scoped',async t=>{
+ const {api,schema}=await startApp(t);const owner=await api.login('+972500000003');const B='/api/t/achuza/bookkeeping';
+ const pool=new Pool({connectionString:TEST_DB,options:`-c search_path=${schema},public`});t.after(()=>pool.end());
+ await pool.query("UPDATE tenants SET dealer_type='morasha',dealer_id='511234567' WHERE slug='achuza'");await api(B+'/init',{method:'POST',token:owner});
+ const create=async body=>api(B+'/documents',{method:'POST',token:owner,body});
+ const issue=async id=>api(B+'/documents/'+id+'/issue',{method:'POST',token:owner});
+ const draft=await create({kind:'tax_invoice',customer_name:'מסמך דמו בדיקה',amount_net:1000,vat_amount:180,lines:[{description:'דמו כביסה',quantity:1,unit_price:1000}]});
+ assert.equal(draft.status,201);const id=draft.json.document.id;
+ await api(B+'/documents/'+id+'/allocate',{method:'POST',token:owner,body:{allocation_number:'123456789'}});
+ assert.equal((await issue(id)).status,200);
+ const makeReceipt=async amount=>{const r=await create({kind:'receipt',customer_name:'מסמך דמו קבלה',amount_net:amount,vat_amount:0,source_document_id:id});assert.equal(r.status,201,JSON.stringify(r.json));return r.json.document.id;};
+ const first=await makeReceipt(500);assert.equal((await issue(first)).status,200);
+ let tb=(await api(B+'/trial-balance',{token:owner})).json;
+ assert.equal(tb.accounts.find(a=>a.code==='4000').credit,'1000.00');
+ assert.equal(tb.accounts.find(a=>a.code==='1020').credit,'500.00');
+ const second=await makeReceipt(680);assert.equal((await issue(second)).status,200);
+ const over=await makeReceipt(1);assert.equal((await issue(over)).status,409);
+ assert.equal((await issue(first)).status,409);
+ const missing=await create({kind:'credit_note',customer_name:'דמו',amount_net:1000,vat_amount:180});assert.equal(missing.status,400);
+ const bad=await create({kind:'credit_note',customer_name:'דמו',amount_net:999,vat_amount:180,source_document_id:id});assert.equal(bad.status,400);
+ const credit=await create({kind:'credit_note',customer_name:'דמו',amount_net:1000,vat_amount:180,source_document_id:id});assert.equal(credit.status,201,JSON.stringify(credit.json));
+ const ci=credit.json.document.id;assert.equal((await issue(ci)).status,200);
+ const credit2=await create({kind:'credit_note',customer_name:'דמו',amount_net:1000,vat_amount:180,source_document_id:id});assert.equal((await issue(credit2.json.document.id)).status,409);
+ tb=(await api(B+'/trial-balance',{token:owner})).json;assert.equal(tb.totals.balanced,true);
+ assert.equal(tb.accounts.find(a=>a.code==='4000').debit,'1000.00');
+ assert.equal(tb.accounts.find(a=>a.code==='2010').debit,'180.00');
+ const {rows:[src]}=await pool.query('SELECT status FROM bk_documents WHERE id=$1',[id]);assert.equal(src.status,'issued');
+ const {rows:[count]}=await pool.query('SELECT count(*) FROM bk_document_lines WHERE document_id=$1',[ci]);assert.equal(count.count,'1');
+ assert.equal(require('../src/openformat').DOC_TYPES.credit_note,'330');
+ const ex=await api(B+'/uniform-export',{method:'POST',token:owner,body:{from:'2026-01-01',to:'2026-12-31'}});assert.equal(ex.status,201,JSON.stringify(ex.json));assert.equal(ex.json.counts.C100,4);
+ const list=await api(B+'/documents',{token:owner});const original=list.json.documents.find(d=>d.id===id);assert.equal(original.allocation_number,'123456789');assert.equal(original.allocation_verification_status,'manual_unverified');
+ const {rows:[other]}=await pool.query("INSERT INTO bk_documents(tenant_id,customer_name,kind,amount_net,status) SELECT id,'other','invoice',100,'issued' FROM tenants WHERE slug='express' RETURNING id");
+ assert.equal((await create({kind:'receipt',customer_name:'דמו',amount_net:1,source_document_id:other.id})).status,404);
+ const base=await create({kind:'invoice',customer_name:'מסמך דמו תחרות',amount_net:1000,vat_amount:0});const bid=base.json.document.id;assert.equal((await issue(bid)).status,200);
+ const rids=[];for(let i=0;i<2;i++){const r=await create({kind:'receipt',customer_name:'מסמך דמו',amount_net:600,source_document_id:bid});rids.push(r.json.document.id);}
+ const concurrent=await Promise.all(rids.map(issue));assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+ const again=await Promise.all([issue(rids[0]),issue(rids[0])]);assert.ok(again.every(r=>r.status===409));
+ const listed=(await api(B+'/documents',{token:owner})).json.documents.find(d=>d.id===id);assert.equal(Number(listed.paid_amount),1180);assert.equal(listed.fully_credited,true);
+
+});

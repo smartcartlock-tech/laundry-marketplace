@@ -455,6 +455,7 @@ const DOC_KINDS = {
   tax_invoice_receipt: { code: 320, he: 'חשבונית מס/קבלה', needsAllocation: true, morashaOnly: true },
   invoice: { code: 300, he: 'חשבונית עסקה', needsAllocation: false, morashaOnly: false },
   receipt: { code: 400, he: 'קבלה', needsAllocation: false, morashaOnly: false },
+  credit_note: { code: 330, he: 'חשבונית זיכוי', needsAllocation: false, morashaOnly: true },
 };
 const ALLOC_RE = /^[0-9]{9,10}$/; // 9 הספרות הימניות מודפסות על החשבונית; מזהה מלא עד 10
 
@@ -472,7 +473,7 @@ function docStatusHe(d) {
 
 r.post('/bookkeeping/documents', async (req, res) => {
   const tid = req.tenant.id;
-  const { kind, customer_name, party_id, customer_tax_id, amount_net, vat_amount, lines, notes } = req.body || {};
+  let { kind, customer_name, party_id, customer_tax_id, amount_net, vat_amount, lines, notes, source_document_id } = req.body || {};
   const K = DOC_KINDS[kind];
   if (!K) return res.status(400).json({ error: 'סוג מסמך לא תקין' });
   if (K.morashaOnly && req.tenant.dealer_type !== 'morasha') {
@@ -487,6 +488,17 @@ r.post('/bookkeeping/documents', async (req, res) => {
   if (party_id) {
     const { rows: pr } = await q(`SELECT 1 FROM bk_parties WHERE id=$1 AND tenant_id=$2 AND kind='customer'`, [party_id, tid]);
     if (!pr[0]) return res.status(400).json({ error: 'כרטיס לקוח לא נמצא' });
+  }
+  if (source_document_id && !['receipt','credit_note'].includes(kind)) return res.status(400).json({ error: 'קישור מקור מיועד לקבלה או זיכוי בלבד' });
+  if (kind === 'credit_note' && !source_document_id) return res.status(400).json({ error: 'חשבונית זיכוי דורשת מסמך מקור' });
+  if (kind === 'receipt' && vat !== 0) return res.status(400).json({ error: 'בקבלה אין רכיב מע״מ נוסף; סכום התשלום הוא הסכום הכולל' });
+  if (source_document_id) {
+    const { rows: [src] } = await q('SELECT * FROM bk_documents WHERE id=$1 AND tenant_id=$2', [source_document_id, tid]);
+    if (!src) return res.status(404).json({ error: 'מסמך מקור לא נמצא' });
+    if (src.status !== 'issued' || !['invoice','tax_invoice', 'tax_invoice_receipt'].includes(src.kind)) return res.status(409).json({ error: 'מקור חייב להיות חשבונית מונפקת' });
+    customer_name = src.customer_name; party_id = src.party_id; customer_tax_id = src.customer_tax_id ? safeDecryptField(src.customer_tax_id, 'customer_tax_id') : null;
+    if (kind === 'receipt' && src.kind === 'tax_invoice_receipt') return res.status(409).json({ error: 'חשבונית מס/קבלה כבר כוללת תשלום' });
+    if (kind === 'credit_note' && (Math.abs(net-Number(src.amount_net)) > 0.004 || Math.abs(vat-Number(src.vat_amount)) > 0.004)) return res.status(400).json({ error: 'בשלב זה נתמך זיכוי מלא בלבד, בסכומי מסמך המקור' });
   }
   let cleanLines = [];
   if (Array.isArray(lines) && lines.length) {
@@ -506,17 +518,21 @@ r.post('/bookkeeping/documents', async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows: d } = await client.query(
-      `INSERT INTO bk_documents (tenant_id, party_id, customer_name, customer_tax_id, kind, amount_net, vat_amount, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, kind, status`,
+      `INSERT INTO bk_documents (tenant_id, party_id, customer_name, customer_tax_id, kind, amount_net, vat_amount, notes, created_by, source_document_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, kind, status`,
       [tid, party_id || null, String(customer_name).trim(), customer_tax_id ? encryptField(String(customer_tax_id)) : null,
-       kind, net.toFixed(2), vat.toFixed(2), notes || null, req.user.id]);
+       kind, net.toFixed(2), vat.toFixed(2), notes || null, req.user.id, source_document_id || null]);
+    if (kind === 'credit_note' && cleanLines.length === 0) {
+      const { rows: originals } = await client.query('SELECT description,quantity,unit_price,total FROM bk_document_lines WHERE tenant_id=$1 AND document_id=$2',[tid,source_document_id]);
+      cleanLines = originals;
+    }
     for (const l of cleanLines) {
       await client.query(
         `INSERT INTO bk_document_lines (tenant_id, document_id, description, quantity, unit_price, total)
          VALUES ($1,$2,$3,$4,$5,$6)`, [tid, d[0].id, l.description, l.quantity, l.unit_price, l.total]);
     }
     await client.query('COMMIT');
-    await audit(req, 'bk_doc_create', 'bk_document', d[0].id, { kind, total: (net + vat).toFixed(2) });
+    await audit(req, 'bk_doc_create', 'bk_document', d[0].id, { kind, source_document_id: source_document_id || null, total: (net + vat).toFixed(2) });
     res.status(201).json({ document: { ...d[0], status_he: docStatusHe(d[0]) } });
   } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
 });
@@ -524,7 +540,10 @@ r.post('/bookkeeping/documents', async (req, res) => {
 r.get('/bookkeeping/documents', async (req, res) => {
   const { rows } = await q(
     `SELECT d.id, d.kind, d.doc_year, d.doc_number, d.issue_date, d.status, d.customer_name,
-            d.amount_net, d.vat_amount, (d.amount_net + d.vat_amount) AS total,
+            d.amount_net, d.vat_amount, d.source_document_id, d.entry_id, (d.amount_net + d.vat_amount) AS total,
+            (SELECT COALESCE(sum(p.amount_net),0) FROM bk_documents p WHERE p.tenant_id=d.tenant_id AND p.source_document_id=d.id AND p.kind='receipt' AND p.status='issued') AS paid_amount,
+            EXISTS(SELECT 1 FROM bk_documents c WHERE c.tenant_id=d.tenant_id AND c.source_document_id=d.id AND c.kind='credit_note' AND c.status='issued') AS fully_credited,
+            d.allocation_number, CASE WHEN d.allocation_number IS NULL THEN 'not_provided' ELSE 'manual_unverified' END AS allocation_verification_status,
             (d.allocation_number IS NOT NULL) AS has_allocation, d.created_at,
             (SELECT count(*)::int FROM bk_document_lines l WHERE l.document_id = d.id) AS lines
      FROM bk_documents d WHERE d.tenant_id=$1 ORDER BY d.created_at DESC LIMIT 500`, [req.tenant.id]);
@@ -566,9 +585,29 @@ r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
   if (!income || !debitAcct || (Number(d.vat_amount) > 0 && !vatAcct)) return res.status(400).json({ error: 'חשבון חסר — יש לאתחל את תרשים החשבונות' });
   const total = Number(d.amount_net) + Number(d.vat_amount);
 
+  const lines = [
+    { account_id: debitAcct.id, party_id: d.party_id, debit: total, details: K.he + ' - ' + d.customer_name },
+    { account_id: d.kind === 'receipt' && d.source_document_id ? (await acctByCode(tid,'1020')).id : income.id, party_id: d.party_id, credit: Number(d.amount_net), details: K.he },
+  ];
+  if (Number(d.vat_amount)>0) lines.push({account_id:vatAcct.id,party_id:d.party_id,credit:Number(d.vat_amount),details:'מע״מ עסקאות'});
   const client = await require('../db').pool.connect();
   try {
     await client.query('BEGIN');
+    // Serialize issuance per tenant, then lock/revalidate the draft and source.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [tid]);
+    const { rows: [locked] } = await client.query('SELECT status FROM bk_documents WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [d.id, tid]);
+    if (!locked || locked.status !== 'draft') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'המסמך כבר הונפק או בוטל' }); }
+    if (d.source_document_id) {
+      const { rows: [src] } = await client.query('SELECT * FROM bk_documents WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [d.source_document_id,tid]);
+      if (!src || src.status !== 'issued') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'מסמך מקור אינו מונפק' }); }
+      const { rows: [paid] } = await client.query("SELECT COALESCE(sum(amount_net),0) AS paid, count(*) FILTER (WHERE kind='credit_note') AS credits FROM bk_documents WHERE tenant_id=$1 AND source_document_id=$2 AND status='issued'",[tid,src.id]);
+      if (Number(paid.credits)>0 || (d.kind==='receipt' && Number(paid.paid)+total > Number(src.amount_net)+Number(src.vat_amount)+0.004)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'המקור זוכה או שהתשלום עולה על יתרת החשבונית' }); }
+      if (d.kind==='credit_note') {
+        const { rows: originalLines } = await client.query('SELECT account_id,party_id,debit,credit,details FROM bk_lines WHERE entry_id=$1 AND tenant_id=$2',[src.entry_id,tid]);
+        if (!originalLines.length) throw new Error('Source ledger entry missing');
+        lines.splice(0,lines.length,...originalLines.map(l=>({account_id:l.account_id,party_id:l.party_id,debit:Number(l.credit),credit:Number(l.debit),details:'זיכוי: '+l.details})));
+      }
+    }
     const year = Number(todayIL.slice(0, 4));
     await client.query(
       `INSERT INTO bk_doc_counters (tenant_id, kind, year, next_number) VALUES ($1,$2,$3,1) ON CONFLICT DO NOTHING`,
@@ -577,11 +616,7 @@ r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
       `UPDATE bk_doc_counters SET next_number = next_number + 1 WHERE tenant_id=$1 AND kind=$2 AND year=$3 RETURNING next_number`,
       [tid, d.kind, year]);
     const docNumber = cn[0].next_number - 1;
-    const lines = [
-      { account_id: debitAcct.id, party_id: d.party_id, debit: total, details: `${K.he} ${docNumber} — ${d.customer_name}` },
-      { account_id: income.id, party_id: d.party_id, credit: Number(d.amount_net), details: `${K.he} ${docNumber}` },
-    ];
-    if (Number(d.vat_amount) > 0) lines.push({ account_id: vatAcct.id, party_id: d.party_id, credit: Number(d.vat_amount), details: 'מע"מ עסקאות' });
+
     const e = await insertEntryTx(client, tid, {
       date: todayIL, description: `${K.he} מס׳ ${docNumber} ל${d.customer_name}`, source: 'invoice', lines, createdBy: req.user.id,
     });
@@ -589,7 +624,7 @@ r.post('/bookkeeping/documents/:id/issue', async (req, res) => {
       `UPDATE bk_documents SET status='issued', doc_year=$1, doc_number=$2, issue_date=$3, entry_id=$4, updated_at=now() WHERE id=$5`,
       [year, docNumber, todayIL, e.id, d.id]);
     await client.query('COMMIT');
-    await audit(req, 'bk_doc_issue', 'bk_document', d.id, { kind: d.kind, doc_number: docNumber, total: total.toFixed(2) });
+    await audit(req, 'bk_doc_issue', 'bk_document', d.id, { kind: d.kind, source_document_id: d.source_document_id, doc_number: docNumber, total: total.toFixed(2) });
     res.json({ issued: true, doc_year: year, doc_number: docNumber, entry_no: e.entry_no });
   } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
 });
@@ -925,9 +960,10 @@ async function assembleUniformData(tid, from, to) {
   });
 
   const { rows: docs } = await q(
-    `SELECT * FROM bk_documents
-     WHERE tenant_id = $1 AND status = 'issued' AND issue_date BETWEEN $2 AND $3
-     ORDER BY doc_year, doc_number`, [tid, from, to]);
+    `SELECT d.*, src.kind AS source_kind, src.doc_year AS source_doc_year, src.doc_number AS source_doc_number
+     FROM bk_documents d LEFT JOIN bk_documents src ON src.id=d.source_document_id AND src.tenant_id=d.tenant_id
+     WHERE d.tenant_id = $1 AND d.status = 'issued' AND d.issue_date BETWEEN $2 AND $3
+     ORDER BY d.doc_year, d.doc_number`, [tid, from, to]);
   const docIds = docs.map((d) => d.id);
   const { rows: docLines } = docIds.length
     ? await q(`SELECT * FROM bk_document_lines WHERE tenant_id=$1 AND document_id = ANY($2) ORDER BY id`, [tid, docIds])

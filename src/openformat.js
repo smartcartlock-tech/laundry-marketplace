@@ -103,7 +103,7 @@ function zipStore(name, data) {
 }
 
 // --- סוגי מסמכים (נספח 1) ---
-const DOC_TYPES = { invoice: '300', tax_invoice: '305', tax_invoice_receipt: '320', receipt: '400' };
+const DOC_TYPES = { invoice: '300', tax_invoice: '305', tax_invoice_receipt: '320', receipt: '400', credit_note: '330' };
 const RECEIPT_KINDS = new Set(['receipt', 'tax_invoice_receipt']);
 const ENTRY_TYPE_HE = { manual: 'פקודת יומן', invoice: 'חשבונית', expense: 'הוצאה', bank: 'בנק', reversal: 'סטורנו' };
 
@@ -252,7 +252,7 @@ function recD110(p, recNo, d, line, lineNo, link) {
     'D110', num(recNo, 9), num(p.dealer, 9),
     DOC_TYPES[d.kind], alpha(docNumber(d), 20),
     num(lineNo, 4),                   // 1255 שורה במסמך
-    num(0, 3), alpha('', 20),         // 1256-1257 מסמך בסיס
+    num(DOC_TYPES[d.source_kind] || 0, 3), alpha(d.source_doc_number ? `${d.source_doc_year}-${d.source_doc_number}` : '', 20), // 1256-1257 מסמך בסיס
     '1',                              // 1258 סוג עסקה: שירות
     alpha('', 20),                    // 1259 מק"ט
     alpha(line.description, 30),      // 1260 תיאור
