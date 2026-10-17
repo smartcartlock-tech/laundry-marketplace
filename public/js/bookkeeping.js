@@ -75,6 +75,7 @@
         #bk-workspace .btn2 { min-height:44px; }
         #bk-workspace input[type=file] { max-width:100%; }
         #bk-workspace .tbl { min-width:560px; }
+        #bk-workspace .tbl th, #bk-workspace .tbl td { white-space:nowrap; overflow-wrap:normal; }
         #bk-workspace .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
         #bk-workspace .bk-j-line { border-bottom:1px solid #e3edf0; padding-bottom:8px; }
         #bk-workspace .btn2 { white-space:normal; }
