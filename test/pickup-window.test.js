@@ -41,7 +41,8 @@ test('pickup-window: סימון מחוץ לחלון מתועד כחריגה, ב�
   // מקרה 2: חלון היום שמתחיל לפני 30 דקות — סימון עכשיו תקין
   const il2 = ilNow();
   const start = new Date(il2.getTime() - 30 * 60000); start.setSeconds(0, 0);
-  const end = new Date(il2.getTime() + 60 * 60000);
+  let end = new Date(il2.getTime() + 60 * 60000);
+  if (end.getDate() !== il2.getDate()) { end = new Date(il2); end.setHours(23, 59, 59, 0); } // חלון לא חוצה חצות — אחרת end<start באותו weekday
   const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   const { owner, courierTok, oid } = await setupOrder(api, { pickupAt: start });
   // pickup_at חייב להתאים לחלון קיים — יוצרים חלון תואם כבעל המכבסה

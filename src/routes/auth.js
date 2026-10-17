@@ -52,8 +52,8 @@ r.post('/otp/request', normalizeBody, limiter('otp-request', 5, 10 * 60 * 1000),
     if (!delivery.sent) return res.status(503).json({ error: "שליחת OTP לא מוגדרת כרגע" });
     const channel = delivery.channel, demoCode = delivery.demoCode; // מצב דמו: הקוד מוצג על המסך גם אם נשלח בוואטסאפ
     // B2: נשמר רק HMAC של הקוד, לעולם לא הקוד הגלוי
-    await q('INSERT INTO otp_codes(channel, target, code, code_hash, expires_at) VALUES ($1,$2,$3,$4, now() + interval \'10 minutes\')',
-      [channel, target, null, hashOtp(code)]);
+    await q("INSERT INTO otp_codes(channel, target, code, code_hash, expires_at) VALUES ($1,$2,$3,$4, now() + ($5 || ' minutes')::interval)",
+      [channel, target, null, hashOtp(code), String(Number(process.env.OTP_EXPIRY_MINUTES || 5))]);
     res.json({ ok: true, channel, ...(demoCode ? { demoCode } : {}) });
   } catch (e) { console.error(e); res.status(500).json({ error: 'שגיאת שרת' }); }
 });
@@ -68,7 +68,7 @@ r.post('/otp/verify', normalizeBody, limiter('otp-verify', 10, 10 * 60 * 1000), 
        ORDER BY created_at DESC LIMIT 1`, [target]);
     const row = rows[0];
     if (!row) return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
-    if (row.attempts >= 10) return res.status(429).json({ error: 'יותר מדי ניסיונות — בקשו קוד חדש' });
+    if (row.attempts >= Number(process.env.MAX_ATTEMPTS_PER_OTP || 3)) return res.status(429).json({ error: 'יותר מדי ניסיונות — בקשו קוד חדש' });
     if (!otpMatches(row, code)) {
       await q('UPDATE otp_codes SET attempts=attempts+1 WHERE id=$1', [row.id]);
       return res.status(401).json({ error: 'קוד שגוי או פג תוקף' });
