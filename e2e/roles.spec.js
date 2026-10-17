@@ -56,6 +56,8 @@ test('לקוח מבטל הזמנה — הרשימה מציגה בוטלה מיד
 
   // חזרה לרשימה — הסטטוס חייב להיות מעודכן, לא מטמון ישן
   await page.goto('/#/orders');
-  const row = page.locator('.lcard', { hasText: 'מכבסת האחוזה' }).first();
+  // ההזמנה המבוטלת מקובצת תחת "הזמנות שבוטלו" — פותחים ובודקים את הכרטיס הספציפי לפי מזהה (לא .first() כללי)
+  await page.locator('details summary', { hasText: 'הזמנות שבוטלו' }).click();
+  const row = page.locator(`.lcard[data-a="#/orders/${orderId}"]`);
   await expect(row.locator('.st-pill')).toContainText('בוטלה');
 });
