@@ -169,6 +169,7 @@ async function vAdminTenant(id){
  <div class="body">
   <div class="card"><b>פרטים</b>
    <div class="mut">סטטוס: ${t.approved?'מאושרת':'ממתינה לאישור'} · נרשמה ${fmtDate(t.created_at)}</div>
+   <div style="margin-top:6px"><a class="btn2" href="#/laundry/${encodeURIComponent(t.slug)}" style="display:inline-block;text-decoration:none">👁 צפייה בדף המכבסה כלקוח</a></div>
    <div class="mut">טלפון: ${esc(t.phone||'—')} · ${esc(t.address||'—')}, ${esc(t.city||'—')}</div>
    <div class="mut">דמי שליחות: ₪${t.delivery_fee||0} · מינימום: ₪${t.min_order||0}</div>
    ${(t.services||[]).length?`<div class="mut">שירותים: ${t.services.map(esc).join(', ')}</div>`:''}
