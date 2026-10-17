@@ -48,4 +48,13 @@ test('T3/T55/T30 demo bookkeeping: supplier inline, balanced entry, reversal, mo
   await page.locator('[data-bkj-act="filter"]').click();
   await expect(page.locator('#bk-j-from')).toHaveValue('2025-01-01');
   await expect(page.locator('.bk-j-row').filter({hasText:desc})).toHaveCount(0);
+  await page.locator('#bk-period-mode').selectOption('bimonth');
+  await page.locator('#bk-period-month').fill('2024-02');
+  const report = page.waitForResponse(r=>r.url().includes('/reports/pnl?from=2024-01-01&to=2024-02-29'));
+  await page.locator('[data-bk-act="period-preset"]').click();
+  expect((await report).status()).toBe(200);
+  await expect(page.locator('#bk-period-from')).toHaveValue('2024-01-01');
+  await expect(page.locator('#bk-period-to')).toHaveValue('2024-02-29');
+  await page.locator('[data-bk-act="period-reset"]').click();
+  await expect(page.locator('#bk-period-from')).toHaveValue('');
 });
