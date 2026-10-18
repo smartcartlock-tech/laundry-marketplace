@@ -125,6 +125,7 @@ window.addEventListener('storage',e=>{
     אחרת שני טאבים מחזיקים לולאת רינדור אינסופית (ping-pong של storage events) */
  if(e.key&&['wlm_token','wlm_me','wlm_memberships','wlm_courier'].includes(e.key)&&e.newValue!==e.oldValue){
   state.token=store.get('token',null);state.me=store.get('me',null);state.memberships=store.get('memberships',[]);state.courier=store.get('courier',null);
+  if(e.key==='wlm_token'&&!e.newValue){state.cart=[];store.del('cart')} /* T89: התנתקות בטאב אחר — הסל מתנקה גם כאן, אחרת save() מקומי מחזיר אותו לאחסון */
   route();
  }
 });

@@ -31,3 +31,11 @@ test('T89: כרטיס הזהות בחשבון מציע התנתקות; צ\'ק-א
   assert.ok(ca.includes("api('/auth/me')"), 'רענון זהות לפני קופה');
   assert.ok(ca.includes('cleanupSessionState()'), '401 בקופה → ניקוי + כניסה מחדש');
 });
+
+test('T89: התנתקות בטאב אחד מנקה סל גם בטאבים אחרים (מאזין storage)', () => {
+  const router = pub('js/router.js');
+  const m = router.match(/addEventListener\('storage'[\s\S]*?\n \}\)/);
+  assert.ok(m, 'מאזין storage קיים');
+  assert.ok(m[0].includes("e.key==='wlm_token'&&!e.newValue"), 'זיהוי הסרת טוקן = התנתקות');
+  assert.ok(m[0].includes('state.cart=[]') && m[0].includes("store.del('cart')"), 'הסל מתנקה בטאבים האחרים');
+});
