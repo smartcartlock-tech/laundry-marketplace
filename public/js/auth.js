@@ -103,8 +103,35 @@ function initGoogle(){
  const el=document.getElementById('g-signin');
  if(el)google.accounts.id.renderButton(el,{theme:'outline',size:'large',width:320,text:'signin_with',locale:'he'});
 }
-function logout(){state.token=null;state.me=null;state.memberships=[];state.courier=null;store.del('token');store.del('me');store.del('memberships');store.del('courier');go('#/login')}
+/* T89: מעבר חשבון בטוח — ניקוי מלא של זהות ומטמון משתמש (הזמנה לא תירשם על חשבון קודם) */
+const SESSION_KEEP=new Set(['wlm_theme']); // קוסמטי בלבד — לא זהות
+function cleanupSessionState(){
+ Object.keys(localStorage).forEach(k=>{if(k.indexOf('wlm_')===0&&!SESSION_KEEP.has(k))localStorage.removeItem(k)});
+ localStorage.removeItem('token'); // מפתח מורשת
+ state.token=null;state.me=null;state.memberships=[];state.courier=null;state.cart=[];
+}
+async function logout(){
+ try{const t=state.token;if(t)await fetch('/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+t}})}catch(e){}
+ cleanupSessionState();
+ toast('התנתקתם');
+ go('#/');
+}
+/* T89: באנר 'מחובר כ-' קבוע בראש המסך + התנתקות זמינה לכל תפקיד (לקוח/שליח/בעלים) */
+function roleLabel(){if(state.courier)return 'שליח';if(state.memberships&&state.memberships.length)return 'בעל מכבסה';return 'לקוח'}
+function ensureIdBanner(){
+ const app=document.getElementById('app');if(!app)return;
+ let b=document.getElementById('id-banner');
+ if(!state.me){if(b)b.remove();return}
+ const html='<span>מחובר כ-<b>'+esc(state.me.name||state.me.phone||state.me.email||'')+'</b> · '+roleLabel()+'</span><a href="#/" data-act="acctLogout" style="color:#0e7a8a;white-space:nowrap">התנתקות</a>';
+ if(!b){
+  b=document.createElement('div');b.id='id-banner';
+  b.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 14px;font-size:12px;background:#f0f7f8;border-bottom:1px solid #d8e6e8;color:#335';
+  app.prepend(b);
+ }
+ if(b.__html!==html){b.innerHTML=html;b.__html=html}
+}
+new MutationObserver(()=>{try{ensureIdBanner()}catch(e){}}).observe(document.documentElement,{childList:true,subtree:true});
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
- requestOtp:()=>requestOtp(), verifyOtp:()=>verifyOtp()
+ requestOtp:()=>requestOtp(), verifyOtp:()=>verifyOtp(), acctLogout:(t,e)=>{if(e)e.preventDefault();logout()}
 });

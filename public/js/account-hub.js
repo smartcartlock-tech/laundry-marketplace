@@ -47,6 +47,7 @@
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
        <button class="btn2" data-act="acctEditName">✏️ עריכת שם</button>
        <a class="btn2" href="#/sessions">🔐 התחברויות פעילות</a>
+       <button class="btn2" data-act="acctLogout">🚪 התנתקות</button>
       </div></div>
      ${window.meContactSection?await window.meContactSection(u):''}
      <div class="card"><b>נקודות מועדון</b><div class="mut">יתרה כוללת: <b style="color:#0e7a8a">${pts}</b> נקודות (שוות ₪${pts})</div>

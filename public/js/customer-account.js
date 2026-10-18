@@ -170,6 +170,11 @@
   if (typeof window.vCheckout === 'function'){
     const origCh = window.vCheckout;
     window.vCheckout = async function(slug){
+      /* T89: עקביות זהות לפני קופה — טוקן בלי זהות טעונה = רענון; 401 = ניקוי וחזרה לכניסה */
+      if (state.token && !state.me){
+        try{ const me = await api('/auth/me'); state.me = me.user; state.memberships = me.memberships || []; state.courier = me.courier || null; save(); }
+        catch(e){ if (e && e.status === 401 && typeof cleanupSessionState === 'function'){ cleanupSessionState(); return needLogin(); } }
+      }
       const html = await origCh(slug);
       setTimeout(()=>{ attachCheckoutPrefs().catch(()=>{}); }, 0);
       return html;
