@@ -11,10 +11,11 @@ async function vMessages() {
   let d;
   try { d = await api('/messages'); } catch (e) { return `<div class="body"><div class="card warn">${esc(e.message)}</div></div>`; }
   const rows = d.messages || [];
-  const list = rows.length ? rows.map(m => `
-   <div class="card" id="msg-${m.id}" style="${m.read_at ? 'opacity:.65' : 'border-right:3px solid var(--acc,#0e7a8a)'}">
-    <div style="display:flex;gap:8px;align-items:flex-start">
-     <div style="font-size:20px">${MSG_ICON[m.kind] || '🔔'}</div>
+  /* T111: קיבוץ לפי הזמנה — כל העדכונים על אותה הזמנה (data.tracking_code) בכרטיס אחד;
+     העדכון האחרון גלוי, הקודמים מכווצים. הודעות בלי הזמנה נשארות כרטיסים בודדים. */
+  function renderMsg(m) {
+    return `
+    <div id="msg-${m.id}" style="display:flex;gap:8px;align-items:flex-start;${m.read_at ? 'opacity:.65' : ''};padding:6px 0;border-top:1px solid #edf1f4">
      <div style="flex:1;min-width:0;overflow-wrap:anywhere">
       <b>${esc(m.title)}</b>
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
@@ -24,8 +25,39 @@ async function vMessages() {
       <button class="btn2" style="font-size:11px" data-act="${m.read_at ? 'msgMarkUnread' : 'msgMarkRead'}" data-a="${m.id}">${m.read_at ? 'סמן כלא נקרא' : 'נקרא'}</button>
       <button class="btn2" style="font-size:11px;color:#b71c1c" data-act="msgDelete" data-a="${m.id}">מחק</button>
      </div>
-    </div>
-   </div>`).join('')
+    </div>`;
+  }
+  const groups = [], byCode = new Map();
+  for (const m of rows) {
+    const code = m.kind === 'order' && m.data && m.data.tracking_code;
+    if (code) {
+      if (!byCode.has(code)) { const g = { code, items: [] }; byCode.set(code, g); groups.push(g); }
+      byCode.get(code).items.push(m);
+    } else groups.push({ solo: m });
+  }
+  const list = groups.length ? groups.map(g => {
+    if (g.solo) {
+      const m = g.solo;
+      return `<div class="card" style="${m.read_at ? '' : 'border-right:3px solid var(--acc,#0e7a8a)'}">
+       <div style="display:flex;gap:8px;align-items:flex-start"><div style="font-size:20px">${MSG_ICON[m.kind] || '🔔'}</div>
+       <div style="flex:1;min-width:0">${renderMsg(m)}</div></div></div>`;
+    }
+    const items = g.items, latest = items[0], older = items.slice(1);
+    const unread = items.filter(m => !m.read_at).length;
+    return `<div class="card" style="${unread ? 'border-right:3px solid var(--acc,#0e7a8a)' : ''}">
+     <div style="display:flex;gap:8px;align-items:flex-start">
+      <div style="font-size:20px">🧺</div>
+      <div style="flex:1;min-width:0">
+       <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+        <b>הזמנה ${esc(g.code)}</b>
+        <span class="mut" style="font-size:11px">${items.length > 1 ? items.length + ' עדכונים' : 'עדכון אחד'}${unread ? ' · ' + unread + ' חדשים' : ''}</span>
+       </div>
+       ${renderMsg(latest)}
+       ${older.length ? `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:#0e7a8a">עדכונים קודמים (${older.length})</summary>${older.map(renderMsg).join('')}</details>` : ''}
+      </div>
+     </div>
+    </div>`;
+  }).join('')
    : '<div class="card mut" style="text-align:center;padding:30px 0">אין הודעות עדיין</div>';
   return `<div class="hdr"><h2>מרכז הודעות</h2><a href="#/notif-settings" style="color:#fff;font-size:12px">⚙️ הגדרות התראות</a></div><div class="body">
    ${d.unread ? `<div style="text-align:left;margin-bottom:8px"><button class="btn2" data-act="msgReadAll">סמן הכל כנקרא (${d.unread})</button></div>` : ''}

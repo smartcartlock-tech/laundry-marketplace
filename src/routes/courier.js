@@ -275,9 +275,11 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
   if (newStatus === 'delivered') await accrueStop(req.courier.id, order, 'delivery').catch(e => console.error('[earnings]', e.message));
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
   const HE = { picked_up: 'נאספה על ידי השליח', out_for_delivery: 'בדרך אליך', delivered: 'סומנה כהוחזרה. תודה!' };
+  const code = order.tracking_code || order.id.slice(0,8); // T111: מזהה עקבי + דה-דופ (גם מול completeDelivery)
   // T93: ביציאה למסירה הלקוח מקבל את קוד המסירה החד-פעמי למסירה לשליח
   const codeTxt = newStatus === 'out_for_delivery' && order.delivery_code ? ` קוד המסירה שלך: ${order.delivery_code} — מסרו אותו לשליח בקבלת ההזמנה.` : '';
-  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0,8)}) ${HE[newStatus]}.${codeTxt}`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[newStatus]}`).catch(() => {});
+  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנה ${code}: ${HE[newStatus]}.${codeTxt}`, cust[0].phone, `הזמנה ${code}: ${HE[newStatus]}`,
+    { dedupKey: `order-status:${order.id}:${newStatus}`, url: '#/track/' + code, data: { order_id: order.id, tracking_code: code, status: newStatus } }).catch(() => {});
   res.json({ ok: true, ...(windowViolation ? { window_violation: true } : {}) });
 });
 

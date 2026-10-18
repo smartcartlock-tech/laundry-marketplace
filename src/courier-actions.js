@@ -65,7 +65,9 @@ async function completeDelivery({ order, courierId, actorId, photoUrl, note, cas
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); console.error('[documents] issue failed', e.message); }
   finally { client.release(); }
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
-  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנתך (#${order.id.slice(0, 8)}) סומנה כהוחזרה. תודה!`, cust[0].phone).catch(() => {});
+  const code = order.tracking_code || String(order.id).slice(0, 8); // T111: מזהה עקבי + דה-דופ מול נקודת ה-mark
+  if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `הזמנה ${code}: סומנה כהוחזרה. תודה!`, cust[0].phone, `הזמנה ${code}: סומנה כהוחזרה. תודה!`,
+    { dedupKey: `order-status:${order.id}:delivered`, url: '#/track/' + code, data: { order_id: order.id, tracking_code: code, status: 'delivered' } }).catch(() => {});
 }
 
 module.exports = { completeDelivery, parseCashConfirmation, recordCashCollection, CASH_LABEL };

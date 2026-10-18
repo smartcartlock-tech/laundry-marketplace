@@ -64,6 +64,13 @@ async function sendWhatsApp(toE164, body) {
 const { statusMuted } = require('./notification-prefs'); // CX5
 
 async function notifyUser(userId, tenantId, body, phone, title, opts = {}) {
+  // T111: דה-דופ — אותו dedupKey לאותו משתמש לא נשלח ולא נרשם פעמיים (גם push/whatsapp וגם מרכז ההודעות)
+  if (opts.dedupKey) {
+    try {
+      const { rows: dupe } = await q('SELECT 1 FROM notifications WHERE user_id=$1 AND dedup_key=$2 LIMIT 1', [userId, opts.dedupKey]);
+      if (dupe.length) return { dedup: true };
+    } catch (e) { /* כשל קריאה — ממשיכים רגיל, האינדקס הייחודי יתפוס מרוץ */ }
+  }
   let sent = false, channel = 'log';
   // CX5: הלקוח השתיק עדכוני סטטוס — נרשם כ-muted, לא נשלח דבר
   if (await statusMuted(userId)) {
@@ -81,9 +88,11 @@ async function notifyUser(userId, tenantId, body, phone, title, opts = {}) {
     const r = await sendWhatsApp(phone, body);
     if (r.sent || r.via === 'bot-simulated') { sent = true; channel = 'whatsapp'; }
   }
-  await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)',
-    [userId, tenantId, channel, body, sent]);
-  require('./usermessages').postOrderMessage(userId, { tenantId, kind: 'order', title: title || 'עדכון מהמכבסה', body }).catch(() => {}); // N6+N7: מראה במרכז ההודעות (מכבד העדפת order_messages)
+  await q(`INSERT INTO notifications(user_id, tenant_id, channel, body, sent, dedup_key) VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING`,
+    [userId, tenantId, channel, body, sent, opts.dedupKey || null]);
+  // N6+N7: מראה במרכז ההודעות (מכבד העדפת order_messages); T111: אותו dedupKey + נתוני הזמנה לקיבוץ
+  require('./usermessages').postOrderMessage(userId, { tenantId, kind: 'order', title: title || 'עדכון מהמכבסה', body, data: opts.data || {}, dedupKey: opts.dedupKey || null }).catch(() => {});
 }
 
 module.exports = { sendWhatsApp, sendViaBot, notifyUser };

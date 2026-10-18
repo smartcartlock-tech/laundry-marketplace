@@ -75,10 +75,12 @@ async function transitionOrder(client, { tenant, orderId, status, actorId, note 
 // הודעת סטטוס ללקוח אחרי commit (משותפת לבודד ולמרובה)
 function notifyOrderStatus(tenant, order, status) {
   const HE = { confirmed:'אושרה', picked_up:'נאספה מהבית', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה. תודה!', cancelled:'בוטלה' };
+  const code = order.tracking_code || order.id.slice(0,8); // T111: מזהה עקבי בכותרת ובגוף + דה-דופ לסטטוס (כולל מרובה)
   // T93: ביציאה למסירה הלקוח מקבל את קוד המסירה החד-פעמי
   const codeTxt = status === 'out_for_delivery' && order.delivery_code ? ` קוד המסירה שלך: ${order.delivery_code} — מסרו אותו לשליח בקבלת ההזמנה.` : '';
   q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]).then(({ rows: cust }) => {
-    if (cust[0]) notifyUser(cust[0].id, tenant.id, `הזמנתך ב${tenant.name} (#${order.id.slice(0,8)}) ${HE[status] || status}.${codeTxt}`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[status] || status}`).catch(() => {});
+    if (cust[0]) notifyUser(cust[0].id, tenant.id, `הזמנה ${code} ב${tenant.name}: ${HE[status] || status}.${codeTxt}`, cust[0].phone, `הזמנה ${code}: ${HE[status] || status}`,
+      { dedupKey: `order-status:${order.id}:${status}`, url: '#/track/' + code, data: { order_id: order.id, tracking_code: code, status } }).catch(() => {});
   }).catch(() => {});
 }
 

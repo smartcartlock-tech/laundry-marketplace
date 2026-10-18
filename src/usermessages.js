@@ -9,11 +9,13 @@ function renderTemplate(text, vars = {}) {
 }
 
 // רישום הודעה פנימית למשתמש (מופיעה במרכז ההודעות שלו)
-async function postUserMessage(userId, { tenantId = null, kind = 'system', title, body, data = {} }, query = q) {
+async function postUserMessage(userId, { tenantId = null, kind = 'system', title, body, data = {}, dedupKey = null }, query = q) {
+  // T111: dedupKey זהה לאותו משתמש → ההודעה לא נרשמת פעמיים (ON CONFLICT על האינדקס הייחודי)
   const { rows } = await query(
-    'INSERT INTO user_messages(user_id, tenant_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at',
-    [userId, tenantId, kind, title, body, data]);
-  return rows[0];
+    `INSERT INTO user_messages(user_id, tenant_id, kind, title, body, data, dedup_key) VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING RETURNING id, created_at`,
+    [userId, tenantId, kind, title, body, data, dedupKey]);
+  return rows[0] || null;
 }
 
 // שליפת תבנית פעילה לפי מפתח ורינדורה; מחזיר null אם אין תבנית כזו
@@ -25,12 +27,12 @@ async function renderTemplateByKey(key, vars = {}) {
 }
 
 // N7: כנ"ל אבל מכבד את העדפת order_messages של המשתמש (דף הגדרות ההתראות)
-async function postOrderMessage(userId, msg) {
+async function postOrderMessage(userId, msg, query) {
   try {
-    const { rows } = await q('SELECT order_messages FROM user_notification_prefs WHERE user_id=$1', [userId]);
+    const { rows } = await (query || q)('SELECT order_messages FROM user_notification_prefs WHERE user_id=$1', [userId]);
     if (rows[0] && rows[0].order_messages === false) return null;
   } catch (e) { /* טעות קריאה — לא חוסמים */ }
-  return postUserMessage(userId, msg);
+  return postUserMessage(userId, msg, query);
 }
 
 module.exports = { renderTemplate, renderTemplateByKey, postUserMessage, postOrderMessage };
