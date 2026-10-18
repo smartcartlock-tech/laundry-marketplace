@@ -79,7 +79,12 @@ async function finishLogin(r){
  let rt=store.get('returnTo','#/');store.del('returnTo');
  if(!rt||rt.indexOf('#/login')===0)rt='#/'; // לא מנווטים חזרה למסך הכניסה
  go(rt); // T88: ניווט מיידי אחרי שהטוקן התקבל — /auth/me מתרענן ברקע ולא תוקע את המסך
- try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save();route()}catch(e){/* כשל זמני: הניווט כבר קרה, הפרטים יתמלאו בכניסה הבאה */}
+ try{const me=await api('/auth/me');state.memberships=me.memberships||[];state.courier=me.courier||null;save();
+  // T90b: returnTo דביק — אחרי טעינת התפקידים בודקים שהנחיתה לא זרה לתפקיד (למשל דף שליח עמוק אצל לקוח, מ-returnTo של סשן קודם) ומנתבים לבית התפקיד
+  const cur=(location.hash||'#/').split('?')[0];
+  const foreign=(cur.indexOf('#/courier/')===0&&!state.courier)||(cur.indexOf('#/manage')===0&&!(state.memberships||[]).length)||(cur.indexOf('#/admin')===0&&!(state.me&&state.me.role==='admin'));
+  if(foreign&&typeof homeForRole==='function')return go(homeForRole());
+  route()}catch(e){/* כשל זמני: הניווט כבר קרה, הפרטים יתמלאו בכניסה הבאה */}
 }
 async function verifyOtp(){
  const btn=document.querySelector('[data-act=verifyOtp]');
