@@ -31,7 +31,8 @@
     ${d.items.map(it=>`<label style="display:flex;gap:8px;align-items:center;padding:4px 2px;font-size:14px">
       <input type="checkbox" class="rp-item" value="${it.id}"> <span style="flex:1">${esc(it.name)}</span> <span class="mut">₪${it.price}</span></label>`).join('')}
    </div>
-   <button class="btn" data-act="rpCreate" style="width:100%;margin-top:10px">הפעלת איסוף קבוע</button></div>`;
+   <div id="rp-err" style="display:none;color:#b3261e;background:#fdecea;border:1px solid #f3c2c2;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:8px"></div>
+   <button class="btn" id="rp-go" data-act="rpCreate" style="width:100%;margin-top:10px">הפעלת איסוף קבוע</button></div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov)ov.remove()});
  }
@@ -59,15 +60,21 @@
   rpClose:()=>{const ov=document.getElementById('rp-ov');if(ov)ov.remove()},
   rpOpen:t=>{if(!state.token)return toast('התחברו כדי לקבוע איסוף קבוע');openForm(t.dataset.a).catch(e=>toast(e.message||'שגיאה'))},
   rpCreate:async()=>{
-   if(!ctx)return;
+   const err=m=>{const el=document.getElementById('rp-err');if(el){el.textContent=m;el.style.display='block'}else toast(m)};
+   if(!ctx)return err('הטופס לא נטען כראוי — סגרו ופתחו שוב');
    const items=[...document.querySelectorAll('.rp-item:checked')].map(c=>({item_id:c.value,qty:1}));
    const body={weekday:Number(document.getElementById('rp-wd').value),frequency:document.getElementById('rp-freq').value,
     pickup_time:document.getElementById('rp-time').value||null,address:document.getElementById('rp-addr').value.trim(),items};
+   const btn=document.getElementById('rp-go');if(btn){btn.disabled=true;btn.textContent='מפעיל…'}
    try{
     await api('/t/'+encodeURIComponent(ctx.slug)+'/recurring-pickup',{method:'POST',body:JSON.stringify(body)});
-    toast('איסוף קבוע הופעל — ההזמנה הראשונה תיווצר ביום הקבוע הקרוב');
     const ov=document.getElementById('rp-ov');if(ov)ov.remove();
-   }catch(e){toast(e.message||'שגיאה בהפעלה')}
+    toast('איסוף קבוע הופעל — ההזמנה הראשונה תיווצר ביום הקבוע הקרוב');
+   }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='הפעלת איסוף קבוע'}
+    const m=e.message||'שגיאה בהפעלה';
+    err(/כבר קיים/.test(m)?m+" — לעריכה עברו ל'החשבון שלי'":m); // T114: הודעה בתוך המודאל (toast מוסתר מאחורי modal-ov)
+   }
   },
   rpToggle:async t=>{
    try{await api('/me/recurring-pickups/'+t.dataset.a,{method:'PATCH',body:JSON.stringify({active:t.dataset.b!=='1'})});
