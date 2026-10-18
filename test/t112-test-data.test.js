@@ -20,14 +20,16 @@ test('T112: is_test מוסתר מהרשימה הציבורית, ביקורת ע�
   // אישור מכבסה בלי שעות → 409; עם שעות → 200
   const admin = await api.login('+972500000001');
   const owner = await api.login('+972500000003');
-  const r = await api('/api/onboard/tenants', { method: 'POST', token: owner, body: {
-    name: 'מכבסת T112', phone: '03-5559999', address: 'רחוב 1', city: 'חיפה', items: [{ name: 'שק', price: 40, unit: 'item' }] } });
-  assert.equal(r.status, 201, JSON.stringify(r.json));
-  const noHours = await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  // T106: רישום דרך ה-API כבר דורש שעות+חלון החזרה — לכן ה-fixture של "בלי שעות" נוצר ישירות ב-DB
+  const [t112] = (await pool.query(
+    `INSERT INTO tenants(slug, name, phone, address, city, approved) VALUES ('t112-nh', 'מכבסת T112', '03-5559999', 'רחוב 1', 'חיפה', false) RETURNING id, slug`)).rows;
+  const [ownerRow] = (await pool.query(`SELECT id FROM users WHERE phone='+972500000003'`)).rows;
+  await pool.query(`INSERT INTO tenant_members(tenant_id, user_id, role) VALUES ($1,$2,'owner')`, [t112.id, ownerRow.id]);
+  const noHours = await api(`/api/admin/tenants/${t112.id}/approve`, { method: 'POST', token: admin });
   assert.equal(noHours.status, 409, 'אישור בלי שעות נחסם');
-  const hs = await api(`/api/t/${r.json.tenant.slug}/settings`, { method: 'PATCH', token: owner, body: { hours: { '1': [['09:00', '17:00']] } } });
+  const hs = await api(`/api/t/${t112.slug}/settings`, { method: 'PATCH', token: owner, body: { hours: { '1': [['09:00', '17:00']] } } });
   assert.equal(hs.status, 200, JSON.stringify(hs.json));
-  const ok = await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  const ok = await api(`/api/admin/tenants/${t112.id}/approve`, { method: 'POST', token: admin });
   assert.equal(ok.status, 200, 'אישור עם שעות עובר');
 
   // ביקורת עצמית: הבעלים יוצר הזמנה אצל עצמו ומנסה לדרג → 403
