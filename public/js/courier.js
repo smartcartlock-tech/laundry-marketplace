@@ -35,7 +35,7 @@ async function vCourier(sub){
      ${o.status==='confirmed'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="picked_up">סימון נאסף מהמכבסה</button>`:''}
      ${o.status==='ready'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="out_for_delivery">יצאתי לדרך אל הלקוח</button>`:''}
      ${o.status==='picked_up'||o.status==='in_work'?`<div class="mut">הכביסה אצל המכבסה — החזרה תתאפשר כשההזמנה תסומנה ״מוכנה״</div>`:''}
-     ${o.status==='out_for_delivery'?`<button class="btn2 green" data-act="courierConfirmDelivery" data-a="${o.id}">מסירה עם אישור לקוח</button><button class="btn2" data-act="courierPhotoDelivery" data-a="${o.id}">אישור בצילום</button>`:''}
+     ${o.status==='out_for_delivery'?`<button class="btn2 green" data-act="courierConfirmDelivery" data-a="${o.id}" data-pm="${o.payment_method||''}" data-ps="${o.payment_status||''}" data-total="${o.total}">מסירה עם אישור לקוח</button><button class="btn2" data-act="courierPhotoDelivery" data-a="${o.id}" data-pm="${o.payment_method||''}" data-ps="${o.payment_status||''}" data-total="${o.total}">אישור בצילום</button>`:''}
     </div>
    </div>`).join('')||'<div class="card mut">אין משימות פעילות כרגע. משימות חדשות מגיעות כהצעות שיבוץ — <a href="#" data-act="routeRefresh" style="color:#0e7a8a">רענון</a></div>'}
  </div>`;

@@ -27,7 +27,7 @@ async function deliveredOrder(api, admin, customer, slug) {
   assert.equal(acc.status, 200, JSON.stringify(acc.json));
   for (const [who, st] of [[courier,'picked_up'],[admin,'in_work'],[admin,'ready'],[courier,'out_for_delivery'],[courier,'delivered']]) {
     const url = who === courier ? `/api/courier/orders/${oid}/mark` : `/api/t/${slug}/orders/${oid}/status`;
-    const body = who === courier ? { action: st } : { status: st };
+    const body = who === courier ? (st === 'delivered' ? { action: st, cash: { outcome: 'collected' } } : { action: st }) : { status: st };
     const s = await api(url, { method: 'POST', token: who, body });
     assert.equal(s.status, 200, st + ': ' + JSON.stringify(s.json));
   }

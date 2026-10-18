@@ -16,7 +16,7 @@ async function setup(t) {
   const mk = (body = {}, token = customer) => api('/api/orders', { method: 'POST', token,
     body: { slug: 'achuza', items: [{ item_id: bag.id, qty: 1 }], address: 'בדיקה 1', ...body } });
   const st = (id, status) => api('/api/t/achuza/orders/' + id + '/status', { method: 'POST', token: owner, body: { status } });
-  const mark = (id, action) => api('/api/courier/orders/' + id + '/mark', { method: 'POST', token: courierUser, body: { action } });
+  const mark = (id, action) => api('/api/courier/orders/' + id + '/mark', { method: 'POST', token: courierUser, body: action === 'delivered' ? { action, cash: { outcome: 'collected' } } : { action } });
   const assign = (id) => api('/api/t/achuza/orders/' + id + '/assign', { method: 'POST', token: owner, body: { courier_id: priv.id } });
   const bal = async () => (await api('/api/orders/club/summary', { token: customer })).json.balances.find(b => b.slug === 'achuza')?.balance ?? 0;
   return { api, customer, owner, courierUser, bag, priv, mk, st, mark, assign, bal };

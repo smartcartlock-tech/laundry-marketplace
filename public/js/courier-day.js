@@ -24,7 +24,7 @@ async function cqSync(){
 async function cqSyncPhoto(item){
  const rec=await coffGetPhoto(item.ref);
  if(!rec||!rec.blob)return; /* הבלוב כבר טופל */
- const fd=new FormData();fd.append('method','photo');fd.append('photo',rec.blob,'delivery.jpg');
+ const fd=new FormData();fd.append('method','photo');fd.append('photo',rec.blob,'delivery.jpg');if(item.cash)fd.append('cash',JSON.stringify(item.cash));
  let r;
  try{r=await fetch('/api/courier/orders/'+item.orderId+'/confirm-delivery',{method:'POST',headers:{authorization:'Bearer '+state.token},body:fd})}
  catch(e){const ne=new Error('offline');ne.status=0;throw ne} /* רשת — נשאר בתור וב-IndexedDB */
@@ -111,7 +111,7 @@ async function vCourierDay(dayDate){
    ${!st.done?`<div style="display:flex;gap:8px;margin-top:8px">
      ${st.kind==='pickup'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="picked_up">סימון נאסף</button>`:''}
      ${st.kind==='collect'?`<button class="btn2 on" data-act="markOrder" data-a="${o.id}" data-b="out_for_delivery">אספתי — יציאה ללקוח</button>`:''}
-     ${st.kind==='deliver'?`<button class="btn2 green" data-act="courierConfirmDelivery" data-a="${o.id}">מסירה עם אישור לקוח</button><button class="btn2" data-act="courierPhotoDelivery" data-a="${o.id}">אישור בצילום</button>`:''}
+     ${st.kind==='deliver'?`<button class="btn2 green" data-act="courierConfirmDelivery" data-a="${o.id}" data-pm="${o.payment_method||''}" data-ps="${o.payment_status||''}" data-total="${o.total}">מסירה עם אישור לקוח</button><button class="btn2" data-act="courierPhotoDelivery" data-a="${o.id}" data-pm="${o.payment_method||''}" data-ps="${o.payment_status||''}" data-total="${o.total}">אישור בצילום</button>`:''}
     </div>`:`<div class="mut" style="margin-top:6px">✓ הושלם · ${fmtDT(st.when)}</div>`}
   </div>`}).join('')}
  ${t.tasks.in_laundry.length?`<div class="sec">אצל המכבסה (${t.counts.in_laundry})</div>
@@ -159,7 +159,34 @@ function courierProximity(){
 /* T92: אישור מסירה בקוד — חלון ייעודי עם משוב מיידי: 'מעבד…' מהלחיצה,
    קוד שגוי → שגיאה אדומה בתוך החלון בלי סגירה, קוד נכון → ✓ ועדכון הכרטיס.
    כשל רשת (status 0) → תור האופליין כרגיל. זרימה זהה בשני מסכי השליח. */
-function courierConfirmDelivery(orderId){
+/* T94: צעד גביית מזומן חובה לפני סגירת משימת מזומן — 'גביתי ₪X' / סכום אחר / סירב.
+   מחזיר אובייקט cash, או null אם המשתמש ביטל (המסירה לא ממשיכה). */
+function askCashStep(total){
+ return new Promise(resolve=>{
+  const ov=document.createElement('div');ov.className='modal-ov';
+  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>גביית מזומן</b>
+   <div class="mut" style="margin:8px 0">ההזמנה במזומן — יש לאשר גבייה לפני סגירת המשימה. הסכום לגבייה: <b>₪${total}</b></div>
+   <label class="lb" style="display:block"><input type="radio" name="cash-out" value="collected" checked> גביתי ₪${total}</label>
+   <label class="lb" style="display:block"><input type="radio" name="cash-out" value="partial"> גביתי סכום אחר <input class="inp" id="cash-amt" type="number" min="0" step="0.5" style="width:110px;display:inline-block;margin:0 6px" placeholder="₪"></label>
+   <label class="lb" style="display:block"><input type="radio" name="cash-out" value="refused"> הלקוח סירב לשלם</label>
+   <input class="inp" id="cash-note" placeholder="הערה (לא חובה)">
+   <div id="cash-err" role="alert" style="display:none;color:#b3261e;margin-top:8px;font-weight:600"></div>
+   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="cash-ok" style="flex:1">אישור והמשך למסירה</button><button class="btn2" id="cash-cancel" style="flex:1">ביטול</button></div></div>`;
+  document.body.appendChild(ov);
+  const done=v=>{ov.remove();resolve(v)};
+  ov.querySelector('#cash-cancel').onclick=()=>done(null);
+  ov.onclick=e=>{if(e.target===ov)done(null)};
+  ov.querySelector('#cash-ok').onclick=()=>{
+   const out=ov.querySelector('input[name="cash-out"]:checked').value;
+   const amt=Number(ov.querySelector('#cash-amt').value);
+   if(out==='partial'&&!(amt>0)){const er=ov.querySelector('#cash-err');er.textContent='יש להזין את הסכום שגובה';er.style.display='block';return}
+   done({outcome:out,amount:out==='collected'?Number(total):out==='partial'?amt:0,note:ov.querySelector('#cash-note').value.trim()});
+  };
+ });
+}
+function cashNeeded(t){return t&&t.dataset.pm==='cash'&&t.dataset.ps!=='paid_cash'}
+
+function courierConfirmDelivery(orderId,cashPre){
  const ov=document.createElement('div');ov.className='modal-ov';
  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה</b>
   <div class="mut" style="margin:8px 0">בקשו מהלקוח את קוד המסירה (6 ספרות) שמופיע אצלו במעקב ההזמנה — זה אישור הקבלה.</div>
@@ -179,12 +206,12 @@ function courierConfirmDelivery(orderId){
   if(!/^\d{6}$/.test(code)){showErr('יש להזין את קוד המסירה (6 ספרות) כפי שהוא');inp.focus();return}
   err.style.display='none';ok.disabled=true;ok.textContent='מעבד…';
   try{
-   await api(`/courier/orders/${orderId}/confirm-delivery`,{method:'POST',body:JSON.stringify({method:'code',code})});
+   await api(`/courier/orders/${orderId}/confirm-delivery`,{method:'POST',body:JSON.stringify({method:'code',code,...(cashPre?{cash:cashPre}:{})})});
    ov.querySelector('.modal').innerHTML=`<div style="text-align:center;padding:16px 0"><div style="font-size:36px">✅</div><b>המסירה אושרה</b></div>`;
    setTimeout(()=>{done();toast('המסירה אושרה ✓');route()},650);
   }catch(e){
    if(e.status===0){
-    cqPush({path:`/courier/orders/${orderId}/confirm-delivery`,opts:{method:'POST',body:JSON.stringify({method:'code',code})}});
+    cqPush({path:`/courier/orders/${orderId}/confirm-delivery`,opts:{method:'POST',body:JSON.stringify({method:'code',code,...(cashPre?{cash:cashPre}:{})})}});
     done();toast('אין חיבור — האישור נשמר ויישלח אוטומטית כשיחזור החיבור');route();
    }else{
     ok.disabled=false;ok.textContent='אישור מסירה';showErr(e.message);inp.focus();inp.select();
@@ -197,7 +224,7 @@ function courierConfirmDelivery(orderId){
 
 /* אישור מסירה בצילום: בחירת תמונה (נדחסת אוטומטית ע״י image-compress), שליחה כ-multipart.
    בכשל רשת התמונה נשמרת ב-IndexedDB (coffSavePhoto) ונכנסת לתור הסנכרון המאוחד — תישלח אוטומטית כשהחיבור יחזור. */
-function courierPhotoDelivery(orderId){
+function courierPhotoDelivery(orderId,cashPre){
  const ov=document.createElement('div');ov.className='modal-ov';
  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה בצילום</b>
   <div class="mut" style="margin:8px 0">צלמו את השקים אצל הלקוח או את חתימת הקבלה. התמונה נשמרת כראיה למכבסה ולפלטפורמה.</div>
@@ -214,7 +241,7 @@ function courierPhotoDelivery(orderId){
   const showErr=m=>{err.textContent=m;err.style.display='block'};
   if(!f){showErr('יש לבחור תמונה');return}
   err.style.display='none';btn.disabled=true;btn.textContent='מעבד…';
-  const fd=new FormData();fd.append('method','photo');fd.append('photo',f);
+  const fd=new FormData();fd.append('method','photo');fd.append('photo',f);if(cashPre)fd.append('cash',JSON.stringify(cashPre));
   try{
    const r=await fetch('/api/courier/orders/'+orderId+'/confirm-delivery',{method:'POST',headers:{authorization:'Bearer '+state.token},body:fd});
    const j=await r.json().catch(()=>({}));
@@ -225,7 +252,7 @@ function courierPhotoDelivery(orderId){
    if(!navigator.onLine||e.name==='TypeError'){ /* כשל רשת: שמירה ב-IndexedDB + סמן בתור המאוחד */
     try{
      const ref=await coffSavePhoto(orderId,f);
-     cqPush({kind:'photo',orderId,ref});
+     cqPush({kind:'photo',orderId,ref,...(cashPre?{cash:cashPre}:{})});
      done();toast('אין חיבור — הצילום נשמר ויישלח כשהחיבור יחזור ✓');route();
     }catch(ie){btn.disabled=false;btn.textContent='העלאה ואישור מסירה';showErr('שמירה מקומית נכשלה: '+ie.message)}
    }else{btn.disabled=false;btn.textContent='העלאה ואישור מסירה';showErr(e.message)}
@@ -273,6 +300,13 @@ async function vCourierHistory(period){
     <div class="mut">${x.order_address?esc(x.order_address)+' · ':''}${fmtDT(x.created_at)} · ${x.status==='paid_demo'?'שולם (דמו)':'נצבר'}</div></div>
    <div style="text-align:left"><b>₪${x.net}</b><div class="mut">ברוטו ₪${x.gross}</div></div>
   </div>`).join(''):`<div class="card mut" style="text-align:center">אין רשומות רווחים ${period==='day'?'להיום':'לשבוע זה'} — רשומה נוצרת על כל מסירה שמאושרת.</div>`}
+ ${(e.cash&&e.cash.length)?`<div class="sec">גביית מזומן (${e.cash.length})</div>
+ <div class="card">${e.cash.map(c=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid #edf1f4">
+   <div><b>${c.outcome==='collected'?'💵 גביתי':c.outcome==='partial'?'💵 גבייה חלקית':'✕ סירב לשלם'}</b> · ${esc(c.tenant_name)}
+    <div class="mut">${c.order_address?esc(c.order_address)+' · ':''}${esc(c.at_local)}${c.note?' · '+esc(c.note):''}</div></div>
+   <div style="text-align:left"><b>${c.outcome==='refused'?'—':'₪'+c.amount}</b></div></div>`).join('')}
+  ${Object.keys(e.cash_by_tenant||{}).length?`<div class="mut" style="margin-top:8px;border-top:1px dashed #d3e0e4;padding-top:6px">להתחשבנות מול המכבסה: ${Object.entries(e.cash_by_tenant).map(([k,v])=>`${esc(k)} ₪${v}`).join(' · ')} (סה״כ ₪${e.cash_total})</div>`:''}
+ </div>`:''}
  <div class="sec">היסטוריית משימות</div>
  ${h.rows.length?h.rows.map(o=>`<div class="card">
    <b>${esc(o.tenant_name)}</b> · ${esc(o.customer_name||'לקוח')} <span class="st-pill st-delivered">${HE.delivered}</span>
@@ -395,8 +429,8 @@ function vCourierHelp(){
 
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
- courierConfirmDelivery:t=>courierConfirmDelivery(t.dataset.a),
- courierPhotoDelivery:t=>courierPhotoDelivery(t.dataset.a),
+ courierConfirmDelivery:async t=>{const cash=cashNeeded(t)?await askCashStep(t.dataset.total):null;if(cashNeeded(t)&&!cash)return;courierConfirmDelivery(t.dataset.a,cash)},
+ courierPhotoDelivery:async t=>{const cash=cashNeeded(t)?await askCashStep(t.dataset.total):null;if(cashNeeded(t)&&!cash)return;courierPhotoDelivery(t.dataset.a,cash)},
  courierDayDate:t=>go('#/courier/day?date='+t.value), courierDayToday:()=>go('#/courier/day'),
  courierToggleAvail:t=>courierToggleAvail(t.dataset.a==='1'),
  courierDispatchAccept:t=>courierDispatchAccept(t.dataset.a),

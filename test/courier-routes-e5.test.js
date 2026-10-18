@@ -80,7 +80,7 @@ test('E5.T3+T4: מסלול משולב רב-מכבסתי, פיצול תשלום �
     await api(`/api/t/${slug}/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
     await api(`/api/t/${slug}/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
     await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'out_for_delivery' } });
-    const d = await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered' } });
+    const d = await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered', cash: { outcome: 'collected' } } });
     assert.equal(d.status, 200);
   }
   earn = await api('/api/courier/earnings', { token: platformCourier });
@@ -133,7 +133,7 @@ test('E5.T5: מסך ניהול שליחים למכבסה — ביצועים, ע�
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
   await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'out_for_delivery' } });
-  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered' } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered', cash: { outcome: 'collected' } } });
 
   const ov = await api('/api/t/achuza/couriers/overview', { token: owner });
   const pc = ov.json.couriers.find(c => c.model === 'platform');

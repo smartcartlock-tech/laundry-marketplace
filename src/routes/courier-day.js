@@ -3,7 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const { q } = require('../db');
 const { requireAuth, requireCourier } = require('../auth');
-const { completeDelivery } = require('../courier-actions');
+const { completeDelivery, parseCashConfirmation } = require('../courier-actions');
 const { fileFilter, verifyFile, IMAGES } = require('../uploads');
 const { nearestNeighbor, haversineKm, weekStart } = require('../routes-engine');
 
@@ -130,6 +130,9 @@ r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) 
   if (method === 'photo' && req.file && !verifyFile(req.file, IMAGES)) {
     return res.status(400).json({ error: 'תוכן הקובץ אינו תואם לסוג המדווח (JPG/PNG/WEBP בלבד)' });
   }
+  // T94: משימת מזומן לא נסגרת בלי צעד 'גביתי ₪X' / סכום אחר / סירב
+  const cashConfirm = parseCashConfirmation(req.body, order);
+  if (cashConfirm && cashConfirm.error) return res.status(cashConfirm.status || 400).json({ error: cashConfirm.error, code: cashConfirm.code });
   // T93: קוד מסירה חד-פעמי (6 ספרות) שהלקוח רואה במעקב/במרכז ההודעות — מחליף את מסלול 4 ספרות הטלפון
   if (method === 'code') {
     const got = String(code || '').replace(/\D/g, '');
@@ -144,7 +147,7 @@ r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) 
     if (e.code === '23505') return res.status(409).json({ error: 'כבר קיים אישור מסירה להזמנה זו' });
     throw e;
   }
-  await completeDelivery({ order, courierId: req.courier.id, actorId: req.user.id, photoUrl: photo_url || null, note: note || 'מסירה אושרה על ידי הלקוח' });
+  await completeDelivery({ order, courierId: req.courier.id, actorId: req.user.id, photoUrl: photo_url || null, note: note || 'מסירה אושרה על ידי הלקוח', cashConfirm });
   res.json({ ok: true, confirmed: true, method });
 });
 
@@ -187,7 +190,26 @@ r.get('/earnings/detail', async (req, res) => {
     const d = byDayMap[x.day] || (byDayMap[x.day] = { day: x.day, stops: 0, net: 0 });
     d.stops += x.stops; d.net = +(d.net + Number(x.net)).toFixed(2);
   }
-  res.json({ period, date: dateParam, tasks, totals, by_day: Object.values(byDayMap).sort((a, b) => b.day.localeCompare(a.day)) });
+  // T94: תיעוד גביית מזומן עם חותמת זמן + סיכום להתחשבנות מול כל מכבסה
+  const cashWhere = period === 'day'
+    ? `(cc.created_at AT TIME ZONE 'Asia/Jerusalem')::date = COALESCE($2::date, (now() AT TIME ZONE 'Asia/Jerusalem')::date)`
+    : `(cc.created_at AT TIME ZONE 'Asia/Jerusalem')::date >= $2::date AND (cc.created_at AT TIME ZONE 'Asia/Jerusalem')::date < $2::date + 7`;
+  const { rows: cashRows } = await q(
+    `SELECT cc.id, cc.order_id, cc.outcome, cc.amount, cc.note, cc.created_at,
+            to_char(cc.created_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS at_local,
+            COALESCE(t.name,'—') AS tenant_name, o.address AS order_address, o.total AS order_total
+     FROM courier_cash_collections cc LEFT JOIN tenants t ON t.id=cc.tenant_id LEFT JOIN orders o ON o.id=cc.order_id
+     WHERE cc.courier_id=$1 AND ${cashWhere}
+     ORDER BY cc.created_at DESC LIMIT 200`, params);
+  const cashByTenant = {};
+  for (const c of cashRows) {
+    if (c.outcome === 'refused') continue;
+    const k = c.tenant_name;
+    cashByTenant[k] = +( (cashByTenant[k] || 0) + Number(c.amount) ).toFixed(2);
+  }
+  res.json({ period, date: dateParam, tasks, totals, by_day: Object.values(byDayMap).sort((a, b) => b.day.localeCompare(a.day)),
+    cash: cashRows, cash_by_tenant: cashByTenant,
+    cash_total: +cashRows.filter(c => c.outcome !== 'refused').reduce((a2, c) => a2 + Number(c.amount), 0).toFixed(2) });
 });
 
 // היסטוריית משימות שהושלמו + הדירוג שהשליח רואה: דירוג לקוח לכל הזמנה והממוצע הכולל שלו

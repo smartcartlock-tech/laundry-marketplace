@@ -48,6 +48,6 @@ test('T93: קוד מסירה 6 ספרות — חשיפה ללקוח בלבד, א
   assert.equal(wrong.status, 400);
   const last4 = await api(`/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
   assert.equal(last4.status, 400, 'מסלול 4 ספרות בוטל');
-  const okRes = await api(`/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code } });
+  const okRes = await api(`/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code, cash: { outcome: 'collected' } } });
   assert.equal(okRes.status, 200, JSON.stringify(okRes.json));
 });

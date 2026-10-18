@@ -70,7 +70,7 @@ test('orders: מחזור חיים מלא, נקודות, הרשאות, ביקור
   }
   // שליח: יצא למסירה -> נמסר
   for (const act of ['out_for_delivery', 'delivered']) {
-    const r = await api('/api/courier/orders/' + order.id + '/mark', { method: 'POST', token: courierUser, body: { action: act } });
+    const r = await api('/api/courier/orders/' + order.id + '/mark', { method: 'POST', token: courierUser, body: act === 'delivered' ? { action: act, cash: { outcome: 'collected' } } : { action: act } });
     assert.equal(r.status, 200, act);
   }
 
@@ -125,7 +125,7 @@ test('QA: ביקורת כפולה על אותה הזמנה נחסמת ב-409', a
   await api(`/api/t/achuza/orders/${oid}/assign`, { method: 'POST', token: owner, body: { courier_id: priv.id } });
   await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courierUser, body: { action: 'picked_up' } });
   for (const st of ['in_work', 'ready']) await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: owner, body: { status: st } });
-  for (const act of ['out_for_delivery', 'delivered']) await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courierUser, body: { action: act } });
+  for (const act of ['out_for_delivery', 'delivered']) await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courierUser, body: act === 'delivered' ? { action: act, cash: { outcome: 'collected' } } : { action: act } });
   const r1 = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 5, text: 'מעולה' } });
   assert.equal(r1.status, 200, JSON.stringify(r1.json));
   const r2 = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 1, text: 'ניסיון כפול' } });

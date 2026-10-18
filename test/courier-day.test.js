@@ -83,12 +83,12 @@ test('מסך שליח: משימות מקובצות, מסלול יום, אישו�
   // מסלול 4 ספרות הטלפון בוטל — 4 הספרות האחרונות אינן מתקבלות יותר
   const last4 = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
   assert.equal(last4.status, 400, 'מסלול 4 ספרות בוטל');
-  const okCode = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1 } });
+  const okCode = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1, cash: { outcome: 'collected' } } });
   assert.equal(okCode.status, 200, JSON.stringify(okCode.json));
   assert.equal(okCode.json.confirmed, true);
 
   // כפילות נדחית; ההזמנה מופיעה ב"הושלמו היום" עם פרטי האישור
-  const dup = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1 } });
+  const dup = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1, cash: { outcome: 'collected' } } });
   assert.equal(dup.status, 409);
   tasks = await api('/api/courier/tasks', { token: courier });
   const done = tasks.json.tasks.done_today.find(x => x.id === o1);
@@ -109,13 +109,13 @@ test('מסך שליח: משימות מקובצות, מסלול יום, אישו�
   await api(`/api/t/achuza/orders/${o2}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
   const noPhoto = await api(`/api/courier/orders/${o2}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'photo' } });
   assert.equal(noPhoto.status, 400);
-  const withPhoto = await api(`/api/courier/orders/${o2}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'photo', photo_url: '/uploads/demo-proof.jpg' } });
+  const withPhoto = await api(`/api/courier/orders/${o2}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'photo', photo_url: '/uploads/demo-proof.jpg', cash: { outcome: 'collected' } } });
   assert.equal(withPhoto.status, 200, JSON.stringify(withPhoto.json));
 
   // אישור מסירה מסטטוס לא תקין (confirmed בלבד) נדחה
   const o3 = await makeOrder(api, customer, 'achuza');
   await confirmAndAssign(api, admin, 'achuza', o3);
-  const badState = await api(`/api/courier/orders/${o3}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
+  const badState = await api(`/api/courier/orders/${o3}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002', cash: { outcome: 'collected' } } });
   assert.equal(badState.status, 409);
 });
 
@@ -147,6 +147,7 @@ test('מסך שליח: אישור מסירה בצילום, הרשאות צפיי
   const fd = new FormData();
   fd.append('method', 'photo');
   fd.append('photo', new Blob([PNG_BYTES], { type: 'image/png' }), 'proof.png');
+  fd.append('cash', JSON.stringify({ outcome: 'collected' }));
   const ok = await fetch(`${base}/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', headers: { authorization: 'Bearer ' + courier }, body: fd });
   assert.equal(ok.status, 200, JSON.stringify(await ok.clone().text()));
 

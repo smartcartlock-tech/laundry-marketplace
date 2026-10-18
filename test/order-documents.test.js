@@ -13,7 +13,7 @@ async function deliverOrder(api, { owner, customer, courierUser, slug, items, ad
   await api(`/api/t/${slug}/orders/${order.id}/assign`, { method: 'POST', token: owner, body: { courier_id: priv.id } });
   await api(`/api/courier/orders/${order.id}/mark`, { method: 'POST', token: courierUser, body: { action: 'picked_up' } });
   for (const st of ['in_work', 'ready']) await api(`/api/t/${slug}/orders/${order.id}/status`, { method: 'POST', token: owner, body: { status: st } });
-  for (const act of ['out_for_delivery', 'delivered']) await api(`/api/courier/orders/${order.id}/mark`, { method: 'POST', token: courierUser, body: { action: act } });
+  for (const act of ['out_for_delivery', 'delivered']) await api(`/api/courier/orders/${order.id}/mark`, { method: 'POST', token: courierUser, body: act === 'delivered' ? { action: act, cash: { outcome: 'collected' } } : { action: act } });
   return order;
 }
 

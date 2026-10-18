@@ -60,7 +60,7 @@ test('T82: ping נשמר, GET חושף רק שדות מותרים, בידוד, �
   assert.equal(denied.status, 403);
 
   // אין מיקום אחרי מסירה + pings נמחקים
-  const del = await api(`/api/courier/orders/${orderId}/mark`, { method: 'POST', token: courier, body: { action: 'delivered' } });
+  const del = await api(`/api/courier/orders/${orderId}/mark`, { method: 'POST', token: courier, body: { action: 'delivered', cash: { outcome: 'collected' } } });
   assert.equal(del.status, 200);
   const after = await api(`/api/tracking/${code}/state`);
   assert.equal(after.json.status, 'delivered');

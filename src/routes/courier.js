@@ -238,14 +238,26 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
     }
   }
 
+    // T94: משימת מזומן לא נסגרת בלי אישור גבייה
+    let cashConfirm = null;
+    if (newStatus === 'delivered') {
+      cashConfirm = require('../courier-actions').parseCashConfirmation(req.body, order);
+      if (cashConfirm && cashConfirm.error) { await client.query('ROLLBACK'); return res.status(cashConfirm.status || 400).json({ error: cashConfirm.error, code: cashConfirm.code }); }
+    }
     await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [newStatus, order.id]);
-    const evNote = [note || null, windowViolation ? 'חריגה: האיסוף סומן מחוץ לחלון שנקבע' : null].filter(Boolean).join(' · ') || null;
+    if (cashConfirm) {
+      await require('../courier-actions').recordCashCollection({ courierId: req.courier.id, order, cash: cashConfirm, db: client });
+      const cl = require('../courier-actions').CASH_LABEL(cashConfirm) + (cashConfirm.note ? ` (${cashConfirm.note})` : '');
+      if (newStatus === 'delivered') { /* נרשם באירוע למטה */ }
+      req.__cashLabel = cl;
+    }
+    const evNote = [note || null, windowViolation ? 'חריגה: האיסוף סומן מחוץ לחלון שנקבע' : null, req.__cashLabel || null].filter(Boolean).join(' · ') || null;
     await client.query('INSERT INTO order_events(order_id, status, actor_id, note, photo_url) VALUES ($1,$2,$3,$4,$5)',
       [order.id, newStatus, req.user.id, evNote, photo_url || null]);
     if (newStatus === 'delivered' && order.points_earned > 0) {
       await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
         [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
-      if (order.payment_method === 'cash') await client.query(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
+      // T94: paid_cash רק באישור 'גביתי' (recordCashCollection); חלקי/סירב נשאר pending
     }
     if (newStatus === 'delivered') {
       const { issueDocumentsForOrder } = require('../documents');

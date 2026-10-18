@@ -16,7 +16,7 @@ test('מסע מלא: הזמנה, אישור, שליח, מסירה, מסמך חש
   const couriers = await api('/api/t/achuza/couriers', { token: owner });
   const priv = couriers.json.couriers.find(c => c.model === 'private');
   const st = (id, status) => api('/api/t/achuza/orders/' + id + '/status', { method: 'POST', token: owner, body: { status } });
-  const mark = (id, action) => api('/api/courier/orders/' + id + '/mark', { method: 'POST', token: courierUser, body: { action } });
+  const mark = (id, action) => api('/api/courier/orders/' + id + '/mark', { method: 'POST', token: courierUser, body: action === 'delivered' ? { action, cash: { outcome: 'collected' } } : { action } });
 
   // מכבסה: סוג עוסק נדרש להנפקת מסמכים (עוסק פטור — מונפקת קבלה בלי ח.פ)
   await api('/api/t/achuza/settings', { method: 'PATCH', token: owner, body: { dealer_type: 'patur' } });

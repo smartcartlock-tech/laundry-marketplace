@@ -79,7 +79,7 @@ test('E5.T7: דירוג דו-כיווני — לקוח ומכבסה מדרגים
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
   await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'out_for_delivery' } });
-  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered' } });
+  await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: platformCourier, body: { action: 'delivered', cash: { outcome: 'collected' } } });
 
   // לקוח מדרג מכבסה + שליח
   const rv = await api(`/api/orders/${oid}/review`, { method: 'POST', token: customer, body: { rating: 5, text: 'מעולה', courier_rating: 5, courier_tags: ['בזמן', 'אדיב'] } });
