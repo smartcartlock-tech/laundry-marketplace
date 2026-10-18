@@ -121,7 +121,7 @@ function roleLabel(){if(state.courier)return 'שליח';if(state.memberships&&st
 function ensureIdBanner(){
  const app=document.getElementById('app');if(!app)return;
  let b=document.getElementById('id-banner');
- if(!state.me){if(b)b.remove();return}
+ if(!state.me){if(b)b.remove();document.body.classList.remove('has-idbanner');document.body.style.removeProperty('--idbanner-h');return}
  const html='<span>מחובר כ-<b>'+esc(state.me.name||state.me.phone||state.me.email||'')+'</b> · '+roleLabel()+'</span><a href="#/" data-act="acctLogout" style="color:#0e7a8a;white-space:nowrap">התנתקות</a>';
  if(!b){
   b=document.createElement('div');b.id='id-banner';
@@ -129,6 +129,10 @@ function ensureIdBanner(){
   app.prepend(b);
  }
  if(b.__html!==html){b.innerHTML=html;b.__html=html}
+ if(!document.body.classList.contains('has-idbanner')){
+  document.body.classList.add('has-idbanner');
+  const h=b.offsetHeight;if(h)document.body.style.setProperty('--idbanner-h',h+'px'); /* T115: הבאנר הקבוע דורס את כפתור הנושא — דוחפים אותו מתחת לבאנר */
+ }
 }
 new MutationObserver(()=>{try{ensureIdBanner()}catch(e){}}).observe(document.documentElement,{childList:true,subtree:true});
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */

@@ -33,7 +33,7 @@ test('T115: באנר דמו fixed — פיצוי גובה למובייל/דסק�
 
 test('T115: כפתור ירח מעוגד לפינה עליונה — לא מכסה תוכן תחתון', () => {
   const rule = [...css.matchAll(/(?:^|\s)\.theme-toggle\{[^}]*\}/g)].map(x => x[0]).find(r => r.includes('left:10px'));
-  assert.ok(rule && rule.includes('top:34px') && rule.includes('bottom:auto'), 'הועבר לפינה עליונה');
+  assert.ok(rule && rule.includes('--tt-top,34px') && rule.includes('bottom:auto'), 'הועבר לפינה עליונה');
 });
 
 test('T115: צ\'יפי סטטוס לכל 8 הסטטוסים עם ניגודיות AA', () => {
@@ -42,4 +42,13 @@ test('T115: צ\'יפי סטטוס לכל 8 הסטטוסים עם ניגודיו�
     assert.ok(m, st + ' קיים');
     assert.ok(ratio(m[2], m[1]) >= 4.5, st + ' ניגודיות ' + ratio(m[2], m[1]).toFixed(2));
   }
+});
+
+test('T115: כפתור הנושא לא דורס את באנר הזהות — נדחף מתחתיו דרך --idbanner-h', () => {
+  
+  assert.ok(css.includes('var(--idbanner-h,0px)'), 'הטופ של הכפתור מחושב עם --idbanner-h');
+  assert.ok(css.includes('--tt-top'), 'נקודות השבירה מגדירות --tt-top ולא top קשיח');
+  const auth = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'auth.js'), 'utf8');
+  assert.ok(auth.includes("classList.add('has-idbanner')") && auth.includes("--idbanner-h"), 'auth.js מסמן has-idbanner ומודד גובה');
+  assert.ok(auth.includes("classList.remove('has-idbanner')"), 'הסרת הבאנר מנקה את הסימון');
 });

@@ -21,7 +21,7 @@ test('T89: באנר מחובר-כ קבוע עם התנתקות, מוצג לכל 
   assert.ok(auth.includes('roleLabel'), 'תפקיד מוצג (לקוח/שליח/בעל מכבסה)');
   assert.ok(auth.includes("acctLogout:(t,e)"), 'פעולת התנתקות רשומה ב-onAct');
   const obs = auth.match(/function ensureIdBanner[\s\S]*?\n}/)[0];
-  assert.ok(obs.includes('if(!state.me){if(b)b.remove();return}'), 'אורח — בלי באנר');
+  assert.ok(obs.includes('if(!state.me){if(b)b.remove();'), 'אורח — בלי באנר');
 });
 
 test('T89: כרטיס הזהות בחשבון מציע התנתקות; צ\'ק-אאוט בודק עקביות זהות', () => {
