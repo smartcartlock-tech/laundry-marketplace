@@ -28,7 +28,7 @@ async function notifyLaundryNewOrder(tenant, order, customer) {
     'סכום': order.total,
   });
   const body = t ? t.body : `הזמנה חדשה ${order.tracking_code || order.id} — סה"כ ₪${order.total}.`;
-  for (const m of members) await notifyUser(m.id, tenant.id, body, m.phone, t ? t.title : undefined);
+  for (const m of members) await notifyUser(m.id, tenant.id, body, m.phone, t ? t.title : undefined, { url: './#/manage' }); // deep-link ללוח הניהול (T110/G)
 }
 
 module.exports = { notifyCourierNewTask, notifyLaundryNewOrder };
