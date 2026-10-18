@@ -44,7 +44,7 @@ r.get('/:slug', async (req, res, next) => {
     const t = rows[0];
     if (!t) return next(); // נתיב לא קיים — נופל ל-SPA/404 הרגיל
     const { rows: items } = await q(
-      'SELECT name, price, unit FROM price_items WHERE tenant_id = $1 ORDER BY name LIMIT 60', [t.id]);
+      'SELECT name, price, unit FROM price_items WHERE tenant_id = $1 AND active ORDER BY name LIMIT 60', [t.id]);
     const { MODE } = require('../config');
     const color = /^#[0-9a-fA-F]{6}$/.test(t.color || '') ? t.color : '#0e7a8a';
     const proto = req.headers['x-forwarded-proto'] || req.protocol;
