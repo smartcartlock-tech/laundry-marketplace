@@ -28,7 +28,8 @@ test('T111: delivered דרך mark מייצר הודעה אחת בלבד (mark + 
 
   // out_for_delivery ואז delivered — delivered עובר גם ב-mark וגם ב-completeDelivery (שתי נקודות שליחה)
   await api(`/api/courier/orders/${orderId}/mark`, { method: 'POST', token: courier, body: { action: 'out_for_delivery' } });
-  await api(`/api/courier/orders/${orderId}/mark`, { method: 'POST', token: courier, body: { action: 'delivered' } });
+  const markRes = await api(`/api/courier/orders/${orderId}/mark`, { method: 'POST', token: courier, body: { action: 'delivered', cash: { outcome: 'collected' } } }); // T94: משימת מזומן מחייבת אישור גבייה
+  assert.equal(markRes.status, 200, JSON.stringify(markRes.json));
   await new Promise(r => setTimeout(r, 800)); // ההודעות נשלחות אסינכרונית אחרי ה-commit
 
   const { rows: cust } = await db.query('SELECT id FROM users WHERE phone=$1', ['+972500000002']);
