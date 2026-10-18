@@ -16,6 +16,8 @@ async function postOrderDocument(client,{tenant,document:d,actorId}) {
   const {rows}=await client.query('SELECT * FROM documents WHERE tenant_id=$1 AND id=$2',[tid,d.original_id]);
   if(!rows[0])throw {status:409,error:'מסמך מקור לזיכוי לא נמצא'};
   source=rows[0];
+  const {rows:posted}=await client.query('SELECT 1 FROM bk_order_document_entries WHERE tenant_id=$1 AND document_id=$2',[tid,source.id]);
+  if(!posted.length)return null; // Legacy source was never posted: do not create an orphan reversal.
  }
  let cash='1000';
  if(d.order_id){const {rows}=await client.query('SELECT payment_method FROM orders WHERE tenant_id=$1 AND id=$2',[tid,d.order_id]);if(rows[0]?.payment_method==='demo_online')cash='1010';}
