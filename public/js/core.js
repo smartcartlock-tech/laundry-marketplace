@@ -83,6 +83,12 @@ async function api(path,opts={}){
 }
 let routeSeq=0;
 function go(h){if(location.hash===h)route();else location.hash=h}
+/* T90: בית ברירת-מחדל לפי תפקיד — שליח למסלול היומי, בעל/חבר מכבסה ללוח הניהול, לקוח לדף הבית */
+function homeForRole(){
+ if(state.courier)return '#/courier/day';
+ if(state.memberships&&state.memberships.length)return '#/manage';
+ return '#/';
+}
 async function openPdf(path){
  /* הורדה אמינה: window.open נחסם (קופץ) וניווט top-level ל-blob חסום ב-Chrome — לכן <a download> */
  try{

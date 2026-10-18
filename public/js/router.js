@@ -20,6 +20,25 @@ async function vVerify(code){
   </div></div>`;
 }
 
+/* ---- T90: ניתוב לפי תפקיד ---- */
+let __preLogin=false;
+/* נחיתה אחרי כניסה: returnTo נשמר רק אם מתאים לתפקיד; בלי returnTo — בית התפקיד (בעלים→ניהול, שליח→מסלול) */
+function __normalizePostLogin(h){
+ const p=String(h||'#/').split('?')[0];
+ const courier=!!state.courier, owner=(state.memberships||[]).length>0, admin=state.me&&state.me.role==='admin';
+ if(p.indexOf('#/courier')===0&&!courier&&owner)return homeForRole(); // טופס/מסלול שליח זר לבעל מכבסה
+ if(p.indexOf('#/manage')===0&&!owner)return homeForRole();           // לוח ניהול זר
+ if(p.indexOf('#/admin')===0&&!admin)return homeForRole();            // לוח אדמין זר
+ if(!h||p==='#/'||p==='#')return homeForRole();
+ return h;
+}
+const __goT90=go;
+go=function(h){
+ if(__preLogin&&state.token){__preLogin=false;h=__normalizePostLogin(h)}
+ else if(!state.token)__preLogin=false;
+ __goT90(h);
+};
+
 async function route(){
  const seq=++routeSeq;
  if(orderPoll){clearInterval(orderPoll);orderPoll=null}
@@ -32,6 +51,8 @@ async function route(){
  const dec=s=>{try{return decodeURIComponent(s)}catch(_){return s}};
  const parts=p.split('/').filter(Boolean).map(dec);
  let html='';
+ /* T90: מחובר שנכנס לדף הכניסה — מנותב לבית התפקיד שלו */
+ if(parts[0]==='login'&&state.token){go(homeForRole());return}
  $('#app').innerHTML='<div class="body"><div class="card mut" style="text-align:center;padding:40px 0">טוען…</div></div>';
  const tst=$('.toast');if(tst)tst.classList.remove('show');
  try{
@@ -79,6 +100,10 @@ async function route(){
  if(seq!==routeSeq)return; // ניווט חדש יותר דורס רינדור ישן — נחיתה עקבית תמיד
  renderTabs(h.split('?')[0]);
  $('#app').innerHTML=html;
+ /* T90: מסך כניסה מוצג (needLogin או #/login) — הניווט שאחרי התחברות מנורמל לפי תפקיד */
+ __preLogin=!state.token&&!!$('#login-target');
+ /* T90: אורח רואה כפתור 'כניסה' קבוע גם בעליון המסך */
+ if(!state.token&&parts[0]!=='login'&&!$('#login-target')){const hd=$('#app .hdr');if(hd&&!hd.querySelector('.t90-login')){hd.style.position='relative';hd.insertAdjacentHTML('beforeend','<a class="chip t90-login" href="#/login" style="position:absolute;top:10px;left:10px;margin:0;min-height:44px;display:inline-flex;align-items:center;background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.4)">כניסה ➜</a>')}}
  /* T8: הכרזת ניווט לקורא-מסך — מעבר פוקוס לכותרת הדף החדש במעבר נתיב בלבד
     (רינדור-מחדש של אותו נתיב, כמו אחרי פעולה או polling, לא גונב פוקוס) */
  if(window.__lastRoutePath!==p){

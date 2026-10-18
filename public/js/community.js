@@ -127,6 +127,15 @@ async function contentNew(){
  if(!v)return;
  try{await api('/community/content',{method:'POST',body:JSON.stringify({category:v.category,title:v.title,body:v.body})});toast('התוכן פורסם');route()}catch(e){toast(e.message)}
 }
+/* T102: מסגרת מצבי ריק מעוצבים ללוח הניהול — אף לשונית לא מציגה דף ריק דומם */
+function mgEmpty(icon,title,text,cta){
+ return `<div class="card" style="text-align:center;padding:26px 14px"><div style="font-size:36px">${icon}</div><b>${esc(title)}</b><div class="mut" style="margin:6px 0">${text}</div>${cta||''}</div>`;
+}
+async function addPrivateCourier(slug){
+ const link=location.origin+'/#/courier';
+ const v=await xmodal({title:'הוספת שליח',okText:'העתקת קישור',cancelText:'סגור',body:'אפשר לשבץ <b>שליח פלטפורמה</b> לכל הזמנה מלשונית ההזמנות (״שיבוץ שליח״).<br>כדי ששליח פרטי שלכם יוכל לקבל משימות, שלחו לו את קישור ההצטרפות:<br><b dir="ltr" style="font-size:12px">'+esc(link)+'</b>'});
+ if(v){try{await navigator.clipboard.writeText(link);toast('הקישור הועתק — שלחו אותו לשליח')}catch(e){toast('הקישור: '+link)}}
+}
 async function vManage(sub){
  if(!state.token)return needLogin();
  const me=await api('/auth/me');
@@ -183,7 +192,7 @@ async function vManage(sub){
     <select class="inp" id="it-cat" style="flex:1"><option>כביסה</option><option>ניקוי יבש</option><option>גיהוץ</option><option>שטיחים</option><option>אחר</option></select></div>
     <button class="btn2 on" data-act="addItem" data-a="${slug}">הוספה</button></div>
    <div class="card">${d.items.map(i=>`<div class="row"><div style="${i.active?'':'opacity:.4'}">${esc(i.name)}<div class="mut">${esc(i.category)} · ${i.unit==='item'?'ליחידה':'ל'+unitLbl(i.unit)}</div></div>
-    <div>₪${i.price} <button class="btn2" ${i.subscription_eligible?'style="border-color:#0e7a8a;color:#0e7a8a"':''} title="פריט מכוסה במנוי" data-act="toggleItemSub" data-a="${slug}" data-b="${i.id}" data-c="${!i.subscription_eligible}">${i.subscription_eligible?'✓ במנוי':'למנוי'}</button> <button class="btn2" data-act="editItem" data-a="${slug}" data-b="${i.id}" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" data-act="delItem" data-a="${slug}" data-b="${i.id}">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')}</div>`;
+    <div>₪${i.price} <button class="btn2" ${i.subscription_eligible?'style="border-color:#0e7a8a;color:#0e7a8a"':''} title="פריט מכוסה במנוי" data-act="toggleItemSub" data-a="${slug}" data-b="${i.id}" data-c="${!i.subscription_eligible}">${i.subscription_eligible?'✓ במנוי':'למנוי'}</button> <button class="btn2" data-act="editItem" data-a="${slug}" data-b="${i.id}" data-name="${esc(i.name)}" data-price="${i.price}">עריכה</button> <button class="btn2" data-act="delItem" data-a="${slug}" data-b="${i.id}">${i.active?'הסתרה':'החזרה'}</button></div></div>`).join('')||mgEmpty('🧺','המחירון ריק','הוסיפו את הפריט הראשון — הוא יופיע מיד בדף המכבסה ללקוחות.')}</div>`;
  } else if(sub==='windows'){
   const d=await api(`/t/${slug}/windows`);
   body=`<div class="card">
@@ -194,7 +203,7 @@ async function vManage(sub){
      <select class="inp" id="w-kind" style="flex:1 1 100%"><option value="pickup">איסוף</option><option value="delivery">החזרה</option></select>
     </div>
     <button class="btn2 on" data-act="addWindow" data-a="${slug}" style="min-height:44px">הוספה</button></div>
-   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} <span dir="ltr">${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</span><div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')}</div>`;
+   <div class="card">${d.windows.map(w=>`<div class="row"><div>${WD[w.weekday]} <span dir="ltr">${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}</span><div class="mut">${w.kind==='pickup'?'איסוף':'החזרה'} · קיבולת ${w.capacity}</div></div><button class="btn2" data-act="delWindow" data-a="${slug}" data-b="${w.id}">מחיקה</button></div>`).join('')||mgEmpty('🕐','אין חלונות איסוף/החזרה','הגדירו חלון ראשון כדי שלקוחות יוכלו לבחור זמן איסוף נוח.')}</div>`;
  } else if(sub==='coupons'){
   const d=await api(`/t/${slug}/coupons`);
   body=`<div class="card">
@@ -252,7 +261,7 @@ async function vManage(sub){
    :'<div class="card mut">אין מסמכים עדיין — בהתאם להגדרות, מסמכים מונפקים אוטומטית בסיום הזמנה או מרוכזים ידנית בחשבונית מרכזת.</div>');
  } else if(sub==='couriers'){
   const d=await api(`/t/${slug}/couriers/overview`);
-  const est=d.estimate;
+  const est=d.estimate||{rate_per_stop:'—',stops_per_order:'—',per_order:'—',platform_commission_pct:'—'};
   body=`<div class="card"><b>עלות משוערת לשיבוץ</b><div class="mut">₪${est.rate_per_stop} לנקודה × ${est.stops_per_order} נקודות (איסוף+מסירה) = <b>₪${est.per_order}</b> להזמנה · עמלת הפלטפורמה ${est.platform_commission_pct}% מחושבת לשליח, לא למכבסה</div></div>
   ${d.today.length?`<div class="sec">שיבוץ פעיל (${d.today.length})</div>`+d.today.map(o=>`<div class="card"><b>${esc(o.courier_name)}</b> ← הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
     <div class="mut">${esc(o.customer_name||'')} · ${esc(o.address)}${o.pickup_at?' · איסוף '+fmtDT(o.pickup_at):''}</div></div>`).join(''):''}
@@ -260,7 +269,7 @@ async function vManage(sub){
   ${d.couriers.map(c=>{const onPct=c.pickups_30d?Math.round(100*c.ontime_30d/c.pickups_30d):null;return `<div class="card"><div class="row"><div><b>${esc(c.name)}</b> <span class="tag tb">${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'}</span>
     <div class="mut"><span dir="ltr">${esc(c.phone||'')}</span> · ${esc(c.vehicle||'')}${c.areas&&c.areas.length?' · '+(c.areas||[]).map(esc).join(', '):''}</div>
     <div class="mut">30 יום: ${c.delivered_30d} מסירות${onPct!==null?` · ${onPct}% איסוף בזמן (${c.ontime_30d}/${c.pickups_30d})`:''} · ★${c.rating||'—'}${c.rating_count?' ('+c.rating_count+')':''} · ${c.active_orders} פעילות</div></div>
-    <button class="btn2" data-act="tenantRateCourier" data-a="${slug}" data-b="${c.id}" data-c="${esc(c.name)}">דירוג</button></div></div>`}).join('')||'<div class="card mut">אין שליחים זמינים</div>'}
+    <button class="btn2" data-act="tenantRateCourier" data-a="${slug}" data-b="${c.id}" data-c="${esc(c.name)}">דירוג</button></div></div>`}).join('')||mgEmpty('🛵','אין שליחים זמינים','עדיין לא שובץ אף שליח. אפשר לשבץ שליח פלטפורמה מכל הזמנה, או להזמין שליח פרטי להצטרף.',`<button class="btn2 on" data-act="addPrivateCourier" data-a="${slug}">+ הוסף שליח</button>`)}
   ${d.clusters&&d.clusters.length?`<div class="card"><div class="sec">קלאסטרים אזוריים (מסלולים משותפים קבועים)</div>
    ${d.clusters.map(cl=>`<div class="row"><div><b>${esc(cl.name)}</b> · ${esc(cl.area)}<div class="mut">${cl.members} מכבסות · דמי ניהול חודשיים (דמו): ₪${cl.mgmt_fee_monthly}${cl.fixed_routes&&cl.fixed_routes.length?' · מסלול קבוע: '+cl.fixed_routes.map(f=>WD[f.weekday]+' — '+esc(f.courier)).join(', '):''}</div></div>
     <button class="btn2 ${cl.joined?'':'green'}" data-act="tenantCluster" data-a="${slug}" data-b="${cl.id}" data-c="${cl.joined?'leave':'join'}">${cl.joined?'עזיבה':'הצטרפות'}</button></div>`).join('')}</div>`:''}
@@ -268,8 +277,8 @@ async function vManage(sub){
    ${d.payments.map(x=>`<tr><td>${fmtDate(x.week_start)}</td><td>${x.stops}</td><td>₪${x.gross}</td><td>₪${x.commission}</td><td>${x.statuses.includes('paid_demo')?'שולם (דמו)':x.statuses.includes('disputed')?'במחלוקת':'נצבר'}</td></tr>`).join('')}</table></div>`:''}`;
  } else if(sub==='customers'){
   const d=await api(`/t/${slug}/customers`);
-  body=`<div class="card"><table class="tbl"><tr><th>לקוח</th><th>הזמנות</th><th>₪</th><th>נקודות</th></tr>
-   ${d.customers.map(c=>`<tr><td>${esc(c.name||'') }<div class="mut" dir="ltr">${esc(c.phone||'')}</div></td><td>${c.orders}</td><td>${c.spent}</td><td>${c.points}</td></tr>`).join('')}</table></div>`;
+  body=d.customers.length?`<div class="card"><table class="tbl"><tr><th>לקוח</th><th>הזמנות</th><th>₪</th><th>נקודות</th></tr>
+   ${d.customers.map(c=>`<tr><td>${esc(c.name||'') }<div class="mut" dir="ltr">${esc(c.phone||'')}</div></td><td>${c.orders}</td><td>${c.spent}</td><td>${c.points}</td></tr>`).join('')}</table></div>`:mgEmpty('👥','עדיין אין לקוחות','לקוחות שיזמינו יופיעו כאן עם סך הזמנות, תשלומים ונקודות מועדון.');
  } else if(sub==='stats'){
   const d=await api(`/t/${slug}/reports`);
   const maxRev=Math.max(1,...d.weekly.map(w=>Number(w.revenue)));
@@ -552,6 +561,7 @@ async function delWindow(slug,id){try{await api(`/t/${slug}/windows/${id}`,{meth
 async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'PATCH',body:JSON.stringify({name:$('#s-name').value,phone:$('#s-phone').value,address:$('#s-address').value,city:$('#s-city').value,slogan:$('#s-slogan').value,whatsapp:$('#s-wa').value,color:$('#s-color').value,delivery_fee:$('#s-fee').value,min_order:$('#s-min').value,is_open:$('#s-open').checked,terms:$('#s-terms').value,dealer_type:$('#s-dealer-type').value||null,dealer_id:$('#s-dealer-id').value||null,invoice_mode:$('#s-invoice-mode').value})});toast('נשמר')}catch(e){toast(e.message)}}
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
+ addPrivateCourier:t=>addPrivateCourier(t.dataset.a),
  bizConsToggle:t=>bizConsToggle(t.dataset.a,t.dataset.b,t.checked),
  commTenantSwitch:t=>{store.set('lastTenant',t.value);route()},
  addItem:t=>addItem(t.dataset.a), addPlan:t=>addPlan(t.dataset.a), addWindow:t=>addWindow(t.dataset.a),
