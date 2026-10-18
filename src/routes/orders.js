@@ -22,7 +22,8 @@ async function event(orderId, status, actorId, note) {
 r.post('/', async (req, res) => {
   const client = await pool.connect();
   try {
-    const { slug, items, address, lat, lng, pickup_at, delivery_at, payment_method, redeem_points, coupon_code, notes, use_subscription, source } = req.body || {};
+    let { pickup_at, delivery_at } = req.body || {};
+    const { slug, items, address, lat, lng, payment_method, redeem_points, coupon_code, notes, use_subscription, source } = req.body || {};
     // C4: צ'ק-אאוט ראשון מחייב הסכמה לתנאים ולמדיניות — מתועדת פעם אחת ב-consent_at
     if (!req.user.consent_at) {
       if (req.body.consent_terms === true) {
@@ -39,6 +40,9 @@ r.post('/', async (req, res) => {
     if (!tenant.is_open) return res.status(409).json({ error: 'המכבסה סגורה כרגע' });
     if (tenant.paused_until && new Date(tenant.paused_until) > new Date()) return res.status(409).json({ error: 'המכבסה בהפסקה זמנית עד ' + new Date(tenant.paused_until).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) }); // C1
     if (pickup_at) { const { rows: cl } = await q("SELECT 1 FROM tenant_closures WHERE tenant_id=$1 AND day=($2::timestamptz AT TIME ZONE 'Asia/Jerusalem')::date", [tenant.id, pickup_at]); if (cl.length) return res.status(409).json({ error: 'המכבסה סגורה ביום האיסוף שנבחר — בחרו מועד אחר' }); } // C3
+    // T95: 'ללא העדפה' → החלון הפתוח הקרוב; בלי חלון מתאים נשאר null ('לתיאום'). אין תזמון לילי לפי שעת היצירה.
+    if (!pickup_at) pickup_at = await require('../lib/schedule-windows').nextOpenWindow(tenant.id, 'pickup');
+    if (!delivery_at) delivery_at = await require('../lib/schedule-windows').nextOpenWindow(tenant.id, 'delivery', { after: pickup_at });
 
     await client.query('BEGIN');
     const ids = items.map(i => i.item_id);
