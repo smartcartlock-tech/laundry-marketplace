@@ -27,6 +27,8 @@
    const note=cur.ov.querySelector('#sc-admin-note');
    if(note)note.innerHTML=d.thread.admin_viewed_at?'<div class="warn" style="margin:6px 0">👁 מנהל פלטפורמה צפה בשיחה זו ('+fmtDT(d.thread.admin_viewed_at)+')</div>':'';
    const closed=d.thread.status!=='open';
+   const st=cur.ov.querySelector('#sc-status');
+   if(st)st.textContent=closed?'הפנייה טופלה — השרשור סגור':'בטיפול — נחזור עד מחר';
    const inp=cur.ov.querySelector('#sc-inp'),btn=cur.ov.querySelector('#sc-send-btn'),cl=cur.ov.querySelector('#sc-close-btn');
    if(inp){inp.disabled=closed;inp.placeholder=closed?'השרשור סגור':'כתבו הודעה...'}
    if(btn)btn.disabled=closed;
@@ -41,7 +43,7 @@
   const ov=document.createElement('div');ov.className='modal-ov';ov.id='sc-ov';
   ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true" style="max-height:84vh;display:flex;flex-direction:column;width:min(480px,94vw)">
    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-    <b>${esc(title||'צ\'אט תמיכה')}</b>
+    <b>${esc(title||'צ\'אט תמיכה')}</b>${role==='customer'?` <span class="mut" id="sc-status" style="font-size:11px"></span>`:''}
     <span style="display:flex;gap:6px">
      ${role!=='admin'?`<button class="btn2" id="sc-close-btn" data-act="scCloseThread" style="padding:6px 10px;font-size:12px">סגירת שרשור</button>`:''}
      <button class="btn2" data-act="scClose" style="padding:6px 12px">✕</button>
@@ -49,15 +51,15 @@
    ${role==='admin'?'<div class="warn" style="margin:6px 0">👁 צפיית מנהל — הצפייה מתועדת וגלויה לצדדים. לא ניתן לכתוב.</div>':''}
    <div id="sc-admin-note"></div>
    <div id="sc-msgs" style="flex:1;overflow-y:auto;margin:8px 0;min-height:180px"><div class="mut" style="text-align:center;margin:14px 0">טוען...</div></div>
-   ${role!=='admin'?`<div style="display:flex;gap:6px">
-    <input class="inp" id="sc-inp" style="margin-bottom:0;flex:1" placeholder="כתבו הודעה..." maxlength="2000" aria-label="תוכן ההודעה">
-    <button class="btn" id="sc-send-btn" data-act="scSend" style="flex-shrink:0">שליחה</button></div>`:''}
+   ${role!=='admin'?`<div style="display:flex;flex-direction:column;gap:6px">
+    <textarea class="inp" id="sc-inp" rows="2" style="margin-bottom:0;width:100%;resize:vertical" placeholder="כתבו הודעה..." maxlength="2000" aria-label="תוכן ההודעה"></textarea>
+    <div><button class="btn" id="sc-send-btn" data-act="scSend" style="padding:6px 18px;font-size:13px">שליחה</button></div></div>`:''}
   </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click',e=>{if(e.target===ov){ov.remove();stopPoll();cur=null}});
   cur={id:threadId,role,ov};
   const inp=ov.querySelector('#sc-inp');
-  if(inp)inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendMsg()}});
+  if(inp)inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}});
   refresh();
   pollT=setInterval(refresh,15000);
  }
@@ -102,7 +104,7 @@
     const d=await L('/threads/mine');
     const lnd=await api('/laundries');
     const rows=(d.threads||[]).map(t=>`<div class="row" style="cursor:pointer" data-act="scOpenThread" data-a="${t.id}" data-b="${esc(t.tenant_name)}">
-      <div><b>${esc(t.tenant_name)}</b>${t.status!=='open'?' <span class="mut">(סגור)</span>':''}<div class="mut">${t.last_body?esc(String(t.last_body).slice(0,60)):''}</div></div>
+      <div><b>${esc(t.tenant_name)}</b><div class="mut" style="font-size:11px">${t.status==='open'?'בטיפול — נחזור עד מחר':'טופל ✓'}</div><div class="mut">${t.last_body?esc(String(t.last_body).slice(0,60)):''}</div></div>
       ${t.unread?`<span class="tag tb">${t.unread}</span>`:'<span style="color:#8a99a3">‹</span>'}</div>`).join('');
     card=`<div class="body" style="padding-top:0"><div class="card"><b>💬 צ\'אט תמיכה</b>
      ${rows||'<div class="mut" style="margin:4px 0">אין שיחות פתוחות</div>'}

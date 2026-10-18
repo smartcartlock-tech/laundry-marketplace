@@ -69,7 +69,7 @@ async function vOrder(id){
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" data-act="cancelOrder" data-a="${esc(o.id)}">ביטול הזמנה</button>`:''}
   ${isMine?`<div class="card"><b>דיווח תקלה</b>
    ${myReports.map(rp=>`<div class="row"><div><span class="tag tb">${({damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'})[rp.kind]||rp.kind}</span> ${esc(rp.text)}
-    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'פתוח',in_progress:'בטיפול',resolved:'טופל'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+(rp.photos===1?'תמונה אחת':rp.photos+' תמונות'):''}</div>
+    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'נפתחה — ממתינה לטיפול המכבסה',in_progress:'בטיפול — נחזור עד מחר',resolved:'טופל ✓'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+(rp.photos===1?'תמונה אחת':rp.photos+' תמונות'):''}</div>
     ${(rp.photo_ids||[]).length?`<div style="display:flex;gap:6px;margin-top:6px">${rp.photo_ids.map(pid=>`<button class="btn2" style="padding:4px 10px;font-size:12px" data-act="openIssuePhoto" data-a="${esc(pid)}">צפייה בתמונה</button>`).join('')}</div>`:''}</div></div>`).join('')}
    ${myReports.length?'':'<div class="mut" style="margin:6px 0">משהו לא בסדר עם ההזמנה? דווחו ונפתח פנייה מול המכבסה</div>'}
    <button class="btn2" data-act="openReportModal" data-a="${esc(o.id)}">📷 דיווח על תקלה</button>
