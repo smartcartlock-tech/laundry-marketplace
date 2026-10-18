@@ -156,18 +156,43 @@ function courierProximity(){
   {timeout:8000,maximumAge:60000});
 }
 
-async function courierConfirmDelivery(orderId){
- const v=await xmodal({title:'אישור מסירה',body:'בקשו מהלקוח את 4 הספרות האחרונות של מספר הטלפון שלו כאישור קבלה.',okText:'אישור מסירה',fields:[{id:'code',label:'קוד אישור (4 ספרות)',value:'',type:'tel'}]});
- if(!v)return;
- try{
-  await api(`/courier/orders/${orderId}/confirm-delivery`,{method:'POST',body:JSON.stringify({method:'code',code:v.code})});
-  toast('המסירה אושרה ✓');route();
- }catch(e){
-  if(e.status===0){
-   cqPush({path:`/courier/orders/${orderId}/confirm-delivery`,opts:{method:'POST',body:JSON.stringify({method:'code',code:v.code})}});
-   toast('אין חיבור — האישור נשמר ויישלח אוטומטית כשיחזור החיבור');route();
-  }else toast(e.message);
- }
+/* T92: אישור מסירה בקוד — חלון ייעודי עם משוב מיידי: 'מעבד…' מהלחיצה,
+   קוד שגוי → שגיאה אדומה בתוך החלון בלי סגירה, קוד נכון → ✓ ועדכון הכרטיס.
+   כשל רשת (status 0) → תור האופליין כרגיל. זרימה זהה בשני מסכי השליח. */
+function courierConfirmDelivery(orderId){
+ const ov=document.createElement('div');ov.className='modal-ov';
+ ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה</b>
+  <div class="mut" style="margin:8px 0">בקשו מהלקוח את 4 הספרות האחרונות של מספר הטלפון שלו כאישור קבלה.</div>
+  <label class="lb" for="cd-code">קוד אישור (4 ספרות)</label>
+  <input class="inp" id="cd-code" type="tel" inputmode="numeric" maxlength="4" autocomplete="one-time-code">
+  <div id="cd-err" role="alert" style="display:none;color:#b3261e;margin-top:8px;font-weight:600"></div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="cd-ok" style="flex:1">אישור מסירה</button><button class="btn2" id="cd-cancel" style="flex:1">ביטול</button></div></div>`;
+ document.body.appendChild(ov);
+ const inp=ov.querySelector('#cd-code'),err=ov.querySelector('#cd-err'),ok=ov.querySelector('#cd-ok');
+ const done=()=>ov.remove();
+ const showErr=m=>{err.textContent=m;err.style.display='block'};
+ ov.querySelector('#cd-cancel').onclick=done;
+ ov.onclick=e=>{if(e.target===ov)done()};
+ inp.oninput=()=>{err.style.display='none'};
+ ok.onclick=async()=>{
+  const code=inp.value.trim();
+  if(!/^\d{4}$/.test(code)){showErr('יש להזין את 4 הספרות כפי שהן');inp.focus();return}
+  err.style.display='none';ok.disabled=true;ok.textContent='מעבד…';
+  try{
+   await api(`/courier/orders/${orderId}/confirm-delivery`,{method:'POST',body:JSON.stringify({method:'code',code})});
+   ov.querySelector('.modal').innerHTML=`<div style="text-align:center;padding:16px 0"><div style="font-size:36px">✅</div><b>המסירה אושרה</b></div>`;
+   setTimeout(()=>{done();toast('המסירה אושרה ✓');route()},650);
+  }catch(e){
+   if(e.status===0){
+    cqPush({path:`/courier/orders/${orderId}/confirm-delivery`,opts:{method:'POST',body:JSON.stringify({method:'code',code})}});
+    done();toast('אין חיבור — האישור נשמר ויישלח אוטומטית כשיחזור החיבור');route();
+   }else{
+    ok.disabled=false;ok.textContent='אישור מסירה';showErr(e.message);inp.focus();inp.select();
+   }
+  }
+ };
+ inp.onkeydown=e=>{if(e.key==='Enter')ok.click()};
+ setTimeout(()=>inp.focus(),60);
 }
 
 /* אישור מסירה בצילום: בחירת תמונה (נדחסת אוטומטית ע״י image-compress), שליחה כ-multipart.
@@ -177,6 +202,7 @@ function courierPhotoDelivery(orderId){
  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה בצילום</b>
   <div class="mut" style="margin:8px 0">צלמו את השקים אצל הלקוח או את חתימת הקבלה. התמונה נשמרת כראיה למכבסה ולפלטפורמה.</div>
   <input type="file" id="pd-file" class="inp" accept="image/jpeg,image/png,image/webp" capture="environment">
+  <div id="pd-err" role="alert" style="display:none;color:#b3261e;margin-top:8px;font-weight:600"></div>
   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="pd-ok" style="flex:1">העלאה ואישור מסירה</button><button class="btn2" id="pd-cancel" style="flex:1">ביטול</button></div></div>`;
  document.body.appendChild(ov);
  const done=()=>ov.remove();
@@ -184,21 +210,25 @@ function courierPhotoDelivery(orderId){
  ov.onclick=e=>{if(e.target===ov)done()};
  ov.querySelector('#pd-ok').onclick=async()=>{
   const f=ov.querySelector('#pd-file').files[0];
-  if(!f){toast('יש לבחור תמונה');return}
+  const err=ov.querySelector('#pd-err'),btn=ov.querySelector('#pd-ok');
+  const showErr=m=>{err.textContent=m;err.style.display='block'};
+  if(!f){showErr('יש לבחור תמונה');return}
+  err.style.display='none';btn.disabled=true;btn.textContent='מעבד…';
   const fd=new FormData();fd.append('method','photo');fd.append('photo',f);
   try{
    const r=await fetch('/api/courier/orders/'+orderId+'/confirm-delivery',{method:'POST',headers:{authorization:'Bearer '+state.token},body:fd});
    const j=await r.json().catch(()=>({}));
    if(!r.ok)throw new Error(j.error||'שגיאה בהעלאה');
-   done();toast('המסירה אושרה עם צילום ✓');route();
+   ov.querySelector('.modal').innerHTML=`<div style="text-align:center;padding:16px 0"><div style="font-size:36px">✅</div><b>המסירה אושרה עם צילום</b></div>`;
+   setTimeout(()=>{done();toast('המסירה אושרה עם צילום ✓');route()},650);
   }catch(e){
    if(!navigator.onLine||e.name==='TypeError'){ /* כשל רשת: שמירה ב-IndexedDB + סמן בתור המאוחד */
     try{
      const ref=await coffSavePhoto(orderId,f);
      cqPush({kind:'photo',orderId,ref});
      done();toast('אין חיבור — הצילום נשמר ויישלח כשהחיבור יחזור ✓');route();
-    }catch(ie){toast('שמירה מקומית נכשלה: '+ie.message)}
-   }else toast(e.message)
+    }catch(ie){btn.disabled=false;btn.textContent='העלאה ואישור מסירה';showErr('שמירה מקומית נכשלה: '+ie.message)}
+   }else{btn.disabled=false;btn.textContent='העלאה ואישור מסירה';showErr(e.message)}
   }
  };
 }
