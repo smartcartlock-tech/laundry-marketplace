@@ -18,6 +18,7 @@
       api(`${B}/reports/pnl${periodQuery}`), api(`${B}/reports/vat${periodQuery}`), api(`${B}/reports/pending-allocation`), api(`${B}/uniform-export`), api(`${B}/bank/reconciliation`),
       api(`/t/${slug}/settings`),
     ]);
+    docs.documents = (docs.documents || []).filter(d=>d.status !== 'cancelled');
     // פקודות יומן — נטען רק כשמודול היומן (T55) קיים בדף
     const ents = window.bkJournal ? await api(`${B}/entries`) : { entries: [] };
     const ledgerReports = window.bkJournal ? await window.bkJournal.reports(B, periodQuery, accs).catch(() => '<div class="card">דוחות ספר ראשי עדיין אינם זמינים. נסו לרענן לאחר פריסת השרת.</div>') : '';

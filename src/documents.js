@@ -163,7 +163,10 @@ async function setAllocationNumber(client, docId, tenantId, allocationNumber, ac
   const { rows: cur } = await client.query('SELECT id, tenant_id, allocation_number FROM documents WHERE id=$1 FOR UPDATE', [docId]);
   if (!cur[0] || (tenantId && cur[0].tenant_id !== tenantId)) throw { status: 404, error: 'מסמך לא נמצא' };
   if (cur[0].allocation_number) throw { status: 409, error: 'מספר הקצאה כבר הוגדר — לא ניתן לדרוס' };
-  const { rows } = await client.query('UPDATE documents SET allocation_number=$2 WHERE id=$1 RETURNING *', [docId, String(allocationNumber)]);
+  let rows;
+  try {
+  ({rows}= await client.query('UPDATE documents SET allocation_number=$2 WHERE id=$1 RETURNING *', [docId, String(allocationNumber)]));
+  } catch(e) { if(e.code==='23505')throw {status:409,error:'מספר הקצאה כבר בשימוש במכבסה זו'};throw e;}
   await audit(client, docId, 'allocation_set', actorId, { allocation_number: String(allocationNumber) });
   return rows[0];
 }

@@ -216,12 +216,12 @@ r.post('/bookkeeping/entries', async (req, res) => {
 r.post('/bookkeeping/entries/:id/reverse', async (req, res) => {
   const tid = req.tenant.id;
   const { rows: orig } = await q(
-    `SELECT e.id, e.entry_no, e.entry_date, e.description, e.source FROM bk_entries e
+    `SELECT e.id, e.entry_no, e.entry_date, e.description, e.source, e.reversal_of FROM bk_entries e
      WHERE e.id=$1 AND e.tenant_id=$2`, [req.params.id, tid]);
   if (!orig[0]) return res.status(404).json({ error: 'פקודה לא נמצאה' });
   // T42: bypassing the originating workflow would leave an issued/posted object inconsistent.
   const {rows:linked}=await q('SELECT 1 FROM bk_expenses WHERE tenant_id=$1 AND (entry_id=$2 OR void_entry_id=$2) LIMIT 1',[tid,orig[0].id]);
-  if (linked.length || ['invoice', 'expense', 'bank'].includes(orig[0].source)) {
+  if (orig[0].reversal_of || linked.length || ['invoice', 'expense', 'bank'].includes(orig[0].source)) {
     return res.status(409).json({ error: 'פקודה מקושרת למסמך, הוצאה או בנק. יש להשתמש בזיכוי/ביטול דרך רשומת המקור', code: 'USE_SOURCE_REVERSAL' });
   }
   const todayIL = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).toISOString().slice(0, 10);
@@ -629,12 +629,15 @@ r.get('/bookkeeping/documents/:id/pdf',async(req,res)=>{
 r.post('/bookkeeping/documents/:id/allocate', async (req, res) => {
   const num = String((req.body || {}).allocation_number || '').replace(/[^0-9]/g, '');
   if (!ALLOC_RE.test(num)) return res.status(400).json({ error: 'מספר הקצאה חייב להיות 9-10 ספרות' });
-  const { rows } = await q(
+  let rows;
+  try {
+  ({ rows } = await q(
     `UPDATE bk_documents SET allocation_number=$1, allocation_at=now(), updated_at=now()
      WHERE id=$2 AND tenant_id=$3 AND status='draft'
        AND kind IN ('tax_invoice','tax_invoice_receipt')
      RETURNING id, kind`,
-    [num, req.params.id, req.tenant.id]);
+    [num, req.params.id, req.tenant.id]));
+  } catch(e) {if(e.code==='23505')return res.status(409).json({error:'מספר הקצאה כבר בשימוש במכבסה זו'});throw e;}
   if (!rows[0]) return res.status(409).json({ error: 'מסמך לא נמצא, אינו טיוטה, או שאינו חשבונית מס' });
   await audit(req, 'bk_doc_allocate', 'bk_document', rows[0].id, {});
   res.json({ allocated: true });
