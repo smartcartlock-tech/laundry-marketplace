@@ -1,0 +1,43 @@
+// T112: טנאנטי בדיקות מוסתרים מהמרקטפלייס, ביקורת עצמית חסומה, אישור מכבסה דורש שעות פעילות
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { Pool } = require('pg');
+const { startApp, TEST_DB } = require('./helpers');
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@127.0.0.1:5433/laundry_test';
+
+test('T112: is_test מוסתר מהרשימה הציבורית, ביקורת עצמית 403, אישור בלי שעות 409', async (t) => {
+  const { api, schema } = await startApp(t);
+  const pool = new Pool({ connectionString: TEST_DB, options: `-c search_path=${schema},public` });
+  t.after(() => pool.end());
+
+  // טנאנט שמסומן כבדיקה לא מופיע ברשימה הציבורית
+  await pool.query(`INSERT INTO tenants(slug, name, approved, is_open, is_test, hours) VALUES ('t112-test-l', 'מכבסת בדיקה T112', true, true, true, '{"0":[["08:00","18:00"]]}')`);
+  const list = await api('/api/laundries');
+  assert.equal(list.status, 200);
+  assert.ok(!list.json.laundries.some(l => l.slug === 't112-test-l'), 'טנאנט is_test מוסתר מהרשימה');
+  assert.ok(list.json.laundries.length >= 1, 'טנאנטים אמיתיים ממשיכים להופיע');
+
+  // אישור מכבסה בלי שעות → 409; עם שעות → 200
+  const admin = await api.login('+972500000001');
+  const owner = await api.login('+972500000003');
+  const r = await api('/api/onboard/tenants', { method: 'POST', token: owner, body: {
+    name: 'מכבסת T112', phone: '03-5559999', address: 'רחוב 1', city: 'חיפה', items: [{ name: 'שק', price: 40, unit: 'item' }] } });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  const noHours = await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  assert.equal(noHours.status, 409, 'אישור בלי שעות נחסם');
+  const hs = await api(`/api/t/${r.json.tenant.slug}/settings`, { method: 'PATCH', token: owner, body: { hours: { '1': [['09:00', '17:00']] } } });
+  assert.equal(hs.status, 200, JSON.stringify(hs.json));
+  const ok = await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  assert.equal(ok.status, 200, 'אישור עם שעות עובר');
+
+  // ביקורת עצמית: הבעלים יוצר הזמנה אצל עצמו ומנסה לדרג → 403
+  const pub = await api('/api/laundries/achuza');
+  const item = pub.json.items[0];
+  const order = await api('/api/t/achuza/orders', { method: 'POST', token: owner, body: {
+    items: [{ item_id: item.id, qty: 1 }], address: 'הרצל 1', pickup_window: 'morning', payment: 'cash' } });
+  if (order.status === 201) {
+    await pool.query(`UPDATE orders SET status='delivered' WHERE id=$1`, [order.json.order.id]);
+    const rv = await api(`/api/orders/${order.json.order.id}/review`, { method: 'POST', token: owner, body: { rating: 5, text: 'ביקורת עצמית' } });
+    assert.equal(rv.status, 403, 'ביקורת עצמית נחסמת');
+  }
+});

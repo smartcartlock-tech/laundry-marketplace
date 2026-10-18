@@ -293,6 +293,9 @@ r.post('/:id/review', uuidParams('id'), async (req, res) => {
   const { rows: dup } = await q(
     'SELECT 1 FROM reviews WHERE order_id=$1 AND user_id=$2 AND target_courier_id IS NULL LIMIT 1', [order.id, req.user.id]);
   if (dup.length) return res.status(409).json({ error: 'כבר דירגת הזמנה זו' });
+  // T112: בעל/צוות מכבסה לא מדרג את המכבסה שלו
+  const { rows: selfMem } = await q('SELECT 1 FROM tenant_members WHERE tenant_id=$1 AND user_id=$2', [order.tenant_id, req.user.id]);
+  if (selfMem.length) return res.status(403).json({ error: 'לא ניתן לדרג את המכבסה שלך' });
   try {
     await q('INSERT INTO reviews(tenant_id, order_id, user_id, rating, text, tags) VALUES ($1,$2,$3,$4,$5,$6)',
       [order.tenant_id, order.id, req.user.id, rt, text || null, ltags]);

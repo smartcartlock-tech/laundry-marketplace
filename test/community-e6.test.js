@@ -10,7 +10,11 @@ async function makeLaundry(api, admin, phone, name) {
     body: { name, phone: '03-5551234', address: 'רחוב הדוגמה 1', city: 'תל אביב', items: [{ name: 'שק כביסה', price: 50, unit: 'item' }] },
   });
   assert.equal(r.status, 201, JSON.stringify(r.json));
-  await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  // T112: אישור מכבסה דורש שעות פעילות — מגדירים דרך ה-API הרשמי
+  const hs = await api(`/api/t/${r.json.tenant.slug}/settings`, { method: 'PATCH', token: owner, body: { hours: { '0': [['08:00', '18:00']] } } });
+  assert.equal(hs.status, 200, JSON.stringify(hs.json));
+  const ap = await api(`/api/admin/tenants/${r.json.tenant.id}/approve`, { method: 'POST', token: admin });
+  assert.equal(ap.status, 200, JSON.stringify(ap.json));
   return { owner, tenant: r.json.tenant };
 }
 

@@ -26,7 +26,7 @@ const pubCache = (res, sec=30) => res.set('Cache-Control', `public, max-age=${se
 r.get('/laundries', async (req, res) => {
   const { q: query, service } = req.query;
   const params = [];
-  let where = 'WHERE t.approved AND t.is_open IS NOT NULL';
+  let where = 'WHERE t.approved AND t.is_open IS NOT NULL AND NOT t.is_test'; // T112: טנאנטי בדיקות מוסתרים מהמרקטפלייס
   // חיפוש חופשי: שם, עיר, כתובת — וגם שירותים (E13: חיפוש לפי שירות, למשל "שטיח")
   if (query) { params.push(`%${query}%`); where += ` AND (t.name ILIKE $${params.length} OR t.city ILIKE $${params.length} OR t.address ILIKE $${params.length} OR EXISTS (SELECT 1 FROM unnest(t.services) sv WHERE sv ILIKE $${params.length}))`; }
   if (service) { params.push(service); where += ` AND $${params.length} = ANY(t.services)`; }

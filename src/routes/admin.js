@@ -39,6 +39,12 @@ r.get('/tenants', async (req, res) => {
 });
 
 r.post('/tenants/:id/approve', uuidParams('id'), async (req, res) => {
+  // T112: מכבסה בלי שעות פעילות לא עולה לאוויר
+  const { rows: t } = await q('SELECT hours FROM tenants WHERE id=$1', [req.params.id]);
+  if (!t[0]) return res.status(404).json({ error: 'מכבסה לא נמצאה' });
+  const h = t[0].hours || {};
+  if (!Object.keys(h).some(d => Array.isArray(h[d]) && h[d].length))
+    return res.status(409).json({ error: 'לא ניתן לאשר מכבסה ללא שעות פעילות — להשלים בהגדרות המכבסה' });
   await q('UPDATE tenants SET approved=true WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
