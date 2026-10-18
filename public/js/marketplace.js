@@ -94,7 +94,7 @@ async function vHome(q){
     <div style="flex:1">
      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(l.name)}</b>${openNow(l)?'<span class="tag tg">פתוח</span>':'<span class="tag to">סגור</span>'}</div>
      <div class="mut" style="margin-top:3px">${l.rating_count>=3?`<span class="stars">★</span> ${l.rating} (${l.rating_count}) · `:`<span class="tag tb">חדש</span> · `}${esc(l.city||'')}${l.from_price?' · החל מ־₪'+l.from_price:''}<span class="dist">${dd!=null?' · '+fmtDist(dd):''}</span></div>
-     <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}</div>
+     <div class="mut">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום ₪'+l.min_order:''}${l.return_estimate_label?' · החזרה '+esc(l.return_estimate_label):''}</div>
     </div><span style="color:#8a99a3">‹</span></a>`}).join('')||`<div class="card mut">לא נמצאו מכבסות מתאימות${q?` — <a href="#/" style="color:#0e7a8a">נקה חיפוש</a>`:''}</div>`}
   </div>
   ${laundries.length?`<div class="card mut" id="hf-empty" style="display:none">אין מכבסות שמתאימות לסינון — <a href="#/" data-act="homeFilterReset" style="color:#0e7a8a">ניקוי סינון</a></div>`:''}
@@ -179,6 +179,7 @@ async function vLaundry(slug){
   ${(l.services&&l.services.length)?`<div style="margin:0 2px 8px">${l.services.map(sv=>`<span class="tag tb" style="margin-left:4px;padding:3px 10px">${esc(sv)}</span>`).join('')}</div>`:''}
   <div class="subtabs"><button class="chip on" type="button">מחירון</button><button class="chip" type="button" data-act="scrollTo" data-a="info">מידע</button><button class="chip" type="button" data-act="scrollTo" data-a="revs">ביקורות</button></div>
   <div class="mut" style="margin:0 2px 8px">שליחות ₪${l.delivery_fee||0}${Number(l.min_order)>0?' · מינימום הזמנה ₪'+l.min_order:''}</div>
+  ${l.return_estimate_label?`<div class="mut" style="margin:0 2px 8px;color:#0e7a8a;font-weight:600">🕐 צפי החזרה בהזמנה כעת: ${esc(l.return_estimate_label)}</div>`:''}
   ${d.items.length>6?`<input class="inp" id="pl-search" placeholder="חיפוש במחירון…" data-acti="plFilter">`:''}
   ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" data-act="scrollTo" data-a="pcat-${i}">${esc(c)}</a>`).join('')}</div>`:''}
   ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
@@ -201,6 +202,7 @@ async function vLaundry(slug){
    שעות פעילות:<br>${Object.entries(l.hours||{}).map(([k,v])=>v&&v.length?`${WD[k]}: ${v.map(r=>'<span dir="ltr">'+r.map(x=>esc(x)).join('–')+'</span>').join(', ')}`:null).filter(Boolean).join('<br>')||'—'}<br>
    <span style="color:#17303a;font-weight:700">חלונות איסוף:</span> ${winTxt('pickup')}<br>
    <span style="color:#17303a;font-weight:700">חלונות החזרה:</span> ${winTxt('delivery')}<br>
+   ${l.return_estimate_label?`<span style="color:#17303a;font-weight:700">צפי החזרה כעת:</span> ${esc(l.return_estimate_label)}<br>`:''}
    ${l.address?`כתובת: ${esc(l.address)}${l.city?', '+esc(l.city):''}<br>`:''}
    ${l.phone?`טלפון: <a href="tel:${esc(l.phone)}" style="color:#0e7a8a" dir="ltr">${esc(l.phone)}</a><br>`:''}
    ${l.terms?`תקנון: ${esc(l.terms)}`:''}

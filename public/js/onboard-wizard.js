@@ -11,7 +11,8 @@
       phone: g('jr-phone') !== undefined ? g('jr-phone') : d.phone,
       address: g('jr-address') !== undefined ? g('jr-address') : d.address,
       city: g('jr-city') !== undefined ? g('jr-city') : d.city,
-      delivery_fee: g('jr-fee') !== undefined ? Number(g('jr-fee')) : d.delivery_fee };
+      delivery_fee: g('jr-fee') !== undefined ? Number(g('jr-fee')) : d.delivery_fee,
+      turnaround_hours: g('jr-turn') !== undefined ? Number(g('jr-turn')) : d.turnaround_hours };
   }
 
   function missingSummary(){
@@ -22,6 +23,8 @@
     if (!(d.address || '').trim()) miss.push('כתובת');
     if (!(d.city || '').trim()) miss.push('עיר');
     if (!(d.items || []).length) miss.push('פריט מחירון אחד לפחות');
+    if (!Object.values(d.hours || {}).some(v => v && v.length)) miss.push('שעות פעילות');
+    if (!(d.windows || []).some(w => w && w.kind === 'delivery')) miss.push('חלון החזרה');
     if (!miss.length) return '<div class="note" style="margin-bottom:8px">✅ כל שדות החובה מולאו — אפשר לשלוח לאישור.</div>';
     return `<div class="warn" style="margin-bottom:8px">חסרים לפני שליחה: ${miss.join(', ')}</div>`;
   }

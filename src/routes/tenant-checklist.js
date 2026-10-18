@@ -9,15 +9,17 @@ r.use(requireAuth, requireTenantMember);
 
 r.get('/checklist', async (req, res) => {
   const t = req.tenant;
-  const [prices, windows, couriers] = await Promise.all([
+  const [prices, windows, dwindows, couriers] = await Promise.all([
     q('SELECT count(*)::int AS n FROM price_items WHERE tenant_id=$1', [t.id]),
     q("SELECT count(*)::int AS n FROM pickup_windows WHERE tenant_id=$1 AND kind='pickup'", [t.id]),
+    q("SELECT count(*)::int AS n FROM pickup_windows WHERE tenant_id=$1 AND kind='delivery'", [t.id]),
     q('SELECT count(*)::int AS n FROM couriers WHERE tenant_id=$1', [t.id]),
   ]);
   const hoursSet = t.hours && Object.keys(t.hours).length > 0;
   const items = [
     { key: 'prices',   label: 'מחירון לא ריק',        done: prices.rows[0].n > 0,                          action: 'הוסף פריטים למחירון' },
     { key: 'window',   label: 'חלון איסוף מוגדר',      done: windows.rows[0].n > 0,                         action: 'הגדר לפחות חלון איסוף אחד' },
+    { key: 'dwindow',  label: 'חלון החזרה מוגדר',      done: dwindows.rows[0].n > 0,                        action: 'הגדר לפחות חלון החזרה אחד — ממנו מחושב צפי ההחזרה ללקוח' },
     { key: 'hours',    label: 'שעות פעילות מוגדרות',   done: !!hoursSet,                               action: 'מלא שעות פתיחה וסגירה' },
     { key: 'phone',    label: 'טלפון עסקי',            done: !!(t.phone && String(t.phone).trim()),    action: 'הוסף מספר טלפון ליצירת קשר' },
     { key: 'logo',     label: 'לוגו',                  done: !!t.logo,                                 action: 'העלה לוגו של המכבסה' },

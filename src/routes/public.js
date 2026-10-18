@@ -32,7 +32,7 @@ r.get('/laundries', async (req, res) => {
   if (service) { params.push(service); where += ` AND $${params.length} = ANY(t.services)`; }
   const { rows } = await q(
     `SELECT t.id, t.slug, t.name, t.letter, t.color, t.city, t.address, t.services, t.rating, t.rating_count,
-            t.delivery_fee, t.min_order, t.is_open, t.hours, t.lat, t.lng,
+            t.delivery_fee, t.min_order, t.is_open, t.hours, t.lat, t.lng, t.turnaround_hours,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active AND i.unit='kg') AS from_kg,
             (SELECT min(price) FROM price_items i WHERE i.tenant_id=t.id AND i.active) AS from_price
      FROM tenants t ${where} ORDER BY t.created_at ASC LIMIT 100`, params);
@@ -41,6 +41,20 @@ r.get('/laundries', async (req, res) => {
   const byT = Object.fromEntries(agg.map(a => [a.tenant_id, a]));
   for (const l of rows) { const a = byT[l.id]; l.rating = a ? Number(a.r) : null; l.rating_count = a ? a.n : 0; }
   rows.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  // T106: צפי החזרה משוער לכל כרטיס מכבסה (מהזמנה חדשה כרגע)
+  {
+    const { computeReturnEta, etaLabel } = require('../eta');
+    const ids = rows.map(l => l.id);
+    const { rows: wins } = ids.length ? await q(
+      'SELECT tenant_id, weekday, start_time, end_time, kind FROM pickup_windows WHERE tenant_id = ANY($1)', [ids]) : { rows: [] };
+    const wMap = {};
+    for (const w of wins) (wMap[w.tenant_id] = wMap[w.tenant_id] || []).push(w);
+    const now = new Date();
+    for (const l of rows) {
+      const at = computeReturnEta({ turnaroundHours: l.turnaround_hours ?? 24, windows: wMap[l.id] || [], order: {}, now });
+      l.return_estimate_label = at ? etaLabel(at, now) : null;
+    }
+  }
   pubCache(res, 30);
   res.json({ laundries: rows });
 });
@@ -75,6 +89,13 @@ r.get('/laundries/:slug', async (req, res) => {
     ten.rating = Math.round(reviews.rows.reduce((s, r) => s + r.rating, 0) / reviews.rows.length * 10) / 10;
     ten.rating_count = reviews.rows.length;
   } else { ten.rating = null; ten.rating_count = 0; }
+  // T106: צפי החזרה משוער להזמנה חדשה — מוצג בדף המכבסה ובצ'ק-אאוט
+  {
+    const { computeReturnEta, etaLabel } = require('../eta');
+    const now = new Date();
+    const at = computeReturnEta({ turnaroundHours: ten.turnaround_hours ?? 24, windows: windows.rows, order: {}, now });
+    ten.return_estimate_label = at ? etaLabel(at, now) : null;
+  }
   // D2: ETag על כל המטען — טעינה חוזרת של דף מכבסה מקבלת 304 בלי גוף (חוסך את רוב התעבורה)
   const payload = { laundry: ten, items: items.rows, windows: windows.rows, reviews: reviews.rows, plans: plans.rows };
   const etag = 'W/"' + crypto.createHash('sha256').update(JSON.stringify(payload)).digest('base64url') + '"';

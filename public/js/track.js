@@ -20,7 +20,7 @@
             const cls = i <= cur ? '✅' : '◻️';
             return `<div style="padding:6px 0;border-top:1px solid #edf1f4">${cls} ${HE[s] || s}${ev ? ` <span class="mut">${fmtDT(ev.at)}</span>` : ''}</div>`;
           }).join('');
-      const eta = d.delivery_at ? `<div class="mut" style="margin-top:6px">מועד החזרה משוער: ${fmtDT(d.delivery_at)}</div>` : '';
+      const eta = d.return_eta_label ? `<div class="mut" style="margin-top:6px">צפי החזרה: <b>${esc(d.return_eta_label)}</b></div>` : (d.delivery_at ? `<div class="mut" style="margin-top:6px">מועד החזרה משוער: ${fmtDT(d.delivery_at)}</div>` : '');
       // T93: קוד מסירה חד-פעמי — מוצג ללקוח במעקב, מומסר לשליח בקבלת ההזמנה
       const dcode = d.delivery_code && !['delivered','cancelled'].includes(d.status)
         ? `<div class="card" style="border:2px solid #0e7a8a;text-align:center"><div class="mut">קוד המסירה שלך — מסרו אותו לשליח בקבלת ההזמנה</div><div dir="ltr" style="font-size:26px;font-weight:800;letter-spacing:6px;margin-top:4px">${esc(d.delivery_code)}</div></div>` : '';

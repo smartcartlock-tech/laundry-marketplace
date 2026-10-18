@@ -21,20 +21,21 @@ test('checklist: 0% on empty tenant, rises with each item, 100% when full', asyn
   let c = await get();
   assert.equal(c.status, 200);
   assert.equal(c.json.percent, 0);
-  assert.equal(c.json.total, 7);
+  assert.equal(c.json.total, 8);
   assert.equal(c.json.complete, false);
 
   await sql(schema, `INSERT INTO price_items(tenant_id, name, price) VALUES ($1,'חולצה',12)`, [ten.id]);
   await sql(schema, `INSERT INTO pickup_windows(tenant_id, weekday, start_time, end_time) VALUES ($1,0,'08:00','12:00')`, [ten.id]);
+  await sql(schema, `INSERT INTO pickup_windows(tenant_id, weekday, start_time, end_time, kind) VALUES ($1,0,'16:00','19:00','delivery')`, [ten.id]);
   c = await get();
-  assert.equal(c.json.done, 2);
+  assert.equal(c.json.done, 3);
   assert.equal(c.json.items.find(i => i.key === 'prices').done, true);
   assert.equal(c.json.items.find(i => i.key === 'window').done, true);
 
   await sql(schema, `UPDATE tenants SET hours='{"0":[["08:00","20:00"]]}', phone='+972501112233',
     address='רחוב הרצל 1 תל אביב', lat=32.08, lng=34.78, logo=decode('89504e47','hex') WHERE id=$1`, [ten.id]);
   c = await get();
-  assert.equal(c.json.done, 6);
+  assert.equal(c.json.done, 7);
   assert.equal(c.json.items.find(i => i.key === 'courier').done, false);
   assert.ok(c.json.items.find(i => i.key === 'courier').action.length > 0, 'יש פעולה מתקנת לפריט');
 

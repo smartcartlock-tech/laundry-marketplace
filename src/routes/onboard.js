@@ -25,11 +25,16 @@ r.post('/extract', require('../ratelimit').limiter('onboard-extract', 10, 10 * 6
 // שלב 2: יצירת מכבסה מהטיוטה המאושרת (אחרי מסך סקירה)
 r.post('/tenants', async (req, res) => {
   try {
-    const { name, phone, address, city, services, hours, terms, items, windows, delivery_fee, min_order } = req.body || {};
+    const { name, phone, address, city, services, hours, terms, items, windows, delivery_fee, min_order, turnaround_hours } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'שם מכבסה חובה' });
     if (!phone || !String(phone).trim()) return res.status(400).json({ error: 'טלפון המכבסה חובה' });
     if (!address || !String(address).trim()) return res.status(400).json({ error: 'כתובת המכבסה חובה' });
     if (!city || !String(city).trim()) return res.status(400).json({ error: 'עיר חובה' });
+    // T106: שעות פעילות וחלון החזרה הם חובה ברישום — הבסיס לצפי החזרה שמוצג ללקוח
+    const hasHours = hours && typeof hours === 'object' && Object.values(hours).some(v => Array.isArray(v) && v.length);
+    if (!hasHours) return res.status(400).json({ error: 'חובה למלא שעות פעילות — הלקוחות רואים מתי המכבסה פתוחה' });
+    const hasDeliveryWindow = Array.isArray(windows) && windows.some(w => w && w.kind === 'delivery' && w.start_time && w.end_time);
+    if (!hasDeliveryWindow) return res.status(400).json({ error: 'חובה להגדיר לפחות חלון החזרה אחד — ממנו מחושב צפי ההחזרה ללקוח' });
     if (Array.isArray(items)) {
       const zero = items.filter(it => it && it.name && !(Number(it.price) > 0));
       if (zero.length) return res.status(400).json({ error: `${zero.length} פריטים ללא מחיר תקין — יש לתקן או למחוק אותם לפני השליחה` });
@@ -39,10 +44,11 @@ r.post('/tenants', async (req, res) => {
     if (existing[0]) slug = slug + '-' + Math.random().toString(36).slice(2, 6);
     const svc = Array.isArray(services) && services.length ? services : ['כביסה'];
     const { rows: t } = await q(
-      `INSERT INTO tenants(slug, name, letter, phone, address, city, services, hours, terms, delivery_fee, min_order, approved)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false) RETURNING *`,
+      `INSERT INTO tenants(slug, name, letter, phone, address, city, services, hours, terms, delivery_fee, min_order, approved, turnaround_hours)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false,$12) RETURNING *`,
       [slug, name, name.trim()[0] || 'מ', phone || null, address || null, city || null,
-       svc, JSON.stringify(hours || {}), terms || null, Number(delivery_fee) || 0, Number(min_order) || 0]);
+       svc, JSON.stringify(hours || {}), terms || null, Number(delivery_fee) || 0, Number(min_order) || 0,
+       Math.min(168, Math.max(1, Number(turnaround_hours) || 24))]);
     // B3: גיבוב מפתח הבוט מיד עם היצירה — הגלוי לא נשמר. חיבור הבוט מתבצע ברוטציה מהאדמין.
     if (t[0].api_key) {
       const h = require('crypto').createHash('sha256').update(t[0].api_key).digest('hex');

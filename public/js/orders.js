@@ -7,7 +7,8 @@ async function vOrders(){
   ${(()=>{const act=r.orders.filter(o=>o.status!=='cancelled'),cnc=r.orders.filter(o=>o.status==='cancelled');state.__cncCount=cnc.length;return act.map(o=>`<div class="card lcard" style="cursor:pointer" data-act="goTo" data-a="#/orders/${o.id}">
     <span class="logo sm" style="background:${cssColor(o.color)}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
-    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div></div>
+    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div>
+    ${o.return_eta_label?`<div class="mut" style="color:#0e7a8a;font-weight:600">🕐 צפי החזרה: ${esc(o.return_eta_label)}</div>`:''}</div>
     ${o.status==='delivered'?`<button class="btn2" style="flex-shrink:0" data-act="reorder" data-a="${esc(o.id)}" data-b="${esc(o.slug)}" title="הוספת אותם פריטים לסל">↻ שוב</button>`:''}
     <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות פעילות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'})()}
   ${r.orders.some(o=>o.status==='cancelled')?`<details class="card" style="cursor:pointer"><summary class="mut" style="cursor:pointer">הזמנות שבוטלו (${r.orders.filter(o=>o.status==='cancelled').length}) — הצגה</summary>`+r.orders.filter(o=>o.status==='cancelled').map(o=>`<div class="card lcard" style="cursor:pointer;opacity:.75" data-act="goTo" data-a="#/orders/${o.id}">
@@ -56,6 +57,8 @@ async function vOrder(id){
    <div class="mut" style="margin-top:6px">תשלום: ${o.payment_method==='cash'?'מזומן לשליח':'מקוון (דמו)'} · ${o.payment_status==='pending'?'טרם שולם':o.payment_status==='paid_demo'?'אושר בדמו — ללא חיוב אמיתי':'שולם'}${o.points_earned?` · תצברו ${o.points_earned} נקודות`:''}</div>
    <div class="mut">כתובת: ${esc(o.address)}</div>
    <div class="mut">${o.pickup_at?'איסוף: '+fmtDT(o.pickup_at):'איסוף: ללא העדפה — המכבסה תתאם'}${o.delivery_at?' · החזרה: '+fmtDT(o.delivery_at):''}</div>
+   ${o.return_eta_label?`<div class="mut" style="margin-top:4px;color:#0e7a8a;font-weight:600">🕐 צפי החזרה: ${esc(o.return_eta_label)}</div>`:''}
+   ${o.status==='delivered'&&evByStatus.delivered?`<div class="mut" style="margin-top:4px;color:#178a4c;font-weight:600">✓ הוחזרה בפועל: ${fmtDT(evByStatus.delivered.created_at)}</div>`:''}
   </div>
   ${isMine?`<div class="card"><b>מסמכים</b>
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">

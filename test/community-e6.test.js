@@ -7,7 +7,9 @@ async function makeLaundry(api, admin, phone, name) {
   const owner = await api.login(phone, 'בעלים ' + name);
   const r = await api('/api/onboard/tenants', {
     method: 'POST', token: owner,
-    body: { name, phone: '03-5551234', address: 'רחוב הדוגמה 1', city: 'תל אביב', items: [{ name: 'שק כביסה', price: 50, unit: 'item' }] },
+    body: { name, phone: '03-5551234', address: 'רחוב הדוגמה 1', city: 'תל אביב', items: [{ name: 'שק כביסה', price: 50, unit: 'item' }],
+      hours: { '0': [['08:00','20:00']], '1': [['08:00','20:00']] },
+      windows: [{ weekday: 1, start_time: '16:00', end_time: '19:00', kind: 'delivery' }] },
   });
   assert.equal(r.status, 201, JSON.stringify(r.json));
   // T112: אישור מכבסה דורש שעות פעילות — מגדירים דרך ה-API הרשמי

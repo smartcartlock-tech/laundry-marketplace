@@ -4,6 +4,7 @@ async function vCheckout(slug){
  window.__coCoupon=null;
  const d=await api('/laundries/'+slug);
  const l=d.laundry;
+ window.__coWin=d.windows||[];window.__coTurn=Number(l.turnaround_hours)||24; // T106
  const items=state.cart.filter(c=>c.slug===slug);
  if(!items.length){go('#/laundry/'+slug);return ''}
  const subtotal=items.reduce((s,c)=>s+c.price*c.qty,0);
@@ -46,9 +47,10 @@ async function vCheckout(slug){
     <input class="inp" id="co-addr-label" placeholder="תווית לכתובת (בית, עבודה…)" style="margin-top:6px">
    </div>
    <label class="lb">חלון איסוף</label>
-   <select class="inp" id="co-pickup"><option value="">ללא העדפה</option>${winOpts('pickup')}</select>
+   <select class="inp" id="co-pickup" data-actc="updEta"><option value="">ללא העדפה</option>${winOpts('pickup')}</select>
    <label class="lb">חלון החזרה (אופציונלי)</label>
-   <select class="inp" id="co-delivery"><option value="">ללא העדפה</option>${winOpts('delivery')}</select>
+   <select class="inp" id="co-delivery" data-actc="updEta"><option value="">ללא העדפה</option>${winOpts('delivery')}</select>
+   <div class="mut" id="co-eta" style="margin-top:2px;color:#0e7a8a;font-weight:600">${coEtaText(d.windows||[],Number(l.turnaround_hours)||24,'','')}</div>
    <label class="lb">אמצעי תשלום</label>
    <select class="inp" id="co-pay"><option value="cash">מזומן לשליח</option><option value="demo_online">תשלום מקוון (דמו — ללא סליקה אמיתית)</option></select>
    <div class="mut">בבחירת תשלום מקוון בדמו, שליחת ההזמנה תאשר גם את תשלום הדמו. אין חיוב אמיתי ואין צורך בפרטי כרטיס.</div>
@@ -139,8 +141,38 @@ async function submitOrder(slug){
 
 
 
+/* T106: צפי החזרה בצ'ק-אאוט — מראי מחשב של לוגיקת src/eta.js בצד לקוח */
+function etaDayLabel(dt){
+ const a=new Date(dt);a.setHours(0,0,0,0);const n=new Date();n.setHours(0,0,0,0);
+ const diff=Math.round((a-n)/86400e3);
+ const day=diff===0?'היום':diff===1?'מחר':WD[dt.getDay()];
+ return day+' עד '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+}
+function coEtaText(wins,turn,pickupVal,deliveryVal){
+ if(deliveryVal){
+  const [wd,st]=deliveryVal.split('|');
+  const w=(wins||[]).find(x=>x.kind==='delivery'&&String(x.weekday)===wd&&x.start_time.slice(0,5)===st);
+  if(w)return 'צפי החזרה: '+etaDayLabel(new Date(nextWindowDate(Number(wd),w.end_time.slice(0,5))));
+ }
+ let base=new Date();
+ if(pickupVal){const [wd,st]=pickupVal.split('|');const pdt=new Date(nextWindowDate(Number(wd),st));if(pdt>base)base=pdt;}
+ const earliest=new Date(base.getTime()+(Number(turn)||24)*3600e3);
+ let best=null;
+ for(const w of wins||[]){
+  if(w.kind!=='delivery'||w.weekday===6)continue;
+  const dt=new Date(nextWindowDate(w.weekday,w.end_time.slice(0,5)));
+  if(dt>earliest&&(!best||dt<best))best=dt;
+ }
+ return best?'צפי החזרה: '+etaDayLabel(best):'צפי החזרה: לתיאום עם המכבסה';
+}
+function updEta(){
+ const el=$('#co-eta');if(!el)return;
+ el.textContent=coEtaText(window.__coWin||[],window.__coTurn||24,($('#co-pickup')||{}).value||'',($('#co-delivery')||{}).value||'');
+}
+
 /* B7: רישום פעולות להאזנה המרכזת (delegate.js) — בלי inline handlers */
 onAct({
+ updEta:()=>updEta(),
  applyCoupon:t=>applyCoupon(t.dataset.a),
  delAddr:()=>delAddr(),
  submitOrder:t=>submitOrder(t.dataset.a),

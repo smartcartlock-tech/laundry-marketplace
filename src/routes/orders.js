@@ -7,12 +7,35 @@ const { buildReceiptPDF } = require('../receipt');
 const { validateCoupon, findCoupon } = require('../coupons');
 const { ensureCurrentPeriod, applySubscriptionToOrder } = require('../subscriptions');
 const { uuidParams } = require('../validate');
+const { computeReturnEta, etaLabel } = require('../eta');
 
 const r = express.Router();
 r.use(requireAuth);
 r.use(require('../ratelimit').writeLimiter('orders-write', 30));
 
 const STATUS_HE = { new:'התקבלה', confirmed:'אושרה', picked_up:'נאספה', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה', cancelled:'בוטלה' };
+
+
+// T106: צירוף צפי החזרה (ETA) לכל הזמנה — מחושב מחלונות ההחזרה וזמן העבודה של המכבסה
+async function attachEta(orders) {
+  const list = Array.isArray(orders) ? orders : [orders];
+  const ids = [...new Set(list.map(o => o.tenant_id).filter(Boolean))];
+  if (!ids.length) return orders;
+  const [wins, tens] = await Promise.all([
+    q('SELECT tenant_id, weekday, start_time, end_time, kind FROM pickup_windows WHERE tenant_id = ANY($1)', [ids]),
+    q('SELECT id, turnaround_hours FROM tenants WHERE id = ANY($1)', [ids]),
+  ]);
+  const tMap = Object.fromEntries(tens.rows.map(t => [t.id, t.turnaround_hours]));
+  const wMap = {};
+  for (const w of wins.rows) (wMap[w.tenant_id] = wMap[w.tenant_id] || []).push(w);
+  const now = new Date();
+  for (const o of list) {
+    const at = computeReturnEta({ turnaroundHours: tMap[o.tenant_id] ?? 24, windows: wMap[o.tenant_id] || [], order: o, now });
+    o.return_eta = at ? at.toISOString() : null;
+    o.return_eta_label = at ? etaLabel(at, now) : null;
+  }
+  return orders;
+}
 
 async function event(orderId, status, actorId, note) {
   await q('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)', [orderId, status, actorId, note || null]);
@@ -168,6 +191,7 @@ r.post('/', async (req, res) => {
     notifyUser(req.user.id, tenant.id,
       `הזמנתך ב${tenant.name} התקבלה (#${order.id.slice(0, 8)}) — סה״כ ₪${total}. נעדכן כשהיא תאושר.`, req.user.phone).catch(() => {});
     require('../ordernotices').notifyLaundryNewOrder(tenant, order, req.user).catch(() => {}); // N6: תבנית laundry_new_order לבעלי המכבסה
+    await attachEta(order); // T106
     res.status(201).json({ order });
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
@@ -198,6 +222,7 @@ r.get('/mine', async (req, res) => {
        (SELECT json_agg(json_build_object('name',oi.name,'qty',oi.qty,'price',oi.price)) FROM order_items oi WHERE oi.order_id=o.id) AS items
      FROM orders o JOIN tenants t ON t.id=o.tenant_id
      WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 100`, [req.user.id]);
+  await attachEta(rows); // T106: צפי החזרה בכרטיס הזמנה
   res.json({ orders: rows, statusHe: STATUS_HE });
 });
 
@@ -233,6 +258,7 @@ r.get('/:id', uuidParams('id'), async (req, res) => {
     q('SELECT status, note, photo_url, created_at FROM order_events WHERE order_id=$1 ORDER BY created_at', [order.id]),
     q('SELECT 1 FROM reviews WHERE order_id=$1 AND user_id=$2 LIMIT 1', [order.id, req.user.id]),
   ]);
+  await attachEta(order); // T106: צפי החזרה במסך ההזמנה
   res.json({ order, items: items.rows, events: events.rows, statusHe: STATUS_HE, reviewed: rev.rows.length > 0 });
 });
 
