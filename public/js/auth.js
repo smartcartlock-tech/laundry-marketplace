@@ -130,18 +130,19 @@ function ensureIdBanner(){
  }
  const fresh=b.__html!==html;if(fresh){b.innerHTML=html;b.__html=html}
  document.body.classList.add('has-idbanner');
- if(fresh||!b.__docked){dockThemeToggle(b);b.__docked=true} /* לא בכל מוטציה — מדידת layout יקרה */
+ if(fresh||!b.__docked){dockThemeToggle();b.__docked=true} /* לא בכל מוטציה — מדידת layout יקרה */
 }
 /* T115: הבאנר הקבוע דורס את כפתור הנושא (fixed) — מעגנים אותו מתחת לתחתית הבאנר בפועל */
-function dockThemeToggle(b){
- const t=document.getElementById('theme-toggle');if(!t)return;
- const bottom=b.getBoundingClientRect().bottom+window.scrollY; /* מיקום מסמך, לא ויוופורט — הכפתור fixed */
- t.style.top=Math.round(bottom+8)+'px';
- /* ה-layout עוד מתייצב אחרי טעינה (ניווט/פונטים) — מדידה חוזרת כדי לא להישאר בגובה שגוי */
- [400,1500].forEach(ms=>setTimeout(()=>{const bb=document.getElementById('id-banner');const tt=document.getElementById('theme-toggle');
-  if(bb&&tt)tt.style.top=Math.round(bb.getBoundingClientRect().bottom+window.scrollY+8)+'px'},ms));
+function dockThemeToggle(){
+ /* מעגנים את הכפתור מתחת לתחתית הבאנר בפועל; ניסיונות חוזרים כי הכפתור נוצר אחרי auth.js וה-layout מתייצב באיחור */
+ let tries=0;
+ (function pass(){
+  const b=document.getElementById('id-banner'),t=document.getElementById('theme-toggle');
+  if(b&&t)t.style.top=Math.round(b.getBoundingClientRect().bottom+window.scrollY+8)+'px'; /* מיקום מסמך — הכפתור fixed */
+  if(++tries<6)setTimeout(pass,tries===1?300:1200);
+ })();
 }
-addEventListener('resize',()=>{const b=document.getElementById('id-banner');if(b)dockThemeToggle(b)});
+addEventListener('resize',()=>{if(document.getElementById('id-banner'))dockThemeToggle()});
 new MutationObserver(()=>{try{ensureIdBanner()}catch(e){}}).observe(document.documentElement,{childList:true,subtree:true});
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
