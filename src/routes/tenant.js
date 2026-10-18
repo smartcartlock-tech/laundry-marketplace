@@ -44,7 +44,7 @@ async function transitionOrder(client, { tenant, orderId, status, actorId, note 
   if (status === 'cancelled' && order.status === 'delivered') throw err(409, 'לא ניתן לבטל הזמנה שסומנה כנמסרה');
   const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
   if (status !== 'cancelled' && nxt !== cur + 1) throw err(409, 'מעבר סטטוס חייב להיות לשלב הבא ברצף');
-  if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
+  if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id && !order.self_delivery) {
     throw err(409, 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה');
   }
   await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
@@ -100,7 +100,7 @@ r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
     console.error(e); return res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
   try {
-    if (committedStatus === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T81
+    if (committedStatus === 'confirmed') if (!order.self_delivery) require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T108: מסירה עצמית לא נשלחת לשיבוץ // T81
     notifyOrderStatus(req.tenant, order, committedStatus);
     res.json({ ok: true });
   } catch (e) { console.error(e); res.json({ ok: true }); }
@@ -127,7 +127,7 @@ r.post('/orders/bulk-status', async (req, res) => {
     console.error(e); return res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
   for (const order of updated) {
-    if (status === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {});
+    if (status === 'confirmed') if (!order.self_delivery) require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T108: מסירה עצמית לא נשלחת לשיבוץ
     notifyOrderStatus(req.tenant, order, status);
   }
   res.json({ ok: true, updated: updated.length, failed });

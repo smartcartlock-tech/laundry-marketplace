@@ -211,6 +211,7 @@ async function vManage(sub){
       ${NEXT[o.status]?`<button class="btn2 on" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="${NEXT[o.status]}">העבר ל״${HE[NEXT[o.status]]}״</button>`:''}
       ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="cancelled">ביטול</button>`:''}
       ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" data-act="assignCourier" data-a="${slug}" data-b="${o.id}">שיבוץ שליח</button>`):''}
+      ${!o.courier_id&&!['delivered','cancelled','out_for_delivery'].includes(o.status)?(o.self_delivery?'<span class="tag tg">מסירה עצמית — אתם מסירים</span>':`<button class="btn2" data-act="selfDeliver" data-a="${slug}" data-b="${o.id}">אני מסירה בעצמי</button>`):''}
      </div>
     </div></div>`).join('')||mgEmpty('📦',FEMPTY[f]||FEMPTY.all,'')}</div>`;
  } else if(sub==='issues'){
@@ -460,9 +461,24 @@ async function assignCourier(slug,oid,el){
   const box=document.createElement('div');box.className='assignbox';box.style.cssText='margin-top:8px;display:flex;gap:6px';
   box.innerHTML=`<div class="mut" style="margin-bottom:4px">עלות משוערת: ₪${(d.estimate&&d.estimate.per_order)||''} (${(d.estimate&&d.estimate.stops_per_order)||2} נקודות × ₪${(d.estimate&&d.estimate.rate_per_stop)||''})</div>
    <select class="inp" id="as-${oid}" style="flex:1">${d.couriers.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.model==='platform'?'פלטפורמה':c.model==='shared'?'משותף':'פרטי'} · ${c.active_orders} פעילות</option>`).join('')}</select>
-   <button class="btn2 on" data-act="doAssign" data-a="${slug}" data-b="${oid}">שליחת הצעה</button>`;
+   <button class="btn2 on" data-act="doAssign" data-a="${slug}" data-b="${oid}">שליחת הצעה</button>
+   <div style="flex-basis:100%;border-top:1px dashed #d3e0e4;margin-top:6px;padding-top:6px"><b>שליח פרטי חדש למכבסה</b>
+    <div style="display:flex;gap:6px;margin-top:4px"><input class="inp" id="pc-name-${oid}" placeholder="שם השליח"><input class="inp" id="pc-phone-${oid}" placeholder="טלפון" dir="ltr"><button class="btn2" data-act="addPrivateCourier" data-a="${slug}" data-b="${oid}">הוספה</button></div></div>`;
   card.appendChild(box);
  }catch(e){toast(e.message)}
+}
+/* T108: מסירה עצמית בלי שליח + הוספת שליח פרטי למכבסה */
+async function selfDeliver(slug,oid,btn){
+ btn.disabled=true;
+ try{await api(`/t/${slug}/orders/${oid}/self-deliver`,{method:'POST'});toast('סומן: מסירה עצמית — ניתן לקדם סטטוס בלי שליח');route()}
+ catch(e){btn.disabled=false;toast(e.message)}
+}
+async function addPrivateCourier(slug,oid,btn){
+ const name=document.getElementById('pc-name-'+oid).value.trim(),phone=document.getElementById('pc-phone-'+oid).value.trim();
+ if(!name||!phone)return toast('חסר שם או טלפון של השליח');
+ btn.disabled=true;
+ try{await api(`/t/${slug}/couriers`,{method:'POST',body:JSON.stringify({name,phone})});toast('השליח הפרטי נוסף ומאושר');assignCourier(slug,oid,btn)}
+ catch(e){btn.disabled=false;toast(e.message)}
 }
 async function doAssign(slug,oid,btn){
  btn.disabled=true;btn.textContent='שולח…';
@@ -617,6 +633,7 @@ onAct({
  commTenantSwitch:t=>{store.set('lastTenant',t.value);route()},
  addItem:t=>addItem(t.dataset.a), addPlan:t=>addPlan(t.dataset.a), addWindow:t=>addWindow(t.dataset.a),
  assignCourier:t=>assignCourier(t.dataset.a,t.dataset.b,t), doAssign:t=>doAssign(t.dataset.a,t.dataset.b,t),
+ selfDeliver:t=>selfDeliver(t.dataset.a,t.dataset.b,t), addPrivateCourier:t=>addPrivateCourier(t.dataset.a,t.dataset.b,t),
  bizAddUser:t=>bizAddUser(t.dataset.a,t.dataset.b), bizCreate:t=>bizCreate(t.dataset.a),
  bizDelPrice:t=>bizDelPrice(t.dataset.a,t.dataset.b,t.dataset.c), bizDelUser:t=>bizDelUser(t.dataset.a,t.dataset.b,t.dataset.c),
  bizDoc:t=>bizDoc(t.dataset.a,t.dataset.b,t.dataset.c,t.dataset.d), bizInvGen:t=>bizInvGen(t.dataset.a,t.dataset.b),
