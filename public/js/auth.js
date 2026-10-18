@@ -137,6 +137,9 @@ function dockThemeToggle(b){
  const t=document.getElementById('theme-toggle');if(!t)return;
  const bottom=b.getBoundingClientRect().bottom+window.scrollY; /* מיקום מסמך, לא ויוופורט — הכפתור fixed */
  t.style.top=Math.round(bottom+8)+'px';
+ /* ה-layout עוד מתייצב אחרי טעינה (ניווט/פונטים) — מדידה חוזרת כדי לא להישאר בגובה שגוי */
+ [400,1500].forEach(ms=>setTimeout(()=>{const bb=document.getElementById('id-banner');const tt=document.getElementById('theme-toggle');
+  if(bb&&tt)tt.style.top=Math.round(bb.getBoundingClientRect().bottom+window.scrollY+8)+'px'},ms));
 }
 addEventListener('resize',()=>{const b=document.getElementById('id-banner');if(b)dockThemeToggle(b)});
 new MutationObserver(()=>{try{ensureIdBanner()}catch(e){}}).observe(document.documentElement,{childList:true,subtree:true});
