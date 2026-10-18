@@ -160,7 +160,14 @@ async function vManage(sub){
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
  sub=sub||'today';
- const tabs=[['today','היום'],['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['biz','עסקיים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ /* T116: קיבוץ 17 הלשוניות ל-4 קבוצות. ה-subtabs נשאר שטוח (בלי div מקונן) — עטיפות של קבצים אחרים
+    מזריקות צ'יפים לפני ה-</div> הראשון אחרי '<div class="subtabs">'; 'כספים' אחרונה כדי שהצ'יפים
+    המוזרקים (התחשבנות/הנה״ח) ישבו בקבוצתם. ביקורות/תמיכה מוצגים כאן — העטיפות שלהם מדלגות כשה-href קיים. */
+ const groups=[['תפעול',[['today','היום'],['orders','הזמנות'],['windows','חלונות'],['couriers','שליחים'],['issues','תקלות'],['support','תמיכה 💬']]],
+  ['מכירות',[['items','מחירון'],['coupons','קופונים'],['subs','מנויים'],['biz','עסקיים'],['customers','לקוחות'],['reviews','ביקורות']]],
+  ['הגדרות',[['settings','הגדרות']]],
+  ['כספים',[['documents','מסמכים'],['stats','דוחות']]]];
+ const subtabHtml=groups.map(g=>`<span style="flex-basis:100%;font-size:11px;font-weight:700;color:#8a99a3;margin:4px 0 0">${g[0]}</span>`+g[1].map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')).join('');
  let body='';
  if(sub==='today'){
   /* T120: מסך 'היום' המבצעי — מחכות לאישור / לאסוף היום / להחזיר היום + פעולות מרובות */
@@ -388,7 +395,7 @@ async function vManage(sub){
  store.set('lastTenant',slug);
  const switcher=mems.length>1?`<select class="sel" style="margin-top:8px" data-actc="commTenantSwitch">${mems.map(x=>`<option value="${x.slug}" ${x.slug===slug?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:'';
  return `<div class="hdr"><h2>לוח ניהול — ${esc(m.name)}</h2>${switcher}<a href="#" data-act="logout" style="color:#fff;font-size:12px;opacity:.85">התנתקות</a></div>
- <div class="body"><div class="subtabs">${tabs.map(t=>`<a class="chip ${sub===t[0]?'on':''}" href="#/manage/${t[0]}">${t[1]}</a>`).join('')}</div>${body}</div>`;
+ <div class="body"><div class="subtabs">${subtabHtml}</div>${body}</div>`;
 }
 async function joinPlan(slug,planId){
  if(!state.token)return go('#/login');

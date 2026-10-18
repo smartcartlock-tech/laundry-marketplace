@@ -17,10 +17,11 @@
         ? d.couriers.map(c => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${esc(c.name)}</span><span class="mut">נאספו ${c.picked_today} · נמסרו ${c.delivered_today} · פעילות ${c.active}</span></div>`).join('')
         : '<div class="mut">לא שובצו שליחים היום</div>';
       const stat = (n, l, color) => `<div style="flex:1;text-align:center"><div style="font-size:22px;font-weight:800;color:${color}">${n}</div><div class="mut" style="font-size:12px">${l}</div></div>`;
-      const card = `<div class="card"><div class="sec">סיכום יומי · ${d.date.split('-').reverse().join('.')}</div>
+      /* T116: הכרטיס מכווץ — פתוח רק בלשונית 'הייوم'; בכיווץ נשארת שורת מספרים מסכמת */
+      const card = `<details class="card" ${sub==='today'?'open':''}><summary style="cursor:pointer"><b>סיכום יומי · ${d.date.split('-').reverse().join('.')}</b> <span class="mut">${d.created_today} נוצרו · ${d.picked_today} נאספו · ${d.delivered_today} נמסרו${d.late.length?` · ⚠️ ${d.late.length} באיחור`:''}</span></summary>
         <div style="display:flex;gap:8px;margin:6px 0">${stat(d.created_today,'נוצרו','#0e7a8a')}${stat(d.picked_today,'נאספו','#8a6d1a')}${stat(d.delivered_today,'נמסרו','#178a4c')}</div>
         <div class="sec" style="font-size:13px">איחורים (${d.late.length})</div>${lateRows}
-        <div class="sec" style="font-size:13px">שליחים</div>${courierRows}</div>`;
+        <div class="sec" style="font-size:13px">שליחים</div>${courierRows}</details>`;
       // עיגון גמיש (כלל DEVELOPMENT.md): מיד אחרי <div class="body"> — עמיד לשינויי מבנה של הלוח
       /* M07: הכרטיס מוכנס אחרי תפריט הניהול (subtabs) — התפריט נשאר בראש ולא נדחף ל-y1109 */
       const st = '<div class="subtabs">';
@@ -61,13 +62,13 @@ async function opsClosureDel(slug,day){
       if (!m) return html;
       const d = await api(`/t/${m.slug}/ops/state`);
       const paused = d.paused_until && new Date(d.paused_until) > new Date();
-      const card = `<div class="card"><div class="sec">זמינות לקבלת הזמנות</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-         <span class="st-pill ${paused?'st-cancelled':'st-delivered'}">${paused?'מושהה עד '+new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'פעיל'}</span>
+      /* T116: הכרטיס מכווץ — פתוח רק בלשונית 'היום'; הסטטוס (פעיל/מושהה) נשאר גלוי בשורת הכותרת */
+      const card = `<details class="card" ${sub==='today'?'open':''}><summary style="cursor:pointer"><b>זמינות לקבלת הזמנות</b> <span class="st-pill ${paused?'st-cancelled':'st-delivered'}">${paused?'מושהה עד '+new Date(d.paused_until).toLocaleString('he-IL',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}):'פעיל'}</span></summary>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
          <button class="btn2" data-act="opsPauseToggle" data-a="${m.slug}" data-b="${!paused}">${paused?'חידוש קבלת הזמנות':'השהיה לשעתיים'}</button></div>
         <div class="sec" style="font-size:13px;margin-top:8px">ימי סגירה/חגים</div>
         <div style="display:flex;gap:6px;align-items:center"><input type="text" class="inp" id="ops-closure-day" placeholder="dd/mm/yyyy" inputmode="numeric" style="max-width:170px"><button class="btn2" data-act="opsClosureAdd" data-a="${m.slug}">הוספה</button></div>
-        ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" data-act="opsClosureDel" data-a="${m.slug}" data-b="${c.day}">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</div>`;
+        ${d.closures.length?d.closures.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #edf1f4"><span>${c.day.split('-').reverse().join('/')}${c.note?' · '+esc(c.note):''}</span><a style="color:#b00;cursor:pointer" data-act="opsClosureDel" data-a="${m.slug}" data-b="${c.day}">הסרה</a></div>`).join(''):'<div class="mut">אין ימי סגירה מתוכננים</div>'}</details>`;
       return html.replace('<div class="body">', '<div class="body">' + card);
     }catch(e){ return html; }
   };

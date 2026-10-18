@@ -24,12 +24,13 @@
       const rows = d.items.map(i =>
         `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #edf1f4">
          <span>${i.done ? '✅' : '◻️'} ${esc(i.label)}</span>${i.done ? '' : `<span class="mut">${esc(i.action)}</span>`}</div>`).join('');
-      const card = `<div class="card"><div class="sec">מוכנות המכבסה — ${d.percent}%</div>
-        <div style="background:#e5e7eb;border-radius:8px;height:8px"><div style="background:${color};width:${d.percent}%;height:8px;border-radius:8px"></div></div>
+      /* T116: הכרטיס מכווץ — פתוח רק בלשונית 'היום' כדי לא לתפוס גלילה מלאה בכל לשונית */
+      const card = `<details class="card" ${sub==='today'?'open':''}><summary style="cursor:pointer;font-weight:700">מוכנות המכבסה — ${d.percent}%${d.complete?' ✅':''}</summary>
+        <div style="background:#e5e7eb;border-radius:8px;height:8px;margin-top:8px"><div style="background:${color};width:${d.percent}%;height:8px;border-radius:8px"></div></div>
         <div style="margin-top:6px">${rows}</div>
         ${d.complete
           ? `<div class="note" style="margin-top:8px;color:#178a4c">המכבסה מוכנה לפעילות 🎉</div>`
-          : `<div class="mut" style="margin-top:6px">אלו הפריטים שחסרים לפני שהמכבסה מוכנה ומאושרת.</div>`}${agreementHtml}</div>`;
+          : `<div class="mut" style="margin-top:6px">אלו הפריטים שחסרים לפני שהמכבסה מוכנה ומאושרת.</div>`}${agreementHtml}</details>`;
       // עיגון גמיש: הכרטיס מוכנס מיד אחרי <div class="body"> — עמיד גם אם מבנה הלוח משתנה (למשל הוספת לוח זמינות לפני ה-subtabs)
       /* M07: הכרטיס מוכנס אחרי תפריט הניהול (subtabs) — התפריט נשאר בראש ולא נדחף ל-y1109 */
       const st = '<div class="subtabs">';
