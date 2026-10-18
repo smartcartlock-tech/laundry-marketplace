@@ -24,3 +24,40 @@ function offlineBanner(){
 window.addEventListener('online',()=>{offlineBanner();toast('החיבור חזר ✓');route()});
 window.addEventListener('offline',offlineBanner);
 offlineBanner();
+
+/* T110: באנר הפעלת התראות דחיפה לבעלי/צוות מכבסה — מוזרק למסכי ניהול (#/manage) כשאין מנוי פעיל.
+   עצמאי: MutationObserver כמו messages.js, בלי עריכת manage.js (קבצים משותפים).
+   ניתן לסגירה — הבחירה נשמרת ולא מציקה שוב באותו מכשיר. */
+async function ownerPushState(){
+ try{
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))return null;
+  const reg=await navigator.serviceWorker.getRegistration();
+  return reg?await reg.pushManager.getSubscription():null;
+ }catch(e){return null}
+}
+async function ownerPushBanner(){
+ try{
+  const old=document.getElementById('owner-push-banner');if(old)old.remove();
+  if(!state.token||!state.memberships||!state.memberships.length)return; // בעלים/צוות בלבד
+  if(!location.hash.startsWith('#/manage'))return;                        // רק במסכי ניהול
+  if(localStorage.getItem('owner_push_dismissed'))return;                 // נסגר בעבר
+  if(await ownerPushState())return;                                       // כבר יש מנוי
+  const body=document.querySelector('.body');if(!body)return;
+  const b=document.createElement('div');
+  b.id='owner-push-banner';b.className='card';
+  b.style.cssText='border:2px solid var(--acc,#0e7a8a);display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+  b.innerHTML='<span style="flex:1;min-width:200px">🔔 <b>הזמנה חדשה?</b> הפעילו התראות דחיפה — תקבלו הודעה על כל הזמנה חדשה, גם כשהאפליקציה סגורה</span>'
+   +'<button class="btn2 green" id="owner-push-btn">הפעלת התראות</button>'
+   +'<button class="btn2" id="owner-push-x" style="color:#888">לא עכשיו</button>';
+  body.prepend(b);
+  document.getElementById('owner-push-btn').onclick=async()=>{await pushSubscribe();const sub=await ownerPushState();if(sub)b.remove();};
+  document.getElementById('owner-push-x').onclick=()=>{localStorage.setItem('owner_push_dismissed','1');b.remove();};
+ }catch(e){}
+}
+(function(){
+ let t=null;
+ const mo=new MutationObserver(()=>{clearTimeout(t);t=setTimeout(ownerPushBanner,300);});
+ mo.observe(document.documentElement,{childList:true,subtree:true});
+ window.addEventListener('hashchange',()=>setTimeout(ownerPushBanner,300));
+ setTimeout(ownerPushBanner,800);
+})();
