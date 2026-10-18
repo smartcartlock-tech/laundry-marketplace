@@ -41,13 +41,63 @@ async function dispatchOrder(tenantId, orderId, trigger = 'manual') {
   const chosen = candidates[0];
   const { rows: att } = await q('SELECT count(*)::int AS n FROM dispatch_offers WHERE order_id=$1', [orderId]);
   const attempt = att[0].n + 1;
+  // T109: תגמול משוער (תעריף לנקודה × איסוף+מסירה) ומרחק מכבסה→לקוח — נשמרים על ההצעה עצמה
+  const { haversineKm, getSetting } = require('./routes-engine');
+  const { rows: t } = await q('SELECT id, name, lat, lng FROM tenants WHERE id=$1', [tenantId]);
+  const rate = Number(await getSetting('courier_rate_per_stop', '12'));
+  const payoutEstimate = Number.isFinite(rate) ? Math.round(rate * 2) : null;
+  const tenant = t[0] || null;
+  let distanceKm = null;
+  if (tenant && tenant.lat != null && tenant.lng != null && order.lat != null && order.lng != null) {
+    distanceKm = Math.round(haversineKm({ lat: Number(tenant.lat), lng: Number(tenant.lng) }, { lat: Number(order.lat), lng: Number(order.lng) }) * 10) / 10;
+  }
   const { rows: off } = await q(
-    'INSERT INTO dispatch_offers(tenant_id, order_id, courier_id, attempt) VALUES ($1,$2,$3,$4) RETURNING *',
-    [tenantId, orderId, chosen.id, attempt]);
-  await logDecision(tenantId, orderId, 'offered', `הצעה מספר ${attempt} נשלחה לשליח`, { trigger, courier_id: chosen.id, load: chosen.load, candidates: candidates.length });
-  const { rows: t } = await q('SELECT id, name FROM tenants WHERE id=$1', [tenantId]);
-  if (t[0]) require('./ordernotices').notifyCourierNewTask({ id: chosen.uid, phone: chosen.phone }, t[0], order, 'offer').catch(() => {}); // מדומה בסביבת דמו
+    'INSERT INTO dispatch_offers(tenant_id, order_id, courier_id, attempt, payout_estimate, distance_km) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+    [tenantId, orderId, chosen.id, attempt, payoutEstimate, distanceKm]);
+  await logDecision(tenantId, orderId, 'offered', `הצעה מספר ${attempt} נשלחה לשליח`, { trigger, courier_id: chosen.id, load: chosen.load, candidates: candidates.length, payout_estimate: payoutEstimate, distance_km: distanceKm });
+  if (tenant) notifyOffer({ id: chosen.uid, phone: chosen.phone }, tenant, order, { payoutEstimate, distanceKm }).catch(() => {}); // מדומה בסביבת דמו
   return { mode: 'offered', offer: off[0], attempt };
+}
+
+// T109: הודעת הצעת שיבוץ עשירה — תגמול ₪ משוער + מרחק + חלון איסוף, עם קישור ישיר למשימה
+// (קישור ב-data של ההודעה במרכז ההודעות + deep-link ב-push). מכבד השתקות (סטטוסים/שבת) כמו notifyUser.
+async function notifyOffer(courierUser, tenant, order, estimate) {
+  if (!courierUser || !courierUser.id) return;
+  const { statusMuted } = require('./notification-prefs');
+  const { shabbatMuted } = require('./shabbat');
+  const { renderTemplateByKey, postOrderMessage } = require('./usermessages');
+  const { sendPushToUser } = require('./push');
+  const { sendWhatsApp } = require('./notify');
+  const url = './#/courier/day';
+  const t = await renderTemplateByKey('courier_new_task', {
+    'סוג': 'הצעת שיבוץ חדשה מהפלטפורמה — אשר/י באפליקציית השליח',
+    'קוד': order.tracking_code || String(order.id).slice(0, 8),
+    'מכבסה': tenant.name, 'כתובת': order.address,
+  });
+  const title = t ? t.title : 'הצעת שיבוץ חדשה';
+  const base = t ? t.body : `משימה חדשה: הזמנה ${order.tracking_code || order.id} ב${tenant.name}. כתובת: ${order.address}`;
+  const extras = [
+    estimate.payoutEstimate != null ? `תגמול משוער: ₪${estimate.payoutEstimate}` : null,
+    estimate.distanceKm != null ? `מרחק: ${estimate.distanceKm} ק"מ` : null,
+  ].filter(Boolean).join(' · ');
+  const body = extras ? `${base}\n${extras}` : base;
+  if (await statusMuted(courierUser.id)) {
+    await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [courierUser.id, tenant.id, 'muted', body, false]).catch(() => {});
+    return;
+  }
+  if (await shabbatMuted(courierUser.id)) {
+    await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)', [courierUser.id, tenant.id, 'shabbat-muted', body, false]).catch(() => {});
+    return;
+  }
+  let sent = false, channel = 'log';
+  try { const p = await sendPushToUser(courierUser.id, { title, body, url }); if (p.sent > 0) { sent = true; channel = 'push'; } } catch (e) {}
+  if (!sent && courierUser.phone) {
+    const r = await sendWhatsApp(courierUser.phone, body);
+    if (r.sent || r.via === 'bot-simulated') { sent = true; channel = 'whatsapp'; }
+  }
+  await q('INSERT INTO notifications(user_id, tenant_id, channel, body, sent) VALUES ($1,$2,$3,$4,$5)',
+    [courierUser.id, tenant.id, channel, body, sent]).catch(() => {});
+  await postOrderMessage(courierUser.id, { tenantId: tenant.id, kind: 'order', title, body, data: { url: '#/courier/day' } }).catch(() => {});
 }
 
 // סריקת הצעות שפגו: סימון expired, לוג, ו-fallback לשליח הבא (או unassigned אם אין)
@@ -100,4 +150,4 @@ function start() {
   setInterval(() => expireStaleOffers().catch(e => console.error('[dispatch]', e.message)), scanMs).unref();
 }
 
-module.exports = { TIMEOUT_MIN, DEMO_PHONES, dispatchOrder, expireStaleOffers, acceptOffer, declineOffer, pickCourier, logDecision, start };
+module.exports = { TIMEOUT_MIN, DEMO_PHONES, dispatchOrder, expireStaleOffers, acceptOffer, declineOffer, pickCourier, logDecision, notifyOffer, start };

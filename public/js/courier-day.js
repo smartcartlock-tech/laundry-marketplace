@@ -59,13 +59,20 @@ async function vCourierDay(dayDate){
  const doffs=await api('/dispatch/offers').catch(()=>({offers:[]})); // T81: הצעות שיבוץ אוטומטי
  const pushOn=await courierPushState();
  const s=d.summary;
+ setTimeout(startOfferTimers,0); // T109: מפעיל טיימרים אחרי שה-DOM נכנס
  return `<div class="hdr"><h2>מסלול יום</h2><p>${new Date().toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'long',timeZone:'Asia/Jerusalem'})} · ${me.courier.model==='platform'?'שליח פלטפורמה':me.courier.model==='shared'?'שליח משותף':'שליח מכבסה'}</p></div>
  <div class="body">
  ${courierSubtabs('day')}
  ${(offs.offers.length||doffs.offers.length)?`<div class="card" style="border:2px solid #0e7a8a">
   <b>🔔 ${offs.offers.length+doffs.offers.length===1?'הצעת שיבוץ חדשה':(offs.offers.length+doffs.offers.length)+' הצעות שיבוץ חדשות'}</b>
-  ${doffs.offers.map(f=>`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #e3eef0">
+  ${doffs.offers.map(f=>`<div data-offer="${f.offer_id}" style="margin-top:8px;padding-top:8px;border-top:1px solid #e3eef0">
    <b>איסוף</b> · ${esc(f.tenant_name)} · ${esc(f.address)} <span class="tag tb">שיבוץ אוטומטי</span>
+   <div class="mut" style="margin-top:3px">${[
+     f.payout_estimate!=null?`💰 תגמול משוער: ₪${f.payout_estimate}`:null,
+     f.distance_km!=null?`📍 מרחק: ${f.distance_km} ק"מ`:null,
+     f.pickup_at?`🕐 חלון איסוף: ${fmtDT(f.pickup_at)}`:null,
+   ].filter(Boolean).join(' · ')}</div>
+   <div class="offer-timer" data-exp="${f.expires_at||''}" style="margin-top:3px;font-weight:600;color:#0e7a8a"></div>
    <div style="display:flex;gap:8px;margin-top:6px">
     <button class="btn2 green" data-act="courierDispatchAccept" data-a="${f.offer_id}">✓ קבלת המשימה</button>
     <button class="btn2" data-act="courierDispatchDecline" data-a="${f.offer_id}">✕ דחייה</button>
@@ -118,6 +125,32 @@ async function vCourierDay(dayDate){
   ${t.tasks.in_laundry.map(o=>`<div class="card"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
    <div class="mut">${esc(o.address)} · החזרה תתאפשר כשההזמנה תסומנה "מוכנה"</div></div>`).join('')}`:''}
  </div>`;
+}
+
+/* T109: טיימר הצעות — ספירה לאחור עד פקיעה; כשפג התוקף הכרטיס מוצג כ"פג תוקף" (לא נעלם בשתיקה)
+   והכפתורים מושבתים. ההצעה בפועל מסומנת expired בשרת בסריקה הבאה ועוברת לשליח הבא. */
+let offerTimerIv=null;
+function startOfferTimers(){
+ if(offerTimerIv){clearInterval(offerTimerIv);offerTimerIv=null;}
+ const els=[...document.querySelectorAll('.offer-timer[data-exp]')].filter(e=>e.dataset.exp);
+ if(!els.length)return;
+ const tick=()=>{
+  const els2=[...document.querySelectorAll('.offer-timer[data-exp]')].filter(e=>e.dataset.exp);
+  if(!els2.length){clearInterval(offerTimerIv);offerTimerIv=null;return;}
+  els2.forEach(el=>{
+   const left=Math.floor((new Date(el.dataset.exp).getTime()-Date.now())/1000);
+   if(left>0){
+    const m=String(Math.floor(left/60)).padStart(2,'0'),sc=String(left%60).padStart(2,'0');
+    el.textContent='⏳ נותרו '+m+':'+sc+' לאישור';el.style.color='#0e7a8a';
+   }else{
+    el.textContent='⌛ פג תוקף ההצעה — מועברת לשליח הבא';el.style.color='#b71c1c';
+    const card=el.closest('[data-offer]');
+    if(card)card.querySelectorAll('button').forEach(b=>{b.disabled=true;b.style.opacity='.5';});
+   }
+  });
+ };
+ tick();
+ offerTimerIv=setInterval(tick,1000);
 }
 
 /* T81: קבלה/דחייה של הצעת שיבוץ אוטומטי — ראשון שמאשר זוכה, דחייה מעבירה לשליח הבא */

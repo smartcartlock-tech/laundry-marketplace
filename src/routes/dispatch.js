@@ -24,10 +24,13 @@ r.post('/orders/:id/trigger', uuidParams('id'), async (req, res) => {
 
 // שליח: ההצעות הפתוחות שלי
 r.get('/offers', requireCourier, async (req, res) => {
+  // T109: מחזיר גם תגמול משוער, מרחק, ו-expires_at — הלקוח מציג טיימר ולא נותן להצעה "להיעלם בשתיקה"
   const { rows } = await q(
-    `SELECT f.id AS offer_id, f.attempt, f.offered_at, o.id AS order_id, o.address, o.pickup_at, o.status AS order_status, t.name AS tenant_name
+    `SELECT f.id AS offer_id, f.attempt, f.offered_at, f.payout_estimate, f.distance_km,
+            f.offered_at + ($2 || ' minutes')::interval AS expires_at,
+            o.id AS order_id, o.address, o.pickup_at, o.status AS order_status, t.name AS tenant_name
      FROM dispatch_offers f JOIN orders o ON o.id=f.order_id JOIN tenants t ON t.id=o.tenant_id
-     WHERE f.courier_id=$1 AND f.status='offered' ORDER BY f.offered_at DESC`, [req.courier.id]);
+     WHERE f.courier_id=$1 AND f.status='offered' ORDER BY f.offered_at DESC`, [req.courier.id, String(auto.TIMEOUT_MIN)]);
   res.json({ offers: rows });
 });
 

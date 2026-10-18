@@ -19,6 +19,7 @@ async function vMessages() {
      <div style="flex:1;min-width:0;overflow-wrap:anywhere">
       <b>${esc(m.title)}</b>
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
+      ${m.data && m.data.url ? `<div style="margin:4px 0"><a href="${esc(String(m.data.url))}" style="color:var(--acc,#0e7a8a);font-weight:600">↗ פתיחת המשימה</a></div>` : ''}
       <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${fmtDMYT(m.created_at)}</div>
      </div>
      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
