@@ -25,7 +25,7 @@ function docToResponse(d) {
     id: d.id, kind: d.kind, kind_he: d.title_he || KIND_TITLE[d.kind] || d.kind,
     doc_number: d.doc_number, doc_year: d.doc_year, allocation_number: d.allocation_number,
     amount: Number(d.amount), vat: Number(d.vat), total: Number(d.total),
-    status: d.status, credited_amount: Number(d.credited_amount),
+    status: d.status, credited_amount: Number(d.credited_amount), remaining_amount: Math.round((Number(d.total)-Number(d.credited_amount))*100)/100,
     order_id: d.order_id, covered_order_ids: d.covered_order_ids || [], verify_code: d.verify_code, issued_at: d.issued_at,
     tenant_name: d.tenant_name, slug: d.slug, customer_name: d.customer_name,
   };

@@ -40,7 +40,9 @@ async function cancelOrder({ orderId, tenantId = null, actorId = null, note = '�
 
 // החזרות ביטול בתוך טרנזקציה פתוחה (client חיצוני) — משמש גם את נתיב ביטול הבעלים ב-tenant.js (T11 המשך)
 async function applyCancelRefunds(client, order) {
-  const refunds = { points: 0, coupon: false, bags: false };
+  const credits = await require('../documents').refundCancelledOrder(client,order); // T98: documents + simulated refund, no provider
+
+  const refunds = { points: 0, coupon: false, bags: false, demo_document_credits: credits.map(d=>d.id) };
   if (Number(order.points_redeemed) > 0) {
     await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
       [order.tenant_id, order.customer_id, Number(order.points_redeemed), 'החזר נקודות בעקבות ביטול הזמנה', order.id]);

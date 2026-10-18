@@ -64,7 +64,7 @@ async function issueDocument(client, opts) {
   // שנת ההפקה בשעון ישראל — לא UTC של השרת (ליל 31.12)
   const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()));
   const num = await nextDocNumber(client, tenant.id, kind);
-  const title = kind === 'invoice' && tenant.dealer_type === 'morasha' ? 'חשבונית מס' : KIND_HE[kind];
+  const title = opts.titleHe || (kind === 'invoice' && tenant.dealer_type === 'morasha' ? 'חשבונית מס' : KIND_HE[kind]);
   const { rows } = await client.query(
     `INSERT INTO documents(tenant_id, order_id, customer_id, kind, doc_year, doc_number, allocation_number,
        amount, vat, total, original_id, pdf, verify_code, title_he)
@@ -92,10 +92,10 @@ function creditSplit(original, amt) {
 }
 
 // הנפקת זיכוי מול מסמך מקור. amount=null → זיכוי מלא של היתרה.
-async function creditDocument(client, { tenant, original, amount, actorId, pdf }) {
+async function creditDocument(client, { tenant, original, amount, actorId, pdf, syncReceipts = true }) {
   if (!original) throw { status: 404, error: 'מסמך מקור לא נמצא' };
   // קריאה טרייה ונעילה בטרנזקציה — מונע זיכוי כפול/מעבר ליתרה גם במקביל
-  const { rows: cur } = await client.query('SELECT * FROM documents WHERE id=$1 FOR UPDATE', [original.id]);
+  const { rows: cur } = await client.query('SELECT * FROM documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [tenant.id, original.id]);
   original = cur[0];
   if (!original || original.tenant_id !== tenant.id) throw { status: 404, error: 'מסמך מקור לא נמצא' };
   if (original.kind === 'credit') throw { status: 409, error: 'לא ניתן לזכות מסמך זיכוי' };
@@ -109,6 +109,7 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
     tenant, kind: 'credit', order: { id: original.order_id }, customer: { id: original.customer_id },
     amount: split.amount, vat: split.vat,
     total: -amt, originalId: original.id, actorId, pdf,
+    titleHe: original.kind === 'receipt' ? 'קבלת זיכוי (דמו)' : original.title_he === 'חשבונית מס' ? 'חשבונית מס זיכוי' : 'זיכוי לחשבונית עסקה (דמו)',
   });
   // PDF מקור לזיכוי — נבנה ונשמר מיד (כמו שאר המסמכים), עם הפניה למסמך המקור
   if (!pdf) {
@@ -135,6 +136,24 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf }
   // עדכון מותר: רק credited_amount ו-status (שאר השדות immutable בטריגר)
   await client.query('UPDATE documents SET credited_amount=$2, status=$3 WHERE id=$1', [original.id, newCredited, newStatus]);
   await audit(client, original.id, 'credited', actorId, { credit_id: credit.id, amount: amt, status: newStatus });
+  if (original.kind === 'receipt') {
+    await client.query(`INSERT INTO demo_document_refunds(tenant_id,order_id,source_receipt_id,credit_id,amount) VALUES($1,$2,$3,$4,$5)`,
+      [tenant.id, original.order_id, original.id, credit.id, amt]);
+    if(original.order_id) await client.query(`UPDATE orders SET demo_refunded_amount=demo_refunded_amount+$3 WHERE tenant_id=$1 AND id=$2`,[tenant.id,original.order_id,amt]);
+  } else if(syncReceipts && original.order_id) {
+    const {rows:receipts}=await client.query(`SELECT * FROM documents WHERE tenant_id=$1 AND order_id=$2 AND kind='receipt' AND status<>'credited' ORDER BY issued_at,id FOR UPDATE`,[tenant.id,original.order_id]);
+    let refund=amt;
+    credit.receipt_credits=[];
+    for(const receipt of receipts) {
+      const remaining=Math.round((Number(receipt.total)-Number(receipt.credited_amount))*100)/100;
+      const portion=Math.min(refund,remaining);
+      if(portion>0) {
+        credit.receipt_credits.push(await creditDocument(client,{tenant,original:receipt,amount:portion,actorId,syncReceipts:false}));
+        refund=Math.round((refund-portion)*100)/100;
+      }
+    }
+  }
+
   return credit;
 }
 
@@ -266,3 +285,19 @@ async function issueConsolidatedInvoice(client, { tenant, customer, orders, acto
 }
 
 module.exports.issueConsolidatedInvoice = issueConsolidatedInvoice;
+
+// T98: called from every cancellation workflow, within the caller's transaction.
+async function refundCancelledOrder(client, order, actorId) {
+  if(!require('./config').isDemo)return [];
+  const {rows:tenants}=await client.query('SELECT * FROM tenants WHERE id=$1',[order.tenant_id]);
+  const tenant=tenants[0];
+  const {rows:docs}=await client.query(`SELECT * FROM documents WHERE tenant_id=$1 AND order_id=$2 AND kind<>'credit' AND status<>'credited'
+    ORDER BY CASE WHEN kind='receipt' THEN 1 ELSE 0 END,issued_at,id FOR UPDATE`,[order.tenant_id,order.id]);
+  const credits=[];
+  for(const d of docs) {
+    const {rows:cur}=await client.query('SELECT * FROM documents WHERE tenant_id=$1 AND id=$2',[order.tenant_id,d.id]);
+    if(cur[0].status!=='credited')credits.push(await creditDocument(client,{tenant,original:cur[0],actorId}));
+  }
+  return credits;
+}
+module.exports.refundCancelledOrder=refundCancelledOrder;

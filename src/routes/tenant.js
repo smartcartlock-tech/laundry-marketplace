@@ -521,7 +521,7 @@ r.get('/documents', async (req, res) => {
      FROM documents d LEFT JOIN users u ON u.id=d.customer_id
      WHERE d.tenant_id=$1 ORDER BY d.issued_at DESC LIMIT 300`, [req.tenant.id]);
   const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
-  res.json({ documents: rows.map(d => ({ ...d, kind_he: d.title_he || KIND_HE[d.kind] || d.kind })) });
+  res.json({ documents: rows.map(d => ({ ...d, remaining_amount: Math.round((Number(d.total)-Number(d.credited_amount))*100)/100, kind_he: d.title_he || KIND_HE[d.kind] || d.kind })) });
 });
 
 r.get('/documents/:id/pdf', uuidParams('id'), async (req, res) => {
