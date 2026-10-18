@@ -64,7 +64,7 @@ async function issueDocument(client, opts) {
   // שנת ההפקה בשעון ישראל — לא UTC של השרת (ליל 31.12)
   const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()));
   const num = await nextDocNumber(client, tenant.id, kind);
-  const title = opts.titleHe || (kind === 'invoice' && tenant.dealer_type === 'morasha' ? 'חשבונית מס' : KIND_HE[kind]);
+  const title = opts.titleHe || (['invoice','consolidated'].includes(kind) && tenant.dealer_type === 'morasha' ? (kind === 'consolidated' ? 'חשבונית מס מרכזת' : 'חשבונית מס') : KIND_HE[kind]);
   const { rows } = await client.query(
     `INSERT INTO documents(tenant_id, order_id, customer_id, kind, doc_year, doc_number, allocation_number,
        amount, vat, total, original_id, pdf, verify_code, title_he)
@@ -109,7 +109,7 @@ async function creditDocument(client, { tenant, original, amount, actorId, pdf, 
     tenant, kind: 'credit', order: { id: original.order_id }, customer: { id: original.customer_id },
     amount: split.amount, vat: split.vat,
     total: -amt, originalId: original.id, actorId, pdf,
-    titleHe: original.kind === 'receipt' ? 'קבלת זיכוי (דמו)' : original.title_he === 'חשבונית מס' ? 'חשבונית מס זיכוי' : 'זיכוי לחשבונית עסקה (דמו)',
+    titleHe: original.kind === 'receipt' ? 'קבלת זיכוי (דמו)' : ['חשבונית מס','חשבונית מס מרכזת'].includes(original.title_he) ? 'חשבונית מס זיכוי' : 'זיכוי לחשבונית עסקה (דמו)',
   });
   // PDF מקור לזיכוי — נבנה ונשמר מיד (כמו שאר המסמכים), עם הפניה למסמך המקור
   if (!pdf) {
@@ -200,7 +200,8 @@ module.exports = { issueDocument, creditDocument, creditSplit, setAllocationNumb
 // ללא dealer_type — לא מונפק כלום (עד השלמת פרטי העוסק, E12.T3).
 async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
   if (!tenant.dealer_type) return [];
-  if (tenant.invoice_mode === 'consolidated') return []; // במצב חשבונית מרכזת ההפקה ידנית ומרוכזת
+  let consolidated = tenant.invoice_mode === 'consolidated';
+  if(order.business_account_id){const {rows}=await client.query('SELECT consolidated_billing FROM business_accounts WHERE tenant_id=$1 AND id=$2',[tenant.id,order.business_account_id]);consolidated=consolidated||rows[0]?.consolidated_billing===true;}
   // נעילת שורת ההזמנה — שני מעברי delivered מקבילים מסתדרים ולא מונפק מסמך כפול
   const { rows: current } = await client.query('SELECT * FROM orders WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [tenant.id, order.id]);
   if (!current[0]) throw {status:404,error:'הזמנה לא נמצאה'};
@@ -231,7 +232,7 @@ async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
     return { ...d, pdf: buf };
   }
 
-  if (order.status === 'delivered' && !has('invoice')) {
+  if (order.status === 'delivered' && !consolidated && !has('invoice')) {
     const net = tenant.dealer_type === 'morasha' ? Math.round((total / (1 + VAT_RATE)) * 100) / 100 : total;
     const vat = Math.round((total - net) * 100) / 100;
     issued.push(await issueWithPdf('invoice', net, vat, total));
@@ -250,7 +251,7 @@ async function issueConsolidatedInvoice(client, { tenant, customer, orders, acto
   const ids = orders.map(o => o.id);
   const { rows: covered } = await client.query(
     `SELECT o.id FROM orders o WHERE o.id = ANY($1::uuid[]) AND (
-       EXISTS (SELECT 1 FROM documents d WHERE d.order_id = o.id AND d.kind <> 'credit') OR
+       EXISTS (SELECT 1 FROM documents d WHERE d.tenant_id=o.tenant_id AND d.order_id = o.id AND d.kind IN ('invoice','consolidated')) OR
        EXISTS (SELECT 1 FROM document_orders dor WHERE dor.order_id = o.id))`, [ids]);
   if (covered.length) throw { status: 409, error: `להזמנה #${covered[0].id.slice(0, 8)} כבר הונפק מסמך — לא ניתן לכלול אותה בחשבונית מרכזת` };
 

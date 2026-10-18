@@ -3,9 +3,12 @@
 // אם התקופה הנוכחית הסתיימה והמנוי פעיל עם חידוש אוטומטי — פותח תקופה חדשה (תשלום דמו).
 // מחזיר את המנוי המעודכן. db הוא client בתוך טרנזקציה או {query} רגיל.
 async function ensureCurrentPeriod(db, sub) {
+  const {rows:locked}=await db.query('SELECT * FROM subscriptions WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[sub.tenant_id,sub.id]);
+  if(!locked[0])return sub;
+  sub={...sub,...locked[0]};
   if (sub.status !== 'active' || !sub.auto_renew) return sub;
   const today = new Date().toISOString().slice(0, 10);
-  if (String(sub.period_end).slice(0, 10) > today) return sub;
+  if (new Date(sub.period_end).toISOString().slice(0,10) > today) return sub;
   const { rows } = await db.query(
     `UPDATE subscriptions
        SET period_start = period_end,
@@ -14,6 +17,7 @@ async function ensureCurrentPeriod(db, sub) {
      WHERE id=$1 RETURNING *`, [sub.id]);
   await db.query(
     `INSERT INTO subscription_usage(subscription_id, bags, note) VALUES ($1, 0, 'חידוש מנוי חודשי (תשלום דמו)')`, [sub.id]);
+  if(rows[0])await require('./billing-documents').subscriptionCharge(db,rows[0]);
   return rows[0] || sub;
 }
 

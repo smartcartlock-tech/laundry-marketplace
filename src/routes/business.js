@@ -152,7 +152,9 @@ const { toCsv } = require('../csv');
 r.get('/:bid/invoices', async (req, res) => {
   const acc = await getAccount(req, res); if (!acc) return;
   const { rows } = await q(
-    'SELECT id, year, month, orders_count, total, issued_at, regenerated_count, regenerated_at FROM business_invoices WHERE account_id=$1 ORDER BY year DESC, month DESC', [acc.id]);
+    `SELECT bi.id, bi.year, bi.month, bi.orders_count, bi.total, bi.issued_at, bi.regenerated_count, bi.regenerated_at,
+      (SELECT f.document_id FROM business_fiscal_documents f WHERE f.tenant_id=$2 AND f.account_id=bi.account_id AND f.year=bi.year AND f.month=bi.month) AS fiscal_document_id
+      FROM business_invoices bi WHERE bi.account_id=$1 ORDER BY bi.year DESC, bi.month DESC`, [acc.id, req.tenant.id]);
   res.json({ invoices: rows });
 });
 

@@ -33,26 +33,32 @@ r.post('/join', async (req, res) => {
   const plan = p[0];
   if (!plan) return res.status(404).json({ error: 'תוכנית לא נמצאה' });
 
-  const { rows: ex } = await q(
+  const client=await pool.connect();
+  try {
+  await client.query('BEGIN');
+  const { rows: ex } = await client.query(
     `SELECT * FROM subscriptions WHERE tenant_id=$1 AND user_id=$2 AND status <> 'cancelled'`, [tenant.id, req.user.id]);
   const existing = ex[0];
-  if (existing && existing.status === 'active') return res.status(409).json({ error: 'כבר יש לך מנוי פעיל במכבסה זו' });
+  if (existing && existing.status === 'active') {await client.query('ROLLBACK'); return res.status(409).json({ error: 'כבר יש לך מנוי פעיל במכבסה זו' });}
 
   let sub;
   if (existing) { // paused -> חידוש עם התוכנית החדשה ותקופה חדשה
-    const { rows } = await q(
+    const { rows } = await client.query(
       `UPDATE subscriptions SET plan_id=$1, status='active', auto_renew=true, payment_status='paid_demo',
          period_start=CURRENT_DATE, period_end=CURRENT_DATE + INTERVAL '1 month', bags_used=0, updated_at=now()
        WHERE id=$2 RETURNING *`, [plan.id, existing.id]);
     sub = rows[0];
-    await q('INSERT INTO subscription_usage(subscription_id, bags, note) VALUES ($1,0,$2)', [sub.id, 'חידוש הצטרפות למנוי (תשלום דמו)']);
+    await client.query('INSERT INTO subscription_usage(subscription_id, bags, note) VALUES ($1,0,$2)', [sub.id, 'חידוש הצטרפות למנוי (תשלום דמו)']);
   } else {
-    const { rows } = await q(
+    const { rows } = await client.query(
       `INSERT INTO subscriptions(tenant_id, plan_id, user_id) VALUES ($1,$2,$3) RETURNING *`, [tenant.id, plan.id, req.user.id]);
     sub = rows[0];
-    await q('INSERT INTO subscription_usage(subscription_id, bags, note) VALUES ($1,0,$2)', [sub.id, 'הצטרפות למנוי (תשלום דמו)']);
+    await client.query('INSERT INTO subscription_usage(subscription_id, bags, note) VALUES ($1,0,$2)', [sub.id, 'הצטרפות למנוי (תשלום דמו)']);
   }
-  res.status(201).json({ subscription: sub, plan });
+  const charge=await require('../billing-documents').subscriptionCharge(client,sub);
+  await client.query('COMMIT');
+  res.status(201).json({ subscription: sub, plan, document_charge:charge });
+  } catch(e) {await client.query('ROLLBACK');console.error(e);res.status(e.status||500).json({error:e.error||'שגיאת שרת'});} finally {client.release();}
 });
 
 // המנויים שלי (עם יתרת שקים ותוכנית)
@@ -66,7 +72,9 @@ r.get('/mine', async (req, res) => {
      WHERE s.user_id=$1 ORDER BY s.created_at DESC`, [req.user.id]);
   const out = [];
   for (const sub of rows) {
-    const cur = await ensureCurrentPeriod({ query: (a, b) => q(a, b) }, sub);
+    const client=await pool.connect();let cur;
+    try {await client.query('BEGIN');cur=await ensureCurrentPeriod(client,sub);await client.query('COMMIT');}
+    catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
     out.push({ ...cur, bags_remaining: Math.max(0, Number(cur.bags_per_month) - Number(cur.bags_used)) });
   }
   res.json({ subscriptions: out });

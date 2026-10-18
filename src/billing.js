@@ -93,7 +93,11 @@ async function issueInvoice(q, account, tenant, year, month) {
        regenerated_count = business_invoices.regenerated_count + 1, regenerated_at = now()
      RETURNING id, year, month, orders_count, total, issued_at, regenerated_count, regenerated_at`,
     [account.id, year, month, orders.length, total, pdfBuf]);
-  return rows[0];
+  let fiscal=null;
+  const client=await require('./db').pool.connect();
+  try {await client.query('BEGIN');fiscal=await require('./billing-documents').consolidatedFiscal(client,{tenantId:account.tenant_id||tenant.id,accountId:account.id,year,month});await client.query('COMMIT');}
+  catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  return {...rows[0],fiscal_document_id:fiscal?.document_id||null};
 }
 
 // job חודשי: ב-1 לחודש (שעון ישראל) מפיק לכל חשבון עם הזמנות בחודש הקודם

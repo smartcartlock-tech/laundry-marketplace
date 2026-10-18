@@ -38,7 +38,8 @@ test('E12.T6: חשבונית מרכזת + אימות ציבורי + מצב הפ�
   const o1 = await deliverOrder(api, { owner, customer, courierUser, slug: 'achuza', items: [{ item_id: bag.id, qty: 2 }], address: 'מרכז 1' });
   const o2 = await deliverOrder(api, { owner, customer, courierUser, slug: 'achuza', items: [{ item_id: bag.id, qty: 1 }], address: 'מרכז 2' });
   const docs0 = await api('/api/t/achuza/documents', { token: owner });
-  assert.equal(docs0.json.documents.length, 0, 'במצב consolidated לא מונפקים מסמכים אוטומטית');
+  assert.equal(docs0.json.documents.length, 2, 'קבלות נמסרות במועד גבייה גם במצב מרכזת');
+  assert.ok(docs0.json.documents.every(d=>d.kind==='receipt'));
 
   // זכאות
   const elig = await api('/api/t/achuza/documents/consolidated/eligible', { token: owner });

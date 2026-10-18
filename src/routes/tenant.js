@@ -625,7 +625,7 @@ r.get('/documents/consolidated/eligible', async (req, res) => {
     `SELECT o.id, o.total, o.created_at, u.id AS customer_id, u.name AS customer_name, u.phone AS customer_phone
      FROM orders o JOIN users u ON u.id = o.customer_id
      WHERE o.tenant_id=$1 AND o.status='delivered'
-       AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.order_id=o.id AND d.kind<>'credit')
+       AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.tenant_id=o.tenant_id AND d.order_id=o.id AND d.kind IN ('invoice','consolidated'))
        AND NOT EXISTS (SELECT 1 FROM document_orders dor WHERE dor.order_id=o.id)
      ORDER BY u.name, o.created_at`, [req.tenant.id]);
   const byCustomer = {};
