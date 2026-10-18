@@ -158,6 +158,7 @@ r.post('/', async (req, res) => {
       await client.query('UPDATE coupons SET used_count = used_count + 1 WHERE id=$1', [coupon.id]);
     }
     await client.query(`INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,'new',$2,'הזמנה נוצרה')`, [order.id, req.user.id]);
+    if (payStatus === 'paid_demo') await require('../documents').issueDocumentsForOrder(client, { tenant, order, actorId: req.user.id }); // T96: receipt at collection, not delivery
     await client.query('COMMIT');
 
     notifyUser(req.user.id, tenant.id,

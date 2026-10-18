@@ -25,7 +25,7 @@ r.get('/:code', async (req, res) => {
   res.json({
     found: true, demo: true, registration: 'demo',
     result, result_he: RESULT_HE[result],
-    kind: d.kind, kind_he: KIND_HE[d.kind] || d.kind,
+    kind: d.kind, kind_he: d.title_he || KIND_HE[d.kind] || d.kind,
     doc_number: d.doc_number, doc_year: d.doc_year,
     total: Number(d.total), issued_at: d.issued_at,
     tenant_name: d.tenant_name, orders_count: d.orders_count || 0,

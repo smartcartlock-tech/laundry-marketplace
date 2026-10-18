@@ -3,6 +3,7 @@
 // מסמכים מסומנים "מסמך דמו, לא לצורכי מע\"מ" עד להשלמת רישום התוכנה ברשות המסים.
 
 const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
+function documentTitle(d) { return d.title_he || KIND_HE[d.kind] || d.kind; }
 const crypto = require('crypto');
 const VERIFY_ABC = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 // טוקן אימות ~120 ביט (24 תווים base32), ללא PII — לפי האיפיון
@@ -63,12 +64,13 @@ async function issueDocument(client, opts) {
   // שנת ההפקה בשעון ישראל — לא UTC של השרת (ליל 31.12)
   const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jerusalem', year: 'numeric' }).format(new Date()));
   const num = await nextDocNumber(client, tenant.id, kind);
+  const title = kind === 'invoice' && tenant.dealer_type === 'morasha' ? 'חשבונית מס' : KIND_HE[kind];
   const { rows } = await client.query(
     `INSERT INTO documents(tenant_id, order_id, customer_id, kind, doc_year, doc_number, allocation_number,
-       amount, vat, total, original_id, pdf, verify_code)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+       amount, vat, total, original_id, pdf, verify_code, title_he)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
     [tenant.id, order ? order.id : null, customer ? customer.id : null, kind, year, num,
-     opts.allocationNumber || null, amount, vat, total, opts.originalId || null, opts.pdf || null, newVerifyCode()]);
+     opts.allocationNumber || null, amount, vat, total, opts.originalId || null, opts.pdf || null, newVerifyCode(), title]);
   const sig = signDocument(rows[0]);
   await client.query('UPDATE documents SET signature=$2 WHERE id=$1', [rows[0].id, sig]);
   rows[0].signature = sig;
@@ -171,7 +173,7 @@ async function migrateDocumentIntegrity() {
   return { badSig, badHash, noPdf };
 }
 
-module.exports = { issueDocument, creditDocument, creditSplit, setAllocationNumber, nextDocNumber, KIND_HE, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };
+module.exports = { issueDocument, creditDocument, creditSplit, setAllocationNumber, nextDocNumber, KIND_HE, documentTitle, VAT_RATE, signDocument, verifySignature, migrateDocumentIntegrity };
 
 // E12.T2: הנפקה אוטומטית של מסמכים בעת delivered — אידמפוטנטי, לפי סוג העוסק של המכבסה.
 // עוסק מורשה: חשבונית עסקה (מע"מ כלול במחיר) + קבלה על התשלום. עוסק פטור: קבלה בלבד.
@@ -180,10 +182,13 @@ async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
   if (!tenant.dealer_type) return [];
   if (tenant.invoice_mode === 'consolidated') return []; // במצב חשבונית מרכזת ההפקה ידנית ומרוכזת
   // נעילת שורת ההזמנה — שני מעברי delivered מקבילים מסתדרים ולא מונפק מסמך כפול
-  await client.query('SELECT id FROM orders WHERE id=$1 FOR UPDATE', [order.id]);
+  const { rows: current } = await client.query('SELECT * FROM orders WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [tenant.id, order.id]);
+  if (!current[0]) throw {status:404,error:'הזמנה לא נמצאה'};
+  order = current[0];
   const { rows: existing } = await client.query(
-    `SELECT id FROM documents WHERE order_id=$1 AND kind<>'credit' LIMIT 1`, [order.id]);
-  if (existing.length) return []; // כבר הונפק — לא משכפלים
+    `SELECT kind FROM documents WHERE tenant_id=$1 AND order_id=$2 AND kind<>'credit'`, [tenant.id, order.id]);
+  const has = kind => existing.some(d => d.kind === kind);
+  const paid = ['paid_demo', 'paid_cash'].includes(order.payment_status);
 
   const [{ buildDocumentPDF, collectPdf }] = [require('./receipt')];
   const { rows: items } = await client.query('SELECT * FROM order_items WHERE order_id=$1', [order.id]);
@@ -206,16 +211,12 @@ async function issueDocumentsForOrder(client, { tenant, order, actorId }) {
     return { ...d, pdf: buf };
   }
 
-  if (tenant.dealer_type === 'morasha') {
-    const net = Math.round((total / (1 + VAT_RATE)) * 100) / 100;
+  if (order.status === 'delivered' && !has('invoice')) {
+    const net = tenant.dealer_type === 'morasha' ? Math.round((total / (1 + VAT_RATE)) * 100) / 100 : total;
     const vat = Math.round((total - net) * 100) / 100;
     issued.push(await issueWithPdf('invoice', net, vat, total));
-    if (['paid_demo', 'paid_cash'].includes(order.payment_status)) {
-      issued.push(await issueWithPdf('receipt', total, 0, total));
-    }
-  } else if (tenant.dealer_type === 'patur') {
-    issued.push(await issueWithPdf('receipt', total, 0, total));
   }
+  if (paid && !has('receipt')) issued.push(await issueWithPdf('receipt', total, 0, total));
   return issued;
 }
 

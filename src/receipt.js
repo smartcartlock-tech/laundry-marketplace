@@ -182,7 +182,7 @@ function collectPdf(doc) {
 
 // doc: שורת documents; copy=true מסמן "העתק"; מחזיר pdfkit document (צריך doc.end() של הקורא)
 function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes, note }) {
-  const pdf = new PDFDocument({ size: 'A4', margin: 50, info: { Title: `${KIND_TITLE[d.kind]} ${d.doc_number}` } });
+  const pdf = new PDFDocument({ size: 'A4', margin: 50, info: { Title: `${d.title_he || KIND_TITLE[d.kind]} ${d.doc_number}` } });
   pdf.registerFont('he', FONT_REG);
   pdf.registerFont('heb', FONT_BOLD);
 
@@ -205,13 +205,13 @@ function buildDocumentPDF({ doc: d, order, items, tenant, customer, copy, codes,
   pdf.moveDown(0.5);
   pdf.font('heb').fontSize(16).fillColor('#111');
   const numStr = `מספר ${d.doc_number}/${d.doc_year}`;
-  line(pdf, `${KIND_TITLE[d.kind]} — ${numStr}`);
+  line(pdf, `${d.title_he || KIND_TITLE[d.kind]} — ${numStr}`);
   pdf.font('he').fontSize(10).fillColor('#333');
   if (d.allocation_number) line(pdf, `מספר הקצאה: ${d.allocation_number}`);
   const dt = new Date(d.issued_at);
   line(pdf, `תאריך הפקה: ${dt.toLocaleDateString('he-IL')} ${dt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`);
   if (order) line(pdf, `בגין הזמנה: #${order.id.slice(0, 8)}`);
-  line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח/ה'}${customer && customer.phone ? ' · \u2066' + customer.phone + '\u2069' : ''}`);
+  line(pdf, `לכבוד: ${(customer && customer.name) || 'לקוח/ה'}${customer && customer.phone ? ' · ' + customer.phone : ''}`);
   if (note) line(pdf, note);
   if (d.kind === 'credit' && d.original_number) line(pdf, `בזיכוי למסמך מספר ${d.original_number}/${d.original_year || d.doc_year}`);
   pdf.moveDown(0.8);

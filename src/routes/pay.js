@@ -1,6 +1,6 @@
 // E10.T2: דף תשלום דמו (pay link) — ללא סליקה אמיתית. הקישור הוא ה-capability (uuid בלתי ניחש).
 const express = require('express');
-const { q } = require('../db');
+const { q, pool } = require('../db');
 const { buildReceiptPDF } = require('../receipt');
 const { notifyUser } = require('../notify');
 const { uuidParams } = require('../validate');
@@ -45,9 +45,22 @@ r.post('/:orderId/confirm', uuidParams('orderId'), async (req, res) => {
   if (order.status === 'cancelled') return res.status(409).json({ error: 'ההזמנה בוטלה' });
   if (order.payment_status !== 'pending') return res.status(409).json({ error: 'ההזמנה כבר שולמה' });
   const last4 = String((req.body || {}).card_last4 || '4242').replace(/\D/g, '').slice(-4);
-  await q(`UPDATE orders SET payment_method='demo_online', payment_status='paid_demo', updated_at=now() WHERE id=$1`, [order.id]);
-  await q('INSERT INTO order_events(order_id, status, note) VALUES ($1,$2,$3)',
-    [order.id, order.status, `שולם בתשלום מקוון (דמו) · כרטיס ****${last4} — ללא סליקה אמיתית`]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: locked } = await client.query('SELECT * FROM orders WHERE tenant_id=$1 AND id=$2 FOR UPDATE', [order.tenant_id, order.id]);
+    if (locked[0].status === 'cancelled' || locked[0].payment_status !== 'pending') {
+      await client.query('ROLLBACK'); return res.status(409).json({error:'ההזמנה בוטלה או שולמה'});
+    }
+    const {rows: paid} = await client.query(`UPDATE orders SET payment_method='demo_online', payment_status='paid_demo', updated_at=now() WHERE tenant_id=$1 AND id=$2 RETURNING *`, [order.tenant_id, order.id]);
+    await client.query('INSERT INTO order_events(order_id, status, note) VALUES ($1,$2,$3)',
+      [order.id, order.status, `שולם בתשלום מקוון (דמו) · כרטיס ****${last4} — ללא סליקה אמיתית`]);
+    const {rows: tenants} = await client.query('SELECT * FROM tenants WHERE id=$1', [order.tenant_id]);
+    await require('../documents').issueDocumentsForOrder(client, {tenant:tenants[0],order:paid[0]});
+    await client.query('COMMIT');
+  } catch(e) {
+    await client.query('ROLLBACK'); console.error(e); return res.status(e.status || 500).json({error:e.error || 'שגיאת שרת'});
+  } finally { client.release(); }
   const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
   if (cust[0]) notifyUser(cust[0].id, order.tenant_id, `התשלום (דמו) על ₪${order.total} להזמנה #${order.id.slice(0,8)} התקבל. תודה!`, cust[0].phone).catch(() => {});
   res.json({ ok: true, payment_status: 'paid_demo' });

@@ -42,6 +42,7 @@ test('E12: הנפקה מסמכים מהזמנה — מורשה, פטור, PDF, �
   const inv = mine1.find(d => d.kind === 'invoice');
   const rec = mine1.find(d => d.kind === 'receipt');
   assert.ok(inv && rec);
+  assert.equal(inv.kind_he, 'חשבונית מס');
   const total = Number(o1.total);
   assert.equal(Number(inv.total), total);
   const expectedNet = Math.round((total / 1.18) * 100) / 100;
@@ -89,8 +90,9 @@ test('E12: הנפקה מסמכים מהזמנה — מורשה, פטור, PDF, �
   const o3 = await deliverOrder(api, { owner, customer, courierUser, slug: 'achuza', items: [{ item_id: bag.id, qty: 1 }], address: 'בדיקת מסמכים 3' });
   const docs4 = await api('/api/t/achuza/documents', { token: owner });
   const mine3 = docs4.json.documents.filter(d => d.order_id === o3.id);
-  assert.equal(mine3.length, 1);
-  assert.equal(mine3[0].kind, 'receipt');
+  assert.equal(mine3.length, 2);
+  assert.ok(mine3.some(d=>d.kind==='invoice' && d.kind_he==='חשבונית עסקה'));
+  assert.ok(mine3.some(d=>d.kind==='receipt'));
   assert.equal(Number(mine3[0].vat), 0);
 
   // בלי סוג עוסק — לא מונפק כלום

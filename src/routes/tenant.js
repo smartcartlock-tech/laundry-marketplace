@@ -513,13 +513,13 @@ r.patch('/coupons/:id', uuidParams('id'), async (req, res) => {
 // מסמכים חשבונאיים של המכבסה (E12)
 r.get('/documents', async (req, res) => {
   const { rows } = await q(
-    `SELECT d.id, d.kind, d.doc_number, d.doc_year, d.allocation_number, d.amount, d.vat, d.total,
+    `SELECT d.id, d.kind, d.title_he, d.doc_number, d.doc_year, d.allocation_number, d.amount, d.vat, d.total,
             d.status, d.credited_amount, d.order_id, d.issued_at, u.name AS customer_name,
             (SELECT count(*)::int FROM document_orders dor WHERE dor.document_id=d.id) AS orders_count
      FROM documents d LEFT JOIN users u ON u.id=d.customer_id
      WHERE d.tenant_id=$1 ORDER BY d.issued_at DESC LIMIT 300`, [req.tenant.id]);
   const KIND_HE = { invoice: 'חשבונית עסקה', receipt: 'קבלה', credit: 'זיכוי', consolidated: 'חשבונית מרכזת' };
-  res.json({ documents: rows.map(d => ({ ...d, kind_he: KIND_HE[d.kind] || d.kind })) });
+  res.json({ documents: rows.map(d => ({ ...d, kind_he: d.title_he || KIND_HE[d.kind] || d.kind })) });
 });
 
 r.get('/documents/:id/pdf', uuidParams('id'), async (req, res) => {
