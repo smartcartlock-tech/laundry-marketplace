@@ -56,7 +56,7 @@
       ${payRows ? `<table class="tbl"><tr><th>אמצעי</th><th>סטטוס גבייה</th><th>הזמנות</th><th>סה"כ</th></tr>${payRows}</table>` : '<div class="mut">אין הזמנות בחודש זה</div>'}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
         <button class="btn2" data-stl-act="csv-payments">ייצוא תשלומים CSV</button>
-        <button class="btn2" data-stl-act="csv-accountant">ייצוא לרואה חשבון CSV</button>
+        <a class="btn2" href="#/manage/bookkeeping">ייצוא לרואה חשבון · הנהלת חשבונות</a>
         <button class="btn2" data-stl-act="pdf-summary">סיכום חודשי PDF</button>
         <button class="btn2" data-stl-act="consistency">בדיקת עקביות</button>
       </div>

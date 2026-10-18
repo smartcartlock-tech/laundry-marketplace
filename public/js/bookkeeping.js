@@ -9,6 +9,7 @@
 
   async function bookkeepingBody(slug){
     const B = `/t/${slug}/bookkeeping`;
+    const todayIL = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const period = store.get('bkPeriod_' + slug, null);
     const periodQuery = period && /^\d{4}-\d{2}-\d{2}$/.test(period.from) && /^\d{4}-\d{2}-\d{2}$/.test(period.to) ? `?from=${period.from}&to=${period.to}` : '';
     const periodLabel = periodQuery ? `${period.from} - ${period.to}` : 'מתחילת שנה';
@@ -123,14 +124,14 @@
       ${docRows ? `<table class="tbl"><tr><th>סוג</th><th>לקוח</th><th>מספר</th><th>סכום</th><th>סטטוס</th><th>פעולות</th></tr>${docRows}</table>` : '<div class="mut">אין מסמכים עדיין</div>'}</div>
 
     <div class="card"><div class="sec">הוצאות וספקים</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:10px;margin-bottom:12px">
         <select class="inp" id="bk-exp-sup" style="flex:1"><option value="">— ספק —</option>${supOpts}</select>
         <select class="inp" id="bk-exp-acc" style="flex:1">${expAccOpts}</select>
         <input class="inp" id="bk-exp-desc" placeholder="תיאור" style="flex:2">
         <input class="inp" id="bk-exp-date" type="date" style="width:140px">
         <input class="inp" id="bk-exp-net" type="number" min="0" step="0.01" placeholder="נטו ₪" style="width:90px">
         ${isMorasha ? `<input class="inp" id="bk-exp-vat" type="number" min="0" step="0.01" placeholder="מע״מ ₪" style="width:90px">` : ''}
-        <input type="file" id="bk-exp-file" accept=".pdf,image/jpeg,image/png,image/webp" style="width:170px">
+        <label style="display:block;min-width:0">חשבונית ספק / קובץ מצורף<input type="file" id="bk-exp-file" accept=".pdf,image/jpeg,image/png,image/webp" dir="rtl" style="display:block;width:100%;min-width:0;margin-top:6px"></label>
         <button class="btn2 on" data-bk-act="create-exp">הוספת הוצאה</button>
         <button class="btn2" data-bkp-act="sup-toggle">+ ספק חדש</button>
       </div>
@@ -150,13 +151,22 @@
       </div>
       ${bankRows ? `<table class="tbl"><tr><th>תאריך</th><th>תיאור</th><th>סכום</th><th>רישום מול חשבון</th></tr>${bankRows}</table>` : '<div class="mut">אין תנועות ממתינות</div>'}</div>
 
+    <div class="card"><div class="sec">סגירת תקופה (דמו)</div>
+      <label for="bk-close-month">חודש לבדיקה וסגירה</label>
+      <input class="inp" type="month" id="bk-close-month" dir="rtl" value="${todayIL.slice(0,7)}">
+      <button class="btn2" data-bk-act="close-review">בדיקת איזון, רצף וסיכום</button>
+      <button class="btn2" data-bk-act="close-period">סגירת חודש</button>
+      <button class="btn2" data-bk-act="reopen-period">פתיחה מחדש עם סיבה</button>
+      <div id="bk-close-summary" role="status" aria-live="polite"></div>
+      <div class="mut">סגירה נועלת רישום בחודש. פתיחה מחדש מתועדת ביומן הביקורת. אין הגשה לרשות.</div>
+    </div>
     <div class="card"><div class="sec">דוחות · <bdi dir="ltr">${esc(periodLabel)}</bdi></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <select class="inp" id="bk-period-mode" aria-label="סוג תקופת דוח"><option value="month" ${period && period.mode === 'month' ? 'selected' : ''}>חודש</option><option value="bimonth" ${period && period.mode === 'bimonth' ? 'selected' : ''}>חודשיים (ינואר-פברואר וכו׳)</option></select>
         <input class="inp" id="bk-period-month" type="month" aria-label="חודש הדוח" value="${period && period.month ? esc(period.month) : ''}">
         <button class="btn2" data-bk-act="period-preset">הצגת תקופה</button>
-        <input class="inp" id="bk-period-from" type="date" aria-label="תחילת תקופה" value="${periodQuery ? esc(period.from) : ''}">
-        <input class="inp" id="bk-period-to" type="date" aria-label="סיום תקופה" value="${periodQuery ? esc(period.to) : ''}">
+        <label for="bk-period-from">מתאריך</label><input dir="rtl" class="inp" id="bk-period-from" type="date" aria-label="תחילת תקופה" value="${periodQuery ? esc(period.from) : ''}">
+        <label for="bk-period-to">עד תאריך</label><input dir="rtl" class="inp" id="bk-period-to" type="date" aria-label="סיום תקופה" value="${periodQuery ? esc(period.to) : ''}">
         <button class="btn2" data-bk-act="period-custom">טווח מותאם</button>
         <button class="btn2" data-bk-act="period-reset">מתחילת שנה</button>
       </div><div class="mut">התקופה חלה על רווח והפסד, מע״מ וייצוא רואה חשבון. נתונים לעיון בלבד · מסמך דמו.</div>
@@ -167,8 +177,8 @@
         <b>מבנה אחיד (OPENFRMT) — טיוטה</b>
         <div class="mut" style="margin:4px 0">התוכנה טרם נרשמה ברשות המסים, ולכן שדה רישום התוכנה מאופס. הקבצים לעיון ולרואה החשבון, לא להגשה.</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <input class="inp" id="bk-uni-from" type="date" style="width:140px">
-          <input class="inp" id="bk-uni-to" type="date" style="width:140px">
+          <label for="bk-uni-from">מתאריך</label><input dir="rtl" class="inp" id="bk-uni-from" type="date" style="width:140px">
+          <label for="bk-uni-to">עד תאריך</label><input dir="rtl" class="inp" id="bk-uni-to" type="date" style="width:140px">
           <button class="btn2 on" data-bk-act="uniform-gen">הפקת INI.TXT + BKMVDATA.zip</button>
         </div>
         ${(uni.exports && uni.exports.length) ? `<table class="tbl" style="margin-top:6px"><tr><th>טווח</th><th>הופק</th><th>רשומות</th><th>הורדה</th></tr>${uni.exports.slice(0, 5).map(x => `
@@ -223,7 +233,20 @@
     if (btn.disabled) return;
     btn.disabled = true;
     try{
-      if (act === 'document-pdf') {
+      if (['close-review','close-period','reopen-period'].includes(act)) {
+        const date=val('bk-close-month');if(!/^\d{4}-\d{2}$/.test(date))throw new Error('בחרו חודש');
+        const [year,month]=date.split('-').map(Number);
+        const review=await api(`${B}/periods/summary?year=${year}&month=${month}`);
+        const box=document.getElementById('bk-close-summary');
+        box.textContent=`${review.closed?'סגור':'פתוח'} · ${review.totals.entries} פקודות · חובה ${review.totals.debit} · זכות ${review.totals.credit} · הכנסה ${review.totals.income} · הוצאות ${review.totals.expenses} · איזון ${review.balanced?'תקין':'לא תקין'} · רצף ${review.sequence_ok?'תקין':'פערים'}`;
+        if(act==='close-review')return;
+        const reason=act==='reopen-period'?prompt('סיבת פתיחה מחדש של התקופה:'):null;
+        if(act==='reopen-period'&&reason===null)return;
+        if(!confirm(`${act==='close-period'?'לסגור':'לפתוח מחדש'} את ${date}?`))return;
+        await api(`${B}/periods/${act==='close-period'?'close':'reopen'}`,{method:'POST',body:JSON.stringify({year,month,reason})});
+        toast(act==='close-period'?'התקופה נסגרה':'התקופה נפתחה מחדש');
+        box.textContent+=' · הפעולה הושלמה';
+      } else if (act === 'document-pdf') {
         await openPdf(`${B}/documents/${encodeURIComponent(id)}/pdf`);
       } else if (act === 'period-preset' || act === 'period-custom' || act === 'period-reset') {
         const key = 'bkPeriod_' + m.slug;

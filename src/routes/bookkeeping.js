@@ -191,6 +191,9 @@ r.post('/bookkeeping/entries', async (req, res) => {
   const client = await require('../db').pool.connect();
   try {
     await client.query('BEGIN');
+    await lockPosting(client,tid);
+    const {rows:closed}=await client.query('SELECT 1 FROM bk_periods WHERE tenant_id=$1 AND year=$2 AND month=$3',[tid,Number(entry_date.slice(0,4)),Number(entry_date.slice(5,7))]);
+    if(closed.length){await client.query('ROLLBACK');return res.status(409).json({error:'התקופה סגורה'});}
     const { rows: n } = await client.query(
       `INSERT INTO bk_entries (tenant_id, entry_no, entry_date, description, source, created_by)
        SELECT $1, COALESCE((SELECT max(entry_no) FROM bk_entries WHERE tenant_id=$1), 0) + 1, $2, $3, $4, $5
@@ -311,26 +314,32 @@ async function ledgerResponse(req,res,party) {
 r.get('/bookkeeping/parties/:id/ledger',(req,res)=>ledgerResponse(req,res,true));
 r.get('/bookkeeping/accounts/:code/ledger',(req,res)=>ledgerResponse(req,res,false));
 
-// --- סגירת תקופה ---
-r.post('/bookkeeping/periods/close', async (req, res) => {
-  const { year, month } = req.body || {};
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return res.status(400).json({ error: 'שנה/חודש לא תקינים' });
-  }
-  const { rows } = await q(
-    `INSERT INTO bk_periods (tenant_id, year, month, closed_by) VALUES ($1,$2,$3,$4)
-     ON CONFLICT (tenant_id, year, month) DO NOTHING RETURNING closed_at`,
-    [req.tenant.id, year, month, req.user.id]);
-  if (!rows[0]) return res.status(409).json({ error: 'התקופה כבר סגורה' });
-  await audit(req, 'bk_period_close', 'tenant', req.tenant.id, { year, month });
-  res.status(201).json({ closed: { year, month, closed_at: rows[0].closed_at } });
+// T101: period review, close, reopen. Only existing owner middleware may reach these routes.
+const {periodInput,lockPosting,periodSummary}=require('../bookkeeping-periods');
+r.get('/bookkeeping/periods/summary',async(req,res)=>{
+ const year=Number(req.query.year),month=Number(req.query.month);
+ if(!periodInput(year,month))return res.status(400).json({error:'שנה/חודש לא תקינים'});
+ res.json(await periodSummary(q,req.tenant.id,year,month));
 });
-
-r.get('/bookkeeping/periods', async (req, res) => {
-  const { rows } = await q(
-    `SELECT year, month, closed_at FROM bk_periods WHERE tenant_id=$1 ORDER BY year DESC, month DESC`,
-    [req.tenant.id]);
-  res.json({ closed_periods: rows });
+for(const action of ['close','reopen'])r.post('/bookkeeping/periods/'+action,async(req,res)=>{
+ const {year,month,reason}=req.body||{},tid=req.tenant.id;
+ if(!periodInput(year,month))return res.status(400).json({error:'שנה/חודש לא תקינים'});
+ if(action==='reopen'&&(typeof reason!=='string'||reason.trim().length<3||reason.length>300))return res.status(400).json({error:'יש לציין סיבה לפתיחת התקופה'});
+ const client=await require('../db').pool.connect();
+ try{
+ await client.query('BEGIN');await lockPosting(client,tid);
+ const summary=await periodSummary(client.query.bind(client),tid,year,month);
+ if(action==='close'&&(summary.closed||!summary.balanced||!summary.sequence_ok)){
+ await client.query('ROLLBACK');return res.status(409).json({error:summary.closed?'התקופה כבר סגורה':'יש לתקן בעיות איזון או רצף לפני סגירה',summary});}
+ if(action==='reopen'&&!summary.closed){await client.query('ROLLBACK');return res.status(409).json({error:'התקופה אינה סגורה'});}
+ if(action==='close')await client.query('INSERT INTO bk_periods(tenant_id,year,month,closed_by) VALUES($1,$2,$3,$4)',[tid,year,month,req.user.id]);
+ else await client.query('DELETE FROM bk_periods WHERE tenant_id=$1 AND year=$2 AND month=$3',[tid,year,month]);
+ await client.query(`INSERT INTO audit_log(actor_id,action,target_type,target_id,meta) VALUES($1,$2,'tenant',$3,$4)`,[req.user.id,'bk_period_'+action,tid,{year,month,reason:reason||null,summary}]);
+ await client.query('COMMIT');res.status(action==='close'?201:200).json({closed:action==='close'?{year,month}:false,reopened:action==='reopen',summary});
+ }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+});
+r.get('/bookkeeping/periods',async(req,res)=>{
+ const {rows}=await q('SELECT year,month,closed_at FROM bk_periods WHERE tenant_id=$1 ORDER BY year DESC,month DESC',[req.tenant.id]);res.json({closed_periods:rows});
 });
 
 // --- 091: הוצאות וספקים עם צירוף קובץ חשבונית ספק (PDF/תמונה, אימות magic bytes) ---
@@ -357,6 +366,10 @@ async function getExpenseAccount(tid, code) {
 
 // יצירת פקודה בתוך טרנזקציה פתוחה (client) — משמש גם רישום הוצאה וגם סטורנו שלה
 async function insertEntryTx(client, tid, { date, description, source, lines, createdBy }) {
+  await lockPosting(client,tid);
+  const [year,month]=date.split('-').map(Number);
+  const {rows:closed}=await client.query('SELECT 1 FROM bk_periods WHERE tenant_id=$1 AND year=$2 AND month=$3',[tid,year,month]);
+  if(closed.length)throw {status:409,error:'התקופה סגורה'};
   const { rows: n } = await client.query(
     `INSERT INTO bk_entries (tenant_id, entry_no, entry_date, description, source, created_by)
      SELECT $1, COALESCE((SELECT max(entry_no) FROM bk_entries WHERE tenant_id=$1), 0) + 1, $2, $3, $4, $5
