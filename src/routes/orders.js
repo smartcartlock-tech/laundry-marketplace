@@ -262,6 +262,53 @@ r.get('/:id', uuidParams('id'), async (req, res) => {
   res.json({ order, items: items.rows, events: events.rows, statusHe: STATUS_HE, reviewed: rev.rows.length > 0 });
 });
 
+// T121: אישור/דחייה של עדכון מחיר אחרי שקילה — החיוב מתעדכן רק באישור, לפני גבייה
+r.post('/:id/price-update/respond', uuidParams('id'), async (req, res) => {
+  const approve = !!(req.body || {}).approve;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND customer_id=$2 FOR UPDATE', [req.params.id, req.user.id]);
+    const order = o[0];
+    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
+    const pu = order.price_update;
+    if (!pu || pu.status !== 'pending') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'אין עדכון מחיר שממתין לאישור' }); }
+    if (['delivered', 'cancelled'].includes(order.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'ההזמנה כבר הסתיימה' }); }
+    if (approve) {
+      const { rows: t } = await client.query('SELECT points_earn_rate FROM tenants WHERE id=$1', [order.tenant_id]);
+      const subtotal = +pu.items.reduce((a, l) => a + Number(l.price) * Number(l.qty), 0).toFixed(2);
+      const points = Math.floor(Number(pu.to_total) * Number((t[0] && t[0].points_earn_rate) || 0));
+      await client.query('DELETE FROM order_items WHERE order_id=$1', [order.id]);
+      for (const l of pu.items) {
+        await client.query('INSERT INTO order_items(order_id, item_id, name, price, qty) VALUES ($1,$2,$3,$4,$5)',
+          [order.id, l.item_id || null, l.name, l.price, l.qty]);
+      }
+      await client.query(`UPDATE orders SET subtotal=$1, total=$2, points_earned=$3,
+        price_update=jsonb_set(price_update,'{status}','"approved"') || jsonb_build_object('responded_at', now()::text), updated_at=now() WHERE id=$4`,
+        [subtotal, pu.to_total, points, order.id]);
+      await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
+        [order.id, order.status, req.user.id, `הלקוח אישר עדכון מחיר: ₪${pu.from_total} → ₪${pu.to_total}`]);
+    } else {
+      await client.query(`UPDATE orders SET price_update=jsonb_set(price_update,'{status}','"rejected"') || jsonb_build_object('responded_at', now()::text), updated_at=now() WHERE id=$1`, [order.id]);
+      await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
+        [order.id, order.status, req.user.id, `הלקוח דחה את עדכון המחיר (₪${pu.from_total} → ₪${pu.to_total}) — נשאר ₪${pu.from_total}`]);
+    }
+    await client.query('COMMIT');
+    // עדכון לבעלי המכבסה
+    const { rows: members } = await q('SELECT u.id, u.phone FROM tenant_members tm JOIN users u ON u.id=tm.user_id WHERE tm.tenant_id=$1', [order.tenant_id]);
+    for (const m of members) {
+      notifyUser(m.id, order.tenant_id,
+        approve ? `הלקוח אישר את עדכון המחיר להזמנה #${order.id.slice(0, 8)} — הסכום לגבייה ₪${pu.to_total}.`
+                : `הלקוח דחה את עדכון המחיר להזמנה #${order.id.slice(0, 8)} — נשאר ₪${pu.from_total}.`,
+        m.phone, 'עדכון מחיר', { url: './#/manage' }).catch(() => {});
+    }
+    res.json({ ok: true, approved: approve });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+});
+
 // קבלה/חשבונית PDF (אותן הרשאות כמו צפייה בהזמנה)
 r.get('/:id/receipt.pdf', uuidParams('id'), async (req, res) => {
   const { rows: o } = await q(

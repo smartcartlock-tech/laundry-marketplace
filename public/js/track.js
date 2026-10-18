@@ -49,6 +49,20 @@ var fmtDMYT=typeof fmtDMYT==='function'?fmtDMYT:function(s){if(!s)return '\u2014
         const d = await api('/orders/' + id);
         const code = d.order && d.order.tracking_code;
         if (!code) return html;
+        // T121: כרטיס אישור עדכון מחיר אחרי שקילה — הגבייה מתעדכנת רק באישור
+        const pu = d.order && d.order.price_update;
+        if (pu && pu.status === 'pending'){
+          const pcard = `<div class="card warn"><div class="sec">עדכון מחיר אחרי שקילה</div>
+           <div>המכבסה עדכנה את הסכום: <b>₪${esc(String(pu.from_total))} → ₪${esc(String(pu.to_total))}</b></div>
+           ${(pu.items||[]).map(it=>`<div class="mut">${esc(it.name)} ×${esc(String(it.qty))} · ₪${esc(String(it.price))}</div>`).join('')}
+           ${pu.note?`<div class="mut">הערה: ${esc(pu.note)}</div>`:''}
+           <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn" data-act="puRespond" data-a="${id}" data-b="1" style="flex:1">מאשר את המחיר</button>
+            <button class="btn2" data-act="puRespond" data-a="${id}" data-b="0" style="flex:1">דחייה</button></div>
+           <div class="mut" style="margin-top:4px">הגבייה תתבצע רק על הסכום שאושר.</div></div>`;
+          const a2 = '<div class="body">';
+          return html.includes(a2) ? html.replace(a2, a2 + pcard) : pcard + html;
+        }
         const dcode2 = d.order.delivery_code && !['delivered','cancelled'].includes(d.order.status)
           ? `<div style="margin-top:6px">קוד מסירה לשליח: <b dir="ltr" style="letter-spacing:3px">${esc(d.order.delivery_code)}</b></div>` : '';
         const link = location.origin + '/#/track/' + code;
@@ -65,5 +79,12 @@ var fmtDMYT=typeof fmtDMYT==='function'?fmtDMYT:function(s){if(!s)return '\u2014
     try{ await navigator.clipboard.writeText(link); toast('הקישור למעקב הועתק'); }
     catch(e){ toast(link); }
   };
-  if (typeof onAct === 'function') onAct({ trackGo: () => trackGo(), trackCopy: t => trackCopy(t.dataset.a) });
+  window.puRespond = async function(id, approve, btn){
+    btn.disabled = true;
+    try{
+      await api('/orders/' + id + '/price-update/respond', { method:'POST', body: JSON.stringify({ approve: approve === '1' }) });
+      toast(approve === '1' ? 'המחיר אושר — תודה!' : 'עדכון המחיר נדחה'); route();
+    }catch(e){ btn.disabled = false; toast(e.message); }
+  };
+  if (typeof onAct === 'function') onAct({ trackGo: () => trackGo(), trackCopy: t => trackCopy(t.dataset.a), puRespond: t => puRespond(t.dataset.a, t.dataset.b, t) });
 })();

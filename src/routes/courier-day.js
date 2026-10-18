@@ -130,6 +130,9 @@ r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) 
   if (method === 'photo' && req.file && !verifyFile(req.file, IMAGES)) {
     return res.status(400).json({ error: 'תוכן הקובץ אינו תואם לסוג המדווח (JPG/PNG/WEBP בלבד)' });
   }
+  // T121: לא סוגרים מסירה כשעדכון מחיר ממתין לאישור הלקוח
+  const pue = require('../courier-actions').priceUpdatePendingError(order);
+  if (pue) return res.status(pue.status).json({ error: pue.error, code: pue.code });
   // T94: משימת מזומן לא נסגרת בלי צעד 'גביתי ₪X' / סכום אחר / סירב
   const cashConfirm = parseCashConfirmation(req.body, order);
   if (cashConfirm && cashConfirm.error) return res.status(cashConfirm.status || 400).json({ error: cashConfirm.error, code: cashConfirm.code });

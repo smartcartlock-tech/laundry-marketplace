@@ -219,6 +219,7 @@ async function vManage(sub){
       ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="cancelled">ביטול</button>`:''}
       ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" data-act="assignCourier" data-a="${slug}" data-b="${o.id}">שיבוץ שליח</button>`):''}
       ${!o.courier_id&&!['delivered','cancelled','out_for_delivery'].includes(o.status)?(o.self_delivery?'<span class="tag tg">מסירה עצמית — אתם מסירים</span>':`<button class="btn2" data-act="selfDeliver" data-a="${slug}" data-b="${o.id}">אני מסירה בעצמי</button>`):''}
+      ${['picked_up','in_work','ready'].includes(o.status)?(o.price_update&&o.price_update.status==='pending'?'<span class="tag tb">⏳ ממתין לאישור מחיר מהלקוח</span>':`<button class="btn2" data-act="weighUpdate" data-a="${slug}" data-b="${o.id}">שקילה/עדכון מחיר</button>`):''}
      </div>
     </div></div>`).join('')||mgEmpty('📦',FEMPTY[f]||FEMPTY.all,'')}</div>`;
  } else if(sub==='issues'){
@@ -487,6 +488,31 @@ async function addPrivateCourier(slug,oid,btn){
  try{await api(`/t/${slug}/couriers`,{method:'POST',body:JSON.stringify({name,phone})});toast('השליח הפרטי נוסף ומאושר');assignCourier(slug,oid,btn)}
  catch(e){btn.disabled=false;toast(e.message)}
 }
+/* T121: שקילה/עדכון מחיר — ההצעה נשלחת ללקוח לאישור; החיוב מתעדכן רק באישור */
+async function weighUpdate(slug,oid,btn){
+ try{
+  const d=await api(`/t/${slug}/orders`);
+  const o=(d.orders||[]).find(x=>x.id===oid);
+  if(!o||!o.items)return toast('לא נמצאו פריטי ההזמנה');
+  const card=btn.closest('.card');
+  const old=card.querySelector('.weighbox');if(old)old.remove();
+  const box=document.createElement('div');box.className='weighbox';box.style.cssText='margin-top:8px;border-top:1px dashed #d3e0e4;padding-top:6px';
+  box.innerHTML=`<b>שקילה/עדכון מחיר</b> <span class="mut">— הסכום החדש יישלח ללקוח לאישור לפני הגבייה</span>
+   ${o.items.map((it,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px"><span style="flex:1">${esc(it.name)} (₪${it.price})</span><input class="inp" id="wq-${oid}-${i}" type="number" min="0" step="0.5" value="${it.qty}" style="width:90px" data-item="${it.item_id||''}"></div>`).join('')}
+   <input class="inp" id="wn-${oid}" placeholder="הערה ללקוח (למשל: שק 9 ק״ג)" style="margin-top:6px">
+   <div style="display:flex;gap:6px;margin-top:6px"><button class="btn" data-act="doWeighUpdate" data-a="${slug}" data-b="${oid}" data-n="${o.items.length}" style="flex:1">שליחה לאישור הלקוח</button></div>`;
+  card.appendChild(box);
+ }catch(e){toast(e.message)}
+}
+async function doWeighUpdate(slug,oid,n,btn){
+ const items=[];
+ for(let i=0;i<Number(n);i++){const inp=document.getElementById(`wq-${oid}-${i}`);if(inp)items.push({item_id:inp.dataset.item||null,qty:Number(inp.value)})}
+ const note=document.getElementById('wn-'+oid).value.trim();
+ btn.disabled=true;btn.textContent='שולח…';
+ try{const r=await api(`/t/${slug}/orders/${oid}/weight-update`,{method:'POST',body:JSON.stringify({items,note})});
+  toast(`נשלח לאישור הלקוח: ₪${r.price_update.from_total} → ₪${r.price_update.to_total}`);route()}
+ catch(e){btn.disabled=false;btn.textContent='שליחה לאישור הלקוח';toast(e.message)}
+}
 async function doAssign(slug,oid,btn){
  btn.disabled=true;btn.textContent='שולח…';
  try{
@@ -641,6 +667,7 @@ onAct({
  addItem:t=>addItem(t.dataset.a), addPlan:t=>addPlan(t.dataset.a), addWindow:t=>addWindow(t.dataset.a),
  assignCourier:t=>assignCourier(t.dataset.a,t.dataset.b,t), doAssign:t=>doAssign(t.dataset.a,t.dataset.b,t),
  selfDeliver:t=>selfDeliver(t.dataset.a,t.dataset.b,t), addPrivateCourier:t=>addPrivateCourier(t.dataset.a,t.dataset.b,t),
+ weighUpdate:t=>weighUpdate(t.dataset.a,t.dataset.b,t), doWeighUpdate:t=>doWeighUpdate(t.dataset.a,t.dataset.b,t.dataset.n,t),
  bizAddUser:t=>bizAddUser(t.dataset.a,t.dataset.b), bizCreate:t=>bizCreate(t.dataset.a),
  bizDelPrice:t=>bizDelPrice(t.dataset.a,t.dataset.b,t.dataset.c), bizDelUser:t=>bizDelUser(t.dataset.a,t.dataset.b,t.dataset.c),
  bizDoc:t=>bizDoc(t.dataset.a,t.dataset.b,t.dataset.c,t.dataset.d), bizInvGen:t=>bizInvGen(t.dataset.a,t.dataset.b),

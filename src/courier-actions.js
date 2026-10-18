@@ -40,7 +40,17 @@ async function recordCashCollection({ courierId, order, cash, db = { query: q } 
   }
 }
 
+function priceUpdatePendingError(order) {
+  if (order.price_update && order.price_update.status === 'pending') {
+    return { error: 'ממתין לאישור הלקוח לעדכון המחיר — לא ניתן לסגור את המשימה עדיין', code: 'PRICE_UPDATE_PENDING', status: 409 };
+  }
+  return null;
+}
+
 async function completeDelivery({ order, courierId, actorId, photoUrl, note, cashConfirm = null }) {
+  // T121: לא סוגרים מסירה כשעדכון מחיר ממתין לאישור הלקוח
+  const pue = priceUpdatePendingError(order);
+  if (pue) { const e = new Error(pue.error); e.status = pue.status; e.code = pue.code; throw e; }
   await q(`UPDATE orders SET status='delivered', updated_at=now() WHERE id=$1`, [order.id]);
   if (cashConfirm) {
     await recordCashCollection({ courierId, order, cash: cashConfirm });
@@ -70,4 +80,4 @@ async function completeDelivery({ order, courierId, actorId, photoUrl, note, cas
     { dedupKey: `order-status:${order.id}:delivered`, url: '#/track/' + code, data: { order_id: order.id, tracking_code: code, status: 'delivered' } }).catch(() => {});
 }
 
-module.exports = { completeDelivery, parseCashConfirmation, recordCashCollection, CASH_LABEL };
+module.exports = { completeDelivery, parseCashConfirmation, recordCashCollection, priceUpdatePendingError, CASH_LABEL };

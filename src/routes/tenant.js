@@ -44,6 +44,10 @@ async function transitionOrder(client, { tenant, orderId, status, actorId, note 
   if (status === 'cancelled' && order.status === 'delivered') throw err(409, 'לא ניתן לבטל הזמנה שסומנה כנמסרה');
   const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
   if (status !== 'cancelled' && nxt !== cur + 1) throw err(409, 'מעבר סטטוס חייב להיות לשלב הבא ברצף');
+  // T121: לא ניתן לסגור מסירה כשממתין עדכון מחיר לאישור הלקוח — הגבייה מתבצעת רק על סכום מאושר
+  if (status === 'delivered' && order.price_update && order.price_update.status === 'pending') {
+    throw err(409, 'ממתין לאישור הלקוח לעדכון המחיר — לא ניתן לסמן כנמסרה עדיין');
+  }
   if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id && !order.self_delivery) {
     throw err(409, 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה');
   }

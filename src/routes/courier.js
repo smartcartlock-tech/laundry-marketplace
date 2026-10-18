@@ -238,6 +238,11 @@ r.post('/orders/:id/mark', uuidParams('id'), async (req, res) => {
     }
   }
 
+    // T121: לא סוגרים מסירה כשעדכון מחיר ממתין לאישור הלקוח
+    if (newStatus === 'delivered') {
+      const pue = require('../courier-actions').priceUpdatePendingError(order);
+      if (pue) { await client.query('ROLLBACK'); return res.status(pue.status).json({ error: pue.error, code: pue.code }); }
+    }
     // T94: משימת מזומן לא נסגרת בלי אישור גבייה
     let cashConfirm = null;
     if (newStatus === 'delivered') {
