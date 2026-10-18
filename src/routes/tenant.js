@@ -33,61 +33,104 @@ r.get('/orders', async (req, res) => {
   res.json({ orders: rows });
 });
 
+/* T120: לוגיקת מעבר סטטוס משותפת (בתוך טרנזקציה פתוחה) — זורקת Error עם .status לשגיאות חוקיות */
+async function transitionOrder(client, { tenant, orderId, status, actorId, note }) {
+  const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [orderId, tenant.id]);
+  const order = o[0];
+  const err = (st, msg) => { const e = new Error(msg); e.status = st; return e; };
+  if (!order) throw err(404, 'הזמנה לא נמצאה');
+  // QA-flow: בוטלה היא סופית; ביטול אסור אחרי מסירה
+  if (order.status === 'cancelled') throw err(409, 'ההזמנה כבר בוטלה');
+  if (status === 'cancelled' && order.status === 'delivered') throw err(409, 'לא ניתן לבטל הזמנה שסומנה כנמסרה');
+  const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
+  if (status !== 'cancelled' && nxt !== cur + 1) throw err(409, 'מעבר סטטוס חייב להיות לשלב הבא ברצף');
+  if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
+    throw err(409, 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה');
+  }
+  await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
+  await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
+    [order.id, status, actorId, note || null]);
+  if (status === 'cancelled') {
+    // T11 (המשך): החזרות דרך שירות הביטול המשותף — אותה לוגיקה בכל הנתיבים
+    await require('../lib/cancel-service').applyCancelRefunds(client, order);
+  }
+  if (status === 'delivered' && order.points_earned > 0) {
+    await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
+      [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
+    if (order.payment_method === 'cash') {
+      await client.query(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
+      order.payment_status = 'paid_cash';
+    }
+  }
+  if (status === 'delivered') {
+    const full = { ...tenant };
+    const { rows: tt } = await client.query('SELECT dealer_type, dealer_id FROM tenants WHERE id=$1', [tenant.id]);
+    Object.assign(full, tt[0] || {});
+    const { rows: ord } = await client.query('SELECT * FROM orders WHERE id=$1', [order.id]);
+    await issueDocumentsForOrder(client, { tenant: full, order: ord[0], actorId });
+  }
+  return order;
+}
+
+// הודעת סטטוס ללקוח אחרי commit (משותפת לבודד ולמרובה)
+function notifyOrderStatus(tenant, order, status) {
+  const HE = { confirmed:'אושרה', picked_up:'נאספה מהבית', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה. תודה!', cancelled:'בוטלה' };
+  // T93: ביציאה למסירה הלקוח מקבל את קוד המסירה החד-פעמי
+  const codeTxt = status === 'out_for_delivery' && order.delivery_code ? ` קוד המסירה שלך: ${order.delivery_code} — מסרו אותו לשליח בקבלת ההזמנה.` : '';
+  q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]).then(({ rows: cust }) => {
+    if (cust[0]) notifyUser(cust[0].id, tenant.id, `הזמנתך ב${tenant.name} (#${order.id.slice(0,8)}) ${HE[status] || status}.${codeTxt}`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[status] || status}`).catch(() => {});
+  }).catch(() => {});
+}
+
 // עדכון סטטוס הזמנה (כולל שיבוץ איסוף נקודות בעת השלמה)
 r.post('/orders/:id/status', uuidParams('id'), async (req, res) => {
   const client = await pool.connect();
+  let order;
   try {
     const { status, note } = req.body || {};
     if (!FLOW.includes(status) && status !== 'cancelled') return res.status(400).json({ error: 'סטטוס לא חוקי' });
     // QA-flow: BEGIN לפני הנעילה — בעבר ה-FOR UPDATE רץ ב-autocommit והשתחרר מיד
     await client.query('BEGIN');
-    const { rows: o } = await client.query('SELECT * FROM orders WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [req.params.id, req.tenant.id]);
-    const order = o[0];
-    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'הזמנה לא נמצאה' }); }
-    // QA-flow: בוטלה היא סופית; ביטול אסור אחרי מסירה
-    if (order.status === 'cancelled') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'ההזמנה כבר בוטלה' }); }
-    if (status === 'cancelled' && order.status === 'delivered') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'לא ניתן לבטל הזמנה שסומנה כנמסרה' }); }
-    const cur = FLOW.indexOf(order.status), nxt = FLOW.indexOf(status);
-    if (status !== 'cancelled' && nxt !== cur + 1) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'מעבר סטטוס חייב להיות לשלב הבא ברצף' }); }
-    if (['picked_up','out_for_delivery','delivered'].includes(status) && !order.courier_id) {
-      await client.query('ROLLBACK'); return res.status(409).json({ error: 'יש לשבץ שליח להזמנה לפני מעבר לסטטוס זה' });
-    }
-    await client.query('UPDATE orders SET status=$1, updated_at=now() WHERE id=$2', [status, order.id]);
-    await client.query('INSERT INTO order_events(order_id, status, actor_id, note) VALUES ($1,$2,$3,$4)',
-      [order.id, status, req.user.id, note || null]);
-    if (status === 'cancelled') {
-      // T11 (המשך): החזרות דרך שירות הביטול המשותף — אותה לוגיקה בכל הנתיבים
-      await require('../lib/cancel-service').applyCancelRefunds(client, order);
-    }
-    if (status === 'delivered' && order.points_earned > 0) {
-      await client.query('INSERT INTO points_ledger(tenant_id, user_id, delta, reason, order_id) VALUES ($1,$2,$3,$4,$5)',
-        [order.tenant_id, order.customer_id, order.points_earned, 'צבירת נקודות מהזמנה', order.id]);
-      if (order.payment_method === 'cash') {
-        await client.query(`UPDATE orders SET payment_status='paid_cash' WHERE id=$1`, [order.id]);
-        order.payment_status = 'paid_cash';
-      }
-    }
-    if (status === 'delivered') {
-      const full = { ...req.tenant };
-      const { rows: tt } = await client.query('SELECT dealer_type, dealer_id FROM tenants WHERE id=$1', [req.tenant.id]);
-      Object.assign(full, tt[0] || {});
-      const { rows: ord } = await client.query('SELECT * FROM orders WHERE id=$1', [order.id]);
-      await issueDocumentsForOrder(client, { tenant: full, order: ord[0], actorId: req.user.id });
-    }
+    order = await transitionOrder(client, { tenant: req.tenant, orderId: req.params.id, status, actorId: req.user.id, note });
     await client.query('COMMIT');
-    if (status === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T81: הצעת שיבוץ אוטומטית כשההזמנה מוכנה לאיסוף (דמו)
-    const { rows: cust } = await q('SELECT id, phone FROM users WHERE id=$1', [order.customer_id]);
-    if (cust[0]) {
-      const HE = { confirmed:'אושרה', picked_up:'נאספה מהבית', in_work:'בעבודה', ready:'מוכנה', out_for_delivery:'בדרך אליך', delivered:'הוחזרה. תודה!', cancelled:'בוטלה' };
-      // T93: ביציאה למסירה הלקוח מקבל את קוד המסירה החד-פעמי
-      const codeTxt = status === 'out_for_delivery' && order.delivery_code ? ` קוד המסירה שלך: ${order.delivery_code} — מסרו אותו לשליח בקבלת ההזמנה.` : '';
-      notifyUser(cust[0].id, order.tenant_id, `הזמנתך ב${req.tenant.name} (#${order.id.slice(0,8)}) ${HE[status] || status}.${codeTxt}`, cust[0].phone, `הזמנה ${order.tracking_code || order.id.slice(0,8)}: ${HE[status] || status}`).catch(() => {});
-    }
-    res.json({ ok: true });
+    var committedStatus = status;
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
-    console.error(e); res.status(500).json({ error: 'שגיאת שרת' });
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    console.error(e); return res.status(500).json({ error: 'שגיאת שרת' });
   } finally { client.release(); }
+  try {
+    if (committedStatus === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {}); // T81
+    notifyOrderStatus(req.tenant, order, committedStatus);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.json({ ok: true }); }
+});
+
+// T120: עדכון סטטוס מרובה (בחר הכל→סטטוס) — אותם כללים כמו מעבר בודד, best-effort לכל הזמנה
+r.post('/orders/bulk-status', async (req, res) => {
+  const { ids, status, note } = req.body || {};
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return res.status(400).json({ error: 'רשימת הזמנות לא תקינה (עד 50)' });
+  if (!ids.every(id => typeof id === 'string' && /^[0-9a-fA-F-]{36}$/.test(id))) return res.status(400).json({ error: 'מזהה הזמנה לא תקין' });
+  if (!FLOW.includes(status) && status !== 'cancelled') return res.status(400).json({ error: 'סטטוס לא חוקי' });
+  const client = await pool.connect();
+  const updated = [], failed = [];
+  try {
+    await client.query('BEGIN');
+    for (const id of ids) {
+      try { const order = await transitionOrder(client, { tenant: req.tenant, orderId: id, status, actorId: req.user.id, note }); updated.push(order); }
+      catch (e) { failed.push({ id, error: e.message }); }
+    }
+    if (!updated.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'אף הזמנה לא עודכנה', failed }); }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(e); return res.status(500).json({ error: 'שגיאת שרת' });
+  } finally { client.release(); }
+  for (const order of updated) {
+    if (status === 'confirmed') require('../autodispatch').dispatchOrder(order.tenant_id, order.id, 'status-confirmed').catch(() => {});
+    notifyOrderStatus(req.tenant, order, status);
+  }
+  res.json({ ok: true, updated: updated.length, failed });
 });
 
 // מחירון

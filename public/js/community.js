@@ -131,6 +131,21 @@ async function contentNew(){
 function mgEmpty(icon,title,text,cta){
  return `<div class="card" style="text-align:center;padding:26px 14px"><div style="font-size:36px">${icon}</div><b>${esc(title)}</b><div class="mut" style="margin:6px 0">${text}</div>${cta||''}</div>`;
 }
+/* T120: קידום מרובה — כל הזמנה לשלב הבא שלה, מקובצות לפי יעד (השרת אוכף את כללי הרצף) */
+async function moBulkNext(slug){
+ const sel=[...document.querySelectorAll('.mo-bulk:checked')];
+ if(!sel.length)return toast('לא נבחרו הזמנות');
+ const NEXT={new:'confirmed',confirmed:'picked_up',picked_up:'in_work',in_work:'ready',ready:'out_for_delivery',out_for_delivery:'delivered'};
+ const groups={};
+ sel.forEach(c=>{const nx=NEXT[c.dataset.st];if(nx)(groups[nx]=groups[nx]||[]).push(c.value)});
+ let ok=0,failed=0,firstErr='';
+ for(const st of Object.keys(groups)){
+  try{const r=await api(`/t/${slug}/orders/bulk-status`,{method:'POST',body:JSON.stringify({ids:groups[st],status:st})});ok+=r.updated||0;failed+=(r.failed||[]).length;if(r.failed&&r.failed[0]&&!firstErr)firstErr=r.failed[0].error}
+  catch(e){failed+=groups[st].length;if(e&&e.failed&&e.failed[0]&&!firstErr)firstErr=e.failed[0].error;if(!firstErr)firstErr=e.message}
+ }
+ toast(ok?`${ok} הזמנות קודמו${failed?` · ${failed} לא (${firstErr})`:''}`:(firstErr||'לא עודכן'));
+ route();
+}
 async function addPrivateCourier(slug){
  const link=location.origin+'/#/courier';
  const v=await xmodal({title:'הוספת שליח',okText:'העתקת קישור',cancelText:'סגור',body:'אפשר לשבץ <b>שליח פלטפורמה</b> לכל הזמנה מלשונית ההזמנות (״שיבוץ שליח״).<br>כדי ששליח פרטי שלכם יוכל לקבל משימות, שלחו לו את קישור ההצטרפות:<br><b dir="ltr" style="font-size:12px">'+esc(link)+'</b>'});
@@ -144,15 +159,48 @@ async function vManage(sub){
  const m=mems.find(x=>x.slug===store.get('lastTenant',''))||mems[0];
  const slug=m&&m.slug;
  if(!slug)return `<div class="hdr"><h2>לוח ניהול מכבסה</h2></div><div class="body"><div class="card mut">${me.courier?'החשבון שלך רשום כשליח — לוח הניהול מיועד לבעלי מכבסות. המשימות שלך בלשונית ״שליח״.':`החשבון אינו מקושר למכבסה. <a href="#/join" style="color:#0e7a8a">להצטרפות כמכבסה</a>`}</div></div>`;
- sub=sub||'orders';
- const tabs=[['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['biz','עסקיים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
+ sub=sub||'today';
+ const tabs=[['today','היום'],['orders','הזמנות'],['items','מחירון'],['windows','חלונות'],['coupons','קופונים'],['subs','מנויים'],['biz','עסקיים'],['documents','מסמכים'],['issues','תקלות'],['couriers','שליחים'],['customers','לקוחות'],['stats','דוחות'],['settings','הגדרות']];
  let body='';
- if(sub==='orders'){
+ if(sub==='today'){
+  /* T120: מסך 'היום' המבצעי — מחכות לאישור / לאסוף היום / להחזיר היום + פעולות מרובות */
+  const d=await api(`/t/${slug}/orders`);
+  const ilToday=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'});
+  const ilDay=s=>{if(!s)return false;try{return new Date(s).toLocaleDateString('en-CA',{timeZone:'Asia/Jerusalem'})===ilToday}catch(e){return false}};
+  const pend=d.orders.filter(o=>o.status==='new');
+  const pick=d.orders.filter(o=>['confirmed','picked_up'].includes(o.status)&&ilDay(o.pickup_at));
+  const deliv=d.orders.filter(o=>['ready','out_for_delivery'].includes(o.status)&&ilDay(o.delivery_at));
+  const cardT=o=>`<div class="card"><label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" class="mo-bulk" value="${o.id}" data-st="${o.status}" style="margin-top:4px;min-width:20px;min-height:20px">
+    <div style="flex:1"><b dir="ltr">#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+     <div class="mut">₪${o.total} · ${esc(o.address)}${o.pickup_at?` · איסוף ${fmtDT(o.pickup_at)}`:''}${o.delivery_at?` · החזרה ${fmtDT(o.delivery_at)}`:''}</div>
+    </div></label></div>`;
+  body=`<div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-actc="moBulkAll" style="min-width:20px;min-height:20px"> בחר הכל</label>
+    <button class="btn2 on" data-act="moBulkNext" data-a="${slug}">קידום נבחרות לשלב הבא</button>
+    <span class="mut">${pend.length?pend.length+' מחכות לאישור':''}</span></div>
+   <div class="sec">מחכות לאישור (${pend.length})</div>${pend.map(cardT).join('')||'<div class="card mut">אין הזמנות ממתינות 🎉</div>'}
+   <div class="sec">לאסוף היום (${pick.length})</div>${pick.map(cardT).join('')||'<div class="card mut">אין איסופים מתוזמנים להיום</div>'}
+   <div class="sec">להחזיר היום (${deliv.length})</div>${deliv.map(cardT).join('')||'<div class="card mut">אין החזרות מתוזמנות להיום</div>'}`;
+ } else if(sub==='orders'){
   const d=await api(`/t/${slug}/orders`);
   const NEXT={new:'confirmed',confirmed:'picked_up',picked_up:'in_work',in_work:'ready',ready:'out_for_delivery',out_for_delivery:'delivered'};
-  body=d.orders.map(o=>`<div class="card">
+  /* T105: ברירת מחדל 'דורש פעולה', צ'יפי סטטוס, חיפוש לקוח/טלפון, ספירת ממתינות, סימון איחור */
+  const qo=new URLSearchParams((location.hash.split('?')[1]||''));
+  const f=qo.get('f')||'action';
+  const nowT=Date.now(),LATE_MS=30*60*1000;
+  const needs=o=>o.status==='new'||((o.status==='confirmed'||o.status==='ready')&&!o.courier_id&&!o.has_open_offer);
+  const groups={action:d.orders.filter(needs),active:d.orders.filter(o=>!['delivered','cancelled'].includes(o.status)),done:d.orders.filter(o=>o.status==='delivered'),cancelled:d.orders.filter(o=>o.status==='cancelled'),all:d.orders};
+  const list=groups[f]||groups.action;
+  const pendN=d.orders.filter(o=>o.status==='new').length;
+  const chips=[['action','דורש פעולה'],['active','פעילות'],['done','הושלמו'],['cancelled','מבוטלות'],['all','הכל']];
+  const FEMPTY={action:'אין הזמנות שדורשות פעולה 🎉',active:'אין הזמנות פעילות',done:'אין הזמנות שהושלמו עדיין',cancelled:'אין הזמנות מבוטלות',all:'אין הזמנות עדיין — הזמנות חדשות מהאפליקציה או מהבוט יופיעו כאן'};
+  body=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+    ${chips.map(c=>`<a class="chip ${f===c[0]?'on':''}" href="#/manage/orders?f=${c[0]}">${c[1]}${c[0]==='action'&&groups.action.length?` (${groups.action.length})`:''}</a>`).join('')}
+    ${pendN?`<span class="tag ta">${pendN} מחכות לאישור</span>`:''}</div>
+   <input class="inp" placeholder="חיפוש לקוח או טלפון…" data-acti="moSearch" style="margin-bottom:8px">
+   <div id="mo-list">${list.map(o=>`<div class="card" data-q="${esc((o.customer_name||'')+' '+(o.customer_phone||'')+' '+o.id)}">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-     <div><b dir="ltr">#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>
+     <div><b dir="ltr">#${o.id.slice(0,8)}</b> ${esc(o.customer_name||'')} <span class="st-pill st-${o.status}">${HE[o.status]}</span>${o.status==='new'&&(nowT-new Date(o.created_at).getTime())>LATE_MS?` <span class="tag ta">⏰ ממתינה ${Math.round((nowT-new Date(o.created_at).getTime())/60000)} דק׳</span>`:''}
       <div class="mut">${fmtDT(o.created_at)} · ₪${o.total} · ${esc(o.address)}${o.source==='bot'?' · מהבוט':''}</div>
       ${o.items&&o.items.length?`<div class="mut">${o.items.slice(0,3).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')}${o.items.length>3?' +'+(o.items.length-3):''}</div>`:''}
       ${o.pickup_at?`<div class="mut">איסוף: ${fmtDT(o.pickup_at)}</div>`:''}${o.delivery_at?`<div class="mut">החזרה: ${fmtDT(o.delivery_at)}</div>`:''}
@@ -164,7 +212,7 @@ async function vManage(sub){
       ${!['delivered','cancelled'].includes(o.status)?`<button class="btn2" data-act="setStatus" data-a="${slug}" data-b="${o.id}" data-c="cancelled">ביטול</button>`:''}
       ${['new','confirmed','ready'].includes(o.status)?(o.courier_id?'<span class="tag tg">שובץ שליח</span>':o.has_open_offer?'<span class="tag tb">ממתין לאישור שליח</span>':`<button class="btn2" data-act="assignCourier" data-a="${slug}" data-b="${o.id}">שיבוץ שליח</button>`):''}
      </div>
-    </div></div>`).join('')||'<div class="card mut">אין הזמנות</div>';
+    </div></div>`).join('')||mgEmpty('📦',FEMPTY[f]||FEMPTY.all,'')}</div>`;
  } else if(sub==='issues'){
   // E9.T1: פניות תקלות מלקוחות — טיפול מול המכבסה + הסלמה לגישור אדמין
   const d=await api(`/t/${slug}/issues`);
@@ -562,6 +610,9 @@ async function saveSettings(slug){try{await api(`/t/${slug}/settings`,{method:'P
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
  addPrivateCourier:t=>addPrivateCourier(t.dataset.a),
+ moBulkAll:t=>{document.querySelectorAll('.mo-bulk').forEach(c=>{c.checked=t.checked})},
+ moBulkNext:t=>moBulkNext(t.dataset.a),
+ moSearch:t=>{const q=(t.value||'').trim();document.querySelectorAll('#mo-list [data-q]').forEach(c=>{c.style.display=!q||c.dataset.q.includes(q)?'':'none'})},
  bizConsToggle:t=>bizConsToggle(t.dataset.a,t.dataset.b,t.checked),
  commTenantSwitch:t=>{store.set('lastTenant',t.value);route()},
  addItem:t=>addItem(t.dataset.a), addPlan:t=>addPlan(t.dataset.a), addWindow:t=>addWindow(t.dataset.a),
