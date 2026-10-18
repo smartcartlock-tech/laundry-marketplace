@@ -34,7 +34,8 @@ test('T89: כרטיס הזהות בחשבון מציע התנתקות; צ\'ק-א
 
 test('T89: התנתקות בטאב אחד מנקה סל גם בטאבים אחרים (מאזין storage)', () => {
   const router = pub('js/router.js');
-  const m = router.match(/addEventListener('storage'[\s\S]*?\n\}\);/);
+  const i = router.indexOf("addEventListener('storage'");
+  const m = i >= 0 ? [router.slice(i, i + 700)] : null;
   assert.ok(m, 'מאזין storage קיים');
   assert.ok(m[0].includes("e.key==='wlm_token'&&!e.newValue"), 'זיהוי הסרת טוקן = התנתקות');
   assert.ok(m[0].includes('state.cart=[]') && m[0].includes("store.del('cart')"), 'הסל מתנקה בטאבים האחרים');
