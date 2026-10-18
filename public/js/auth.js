@@ -19,7 +19,7 @@ function vLogin(){
  ${ctx?`<div class="body">${ctx}</div>`:''}
  <div class="body"><div class="card">
   <label class="lb" for="login-target">טלפון או אימייל</label>
-  <input class="inp" id="login-target" placeholder="05x-xxxxxxx או name@mail.com" inputmode="tel">
+  <input class="inp" id="login-target" dir="ltr" style="text-align:right" placeholder="050-1234567" inputmode="tel" autocomplete="username">
   <button class="btn" data-act="requestOtp">שלחו לי קוד כניסה</button>
   <div id="login-err" aria-live="polite"></div>
   <div id="otp-area"></div>
@@ -66,7 +66,7 @@ async function requestOtp(){
   $('#otp-area').innerHTML=`
    ${r.demoCode?`<div class="warn" style="margin-top:12px">קוד הדגמה שלך: <b style="font-size:18px">${r.demoCode}</b></div>`:`<div class="note" style="margin-top:12px">${r.channel==='static'?'הזינו את קוד המנהל הקבוע':'קוד נשלח אליך ב'+(r.channel==='whatsapp'?'וואטסאפ':r.channel==='sms'?'SMS':'אימייל')}</div>`}
    <label class="lb" for="login-code">קוד (6 ספרות)</label>
-   <input class="inp" id="login-code" inputmode="numeric" maxlength="6" placeholder="הקוד שהתקבל" autocomplete="one-time-code">
+   <input class="inp" id="login-code" dir="ltr" style="text-align:right" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
    <label class="lb" for="login-name">שם (בהרשמה ראשונה)</label>
    <input class="inp" id="login-name" placeholder="השם שלך">
    <button class="btn" data-act="verifyOtp">כניסה</button>`;
