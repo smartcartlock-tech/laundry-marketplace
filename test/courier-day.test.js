@@ -11,6 +11,13 @@ async function makeOrder(api, token, slug) {
   return r.json.order.id;
 }
 
+// T93: קוד המסירה החד-פעמי נשלף כלקוח (4 ספרות הטלפון בוטלו)
+async function getDeliveryCode(api, customer, oid) {
+  const r = await api('/api/orders/' + oid, { token: customer });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return r.json.order.delivery_code;
+}
+
 async function confirmAndAssign(api, admin, slug, oid) {
   const c = await api(`/api/t/${slug}/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'confirmed' } });
   assert.equal(c.status, 200, JSON.stringify(c.json));
@@ -71,12 +78,17 @@ test('מסך שליח: משימות מקובצות, מסלול יום, אישו�
   assert.equal(badMethod.status, 400);
   const wrongCode = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '9999' } });
   assert.equal(wrongCode.status, 400);
-  const okCode = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
+  const dc1 = await getDeliveryCode(api, customer, o1);
+  assert.match(dc1, /^\d{6}$/, 'קוד מסירה בן 6 ספרות');
+  // מסלול 4 ספרות הטלפון בוטל — 4 הספרות האחרונות אינן מתקבלות יותר
+  const last4 = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
+  assert.equal(last4.status, 400, 'מסלול 4 ספרות בוטל');
+  const okCode = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1 } });
   assert.equal(okCode.status, 200, JSON.stringify(okCode.json));
   assert.equal(okCode.json.confirmed, true);
 
   // כפילות נדחית; ההזמנה מופיעה ב"הושלמו היום" עם פרטי האישור
-  const dup = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
+  const dup = await api(`/api/courier/orders/${o1}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc1 } });
   assert.equal(dup.status, 409);
   tasks = await api('/api/courier/tasks', { token: courier });
   const done = tasks.json.tasks.done_today.find(x => x.id === o1);

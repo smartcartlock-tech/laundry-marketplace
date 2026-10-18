@@ -22,7 +22,8 @@ async function deliver(api, admin, courier, oid) {
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'in_work' } });
   await api(`/api/t/achuza/orders/${oid}/status`, { method: 'POST', token: admin, body: { status: 'ready' } });
   await api(`/api/courier/orders/${oid}/mark`, { method: 'POST', token: courier, body: { action: 'out_for_delivery' } });
-  const ok = await api(`/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: '0002' } });
+  const dc = (await api('/api/orders/' + oid, { token: admin })).json.order.delivery_code;
+  const ok = await api(`/api/courier/orders/${oid}/confirm-delivery`, { method: 'POST', token: courier, body: { method: 'code', code: dc } });
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
 }
 

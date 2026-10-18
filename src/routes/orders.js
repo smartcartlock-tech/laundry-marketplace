@@ -226,6 +226,8 @@ r.get('/:id', uuidParams('id'), async (req, res) => {
   const isOwner = mem.length > 0;
   const isCourier = order.courier_id && (await q('SELECT 1 FROM couriers WHERE id=$1 AND user_id=$2', [order.courier_id, req.user.id])).rows.length > 0;
   if (!isCustomer && !isAdmin && !isOwner && !isCourier) return res.status(403).json({ error: 'אין הרשאה' });
+  // T93: קוד המסירה לא נחשף לשליח מראש — רק לקוח/בעלים/אדמין
+  if (isCourier && !isCustomer && !isAdmin && !isOwner) delete order.delivery_code;
   const [items, events, rev] = await Promise.all([
     q('SELECT name, price, qty FROM order_items WHERE order_id=$1', [order.id]),
     q('SELECT status, note, photo_url, created_at FROM order_events WHERE order_id=$1 ORDER BY created_at', [order.id]),

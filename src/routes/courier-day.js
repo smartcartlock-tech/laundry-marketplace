@@ -130,11 +130,11 @@ r.post('/orders/:id/confirm-delivery', upload.single('photo'), async (req, res) 
   if (method === 'photo' && req.file && !verifyFile(req.file, IMAGES)) {
     return res.status(400).json({ error: 'תוכן הקובץ אינו תואם לסוג המדווח (JPG/PNG/WEBP בלבד)' });
   }
+  // T93: קוד מסירה חד-פעמי (6 ספרות) שהלקוח רואה במעקב/במרכז ההודעות — מחליף את מסלול 4 ספרות הטלפון
   if (method === 'code') {
-    const { rows: cu } = await q('SELECT phone FROM users WHERE id=$1', [order.customer_id]);
-    const last4 = String((cu[0] || {}).phone || '').replace(/\D/g, '').slice(-4);
-    if (!code || String(code).replace(/\D/g, '') !== last4) {
-      return res.status(400).json({ error: 'קוד האישור שגוי — יש לבקש מהלקוח את 4 הספרות האחרונות של הטלפון שלו' });
+    const got = String(code || '').replace(/\D/g, '');
+    if (!got || got !== String(order.delivery_code || '')) {
+      return res.status(400).json({ error: 'קוד המסירה שגוי — בקשו מהלקוח את קוד המסירה (6 ספרות) שמופיע אצלו במעקב ההזמנה' });
     }
   }
   try {

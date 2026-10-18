@@ -162,9 +162,9 @@ function courierProximity(){
 function courierConfirmDelivery(orderId){
  const ov=document.createElement('div');ov.className='modal-ov';
  ov.innerHTML=`<div class="modal" role="dialog" aria-modal="true"><b>אישור מסירה</b>
-  <div class="mut" style="margin:8px 0">בקשו מהלקוח את 4 הספרות האחרונות של מספר הטלפון שלו כאישור קבלה.</div>
-  <label class="lb" for="cd-code">קוד אישור (4 ספרות)</label>
-  <input class="inp" id="cd-code" type="tel" inputmode="numeric" maxlength="4" autocomplete="one-time-code">
+  <div class="mut" style="margin:8px 0">בקשו מהלקוח את קוד המסירה (6 ספרות) שמופיע אצלו במעקב ההזמנה — זה אישור הקבלה.</div>
+  <label class="lb" for="cd-code">קוד מסירה (6 ספרות)</label>
+  <input class="inp" id="cd-code" type="tel" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
   <div id="cd-err" role="alert" style="display:none;color:#b3261e;margin-top:8px;font-weight:600"></div>
   <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="cd-ok" style="flex:1">אישור מסירה</button><button class="btn2" id="cd-cancel" style="flex:1">ביטול</button></div></div>`;
  document.body.appendChild(ov);
@@ -176,7 +176,7 @@ function courierConfirmDelivery(orderId){
  inp.oninput=()=>{err.style.display='none'};
  ok.onclick=async()=>{
   const code=inp.value.trim();
-  if(!/^\d{4}$/.test(code)){showErr('יש להזין את 4 הספרות כפי שהן');inp.focus();return}
+  if(!/^\d{6}$/.test(code)){showErr('יש להזין את קוד המסירה (6 ספרות) כפי שהוא');inp.focus();return}
   err.style.display='none';ok.disabled=true;ok.textContent='מעבד…';
   try{
    await api(`/courier/orders/${orderId}/confirm-delivery`,{method:'POST',body:JSON.stringify({method:'code',code})});
@@ -385,7 +385,7 @@ function vCourierHelp(){
  <div class="body">
  ${courierSubtabs('help')}
  <div class="card"><b>מתחילים את היום</b><div class="mut" style="margin-top:4px">1. סמנו <b>🟢 זמין לשיבוץ</b> במסך מסלול יום — רק שליחים זמינים מקבלים שיבוץ אוטומטי. 2. הצעות שיבוץ חדשות מופיעות בכרטיס 🔔 בראש המסך — אשרו או דחו עם סיבה. 3. בכרטיס "ניווט מסלול" יש קישור ניווט ב-Waze או ב-Google Maps לכל נקודה.</div></div>
- <div class="card"><b>איסוף ומסירה</b><div class="mut" style="margin-top:4px">בנקודת איסוף מהלקוח לחצו "סימון נאסף". כשהכביסה מוכנה אצל המכבסה יופיע "אספתי — יציאה ללקוח". אצל הלקוח: "מסירה עם אישור לקוח" (4 ספרות אחרונות של הטלפון שלו) או "אישור בצילום". אם ההזמנה במזומן — תראו את הסכום לגבייה על הכרטיס.</div></div>
+ <div class="card"><b>איסוף ומסירה</b><div class="mut" style="margin-top:4px">בנקודת איסוף מהלקוח לחצו "סימון נאסף". כשהכביסה מוכנה אצל המכבסה יופיע "אספתי — יציאה ללקוח". אצל הלקוח: "מסירה עם אישור לקוח" (קוד המסירה בן 6 הספרות שמופיע אצלו במעקב) או "אישור בצילום". אם ההזמנה במזומן — תראו את הסכום לגבייה על הכרטיס.</div></div>
  <div class="card"><b>מסלול היום</b><div class="mut" style="margin-top:4px">המסלול מסודר אוטומטית לפי המערכת. "📍 סדר לפי קרבה" מסדר מחדש לפי המיקום שלכם. בורר התאריך מציג מסלולים של ימים קודמים ומה שהושלם בהם.</div></div>
  <div class="card"><b>רווחים והיסטוריה</b><div class="mut" style="margin-top:4px">במסך "היסטוריה" רואים דירוג ממוצע, רווחים יומיים/שבועיים לפי משימה (נתוני דמו — אין תשלום אמיתי), זמן תגובה ממוצע להצעות, וכל המשימות שהושלמו עם הדירוג שקיבלתם.</div></div>
  <div class="card"><b>בלי חיבור לאינטרנט</b><div class="mut" style="margin-top:4px">אישור מסירה בקוד נשמר במכשיר ויישלח אוטומטית כשהחיבור חוזר — תראו באדג' "פעולות ממתינות לסנכרון". אישור בצילום דורש חיבור פעיל.</div></div>
