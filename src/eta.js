@@ -68,7 +68,18 @@ function computeReturnEta({ turnaroundHours = 24, windows = [], order = {}, now 
   if (order.status === 'cancelled') return null;
   if (order.delivery_at) {
     const at = new Date(order.delivery_at);
-    if (at > now || order.status !== 'delivered') return at;
+    if (at > now || order.status !== 'delivered') {
+      // delivery_at הוא תחילת חלון ההחזרה שנקבע (T95) — הצפי מוצג כסוף החלון ("עד 19:00")
+      const p = jrParts(at);
+      const hhmm = `${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}`;
+      const w = (windows || []).find(x => x.kind === 'delivery' && Number(x.weekday) === p.weekday
+        && String(x.start_time).slice(0, 5) === hhmm);
+      if (w) {
+        const [eh, em] = String(w.end_time).slice(0, 5).split(':').map(Number);
+        return wallToUtc(p.y, p.m, p.d, eh, em);
+      }
+      return at;
+    }
   }
   if (order.status === 'delivered') return null; // הוחזרה בפועל — מוצג מהאירועים
   const pickup = order.pickup_at ? new Date(order.pickup_at) : null;

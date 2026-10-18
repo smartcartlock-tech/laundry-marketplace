@@ -20,9 +20,11 @@ test('eta: חלון החזרה ראשון שמסתיים אחרי האיסוף +
   assert.equal(etaLabel(at2, now), 'היום עד 19:00');
   // בלי חלונות החזרה — null
   assert.equal(computeReturnEta({ turnaroundHours: 4, windows: [], order: {}, now }), null);
-  // delivery_at מפורש גובר
+  // delivery_at מפורש גובר; כשהוא תחילת חלון ידוע (T95) — מוצג סוף החלון
   const chosen = new Date('2026-10-20T16:00:00.000Z');
   assert.equal(computeReturnEta({ turnaroundHours: 4, windows: wins, order: { delivery_at: chosen.toISOString() }, now }).toISOString(), chosen.toISOString());
+  const winStart = new Date('2026-10-18T13:00:00.000Z'); // ראשון 16:00 — תחילת חלון ההחזרה 16:00-19:00
+  assert.equal(computeReturnEta({ turnaroundHours: 4, windows: wins, order: { delivery_at: winStart.toISOString() }, now }).toISOString(), '2026-10-18T16:00:00.000Z');
   // בוטלה — אין צפי; נמסרה — אין צפי (מוצג מהאירועים)
   assert.equal(computeReturnEta({ turnaroundHours: 4, windows: wins, order: { status: 'cancelled' }, now }), null);
   assert.equal(computeReturnEta({ turnaroundHours: 4, windows: wins, order: { status: 'delivered' }, now }), null);
