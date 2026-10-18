@@ -74,7 +74,7 @@ async function route(){
      משאירים את "טוען…" ומריצים route מחדש אחרי שכל הסקריפטים נטענו (load) */
   if(e instanceof ReferenceError&&document.readyState!=='complete'&&!window.__routeWaitLoad){window.__routeWaitLoad=true;window.addEventListener('load',()=>route(),{once:true});return}
   if(e.status===401){state.token=null;state.me=null;state.memberships=[];state.courier=null;save();html=vLogin()}
-  else html=`<div class="body"><div class="card warn">${esc(e.message)}</div></div>`;
+  else {console.error('[route]',e);html=`<div class="body"><div class="card warn" style="text-align:center"><div style="font-size:32px">🧺</div><b>משהו השתבש בטעינת הדף</b><div class="mut" style="margin:6px 0">נסו לרענן. אם זה חוזר — דווחו לנו דרך העזרה.</div><button class="btn" data-act="goHome">חזרה לדף הבית</button></div></div>`}
  }
  if(seq!==routeSeq)return; // ניווט חדש יותר דורס רינדור ישן — נחיתה עקבית תמיד
  renderTabs(h.split('?')[0]);
