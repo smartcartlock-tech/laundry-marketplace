@@ -75,6 +75,7 @@ async function issueDocument(client, opts) {
   await client.query('UPDATE documents SET signature=$2 WHERE id=$1', [rows[0].id, sig]);
   rows[0].signature = sig;
   await audit(client, rows[0].id, 'issued', opts.actorId, { kind, number: num, total, demo: true });
+  await require('./order-document-ledger').postOrderDocument(client, {tenant, document:rows[0], actorId:opts.actorId});
   return rows[0];
 }
 
