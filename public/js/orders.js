@@ -1,3 +1,8 @@
+// T117: גיבוי לסביבות בדיקה שבהן checkout.js לא נטען לפני הקובץ
+var fmtShekel=typeof fmtShekel==='function'?fmtShekel:function(n){return '\u20aa'+Number(n||0).toLocaleString('he-IL',{maximumFractionDigits:2})};
+var fmtDMYT=typeof fmtDMYT==='function'?fmtDMYT:function(s){if(!s)return '\u2014';var d=new Date(s);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Jerusalem'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})};
+var fmtUnit=typeof fmtUnit==='function'?fmtUnit:function(n){return '\u20aa'+Number(n||0).toLocaleString('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2})};
+var feeLbl=typeof feeLbl==='function'?feeLbl:function(f){return Number(f||0)>0?fmtShekel(f):'\u05de\u05e9\u05dc\u05d5\u05d7 \u05d7\u05d9\u05e0\u05dd'};
 /* ---- orders ---- */
 async function vOrders(){
  if(!state.token)return needLogin();
@@ -7,14 +12,14 @@ async function vOrders(){
   ${(()=>{const act=r.orders.filter(o=>o.status!=='cancelled'),cnc=r.orders.filter(o=>o.status==='cancelled');state.__cncCount=cnc.length;return act.map(o=>`<div class="card lcard" style="cursor:pointer" data-act="goTo" data-a="#/orders/${o.id}">
     <span class="logo sm" style="background:${cssColor(o.color)}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
-    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div>
+    <div class="mut">${fmtDMYT(o.created_at)} · ${fmtShekel(o.total)}${o.items&&o.items.length?' · '+o.items.slice(0,2).map(i=>esc(i.name)+' ×'+fmtQ(i.qty)).join(', ')+(o.items.length>2?' +'+(o.items.length-2):''):''}</div>
     ${o.return_eta_label?`<div class="mut" style="color:#0e7a8a;font-weight:600">🕐 צפי החזרה: ${esc(o.return_eta_label)}</div>`:''}</div>
     ${o.status==='delivered'?`<button class="btn2" style="flex-shrink:0" data-act="reorder" data-a="${esc(o.id)}" data-b="${esc(o.slug)}" title="הוספת אותם פריטים לסל">↻ שוב</button>`:''}
     <span style="color:#8a99a3">‹</span></div>`).join('')||'<div class="card mut">עוד אין הזמנות פעילות. <a href="#/" style="color:#0e7a8a">להתחיל</a></div>'})()}
   ${r.orders.some(o=>o.status==='cancelled')?`<details class="card" style="cursor:pointer"><summary class="mut" style="cursor:pointer">הזמנות שבוטלו (${r.orders.filter(o=>o.status==='cancelled').length}) — הצגה</summary>`+r.orders.filter(o=>o.status==='cancelled').map(o=>`<div class="card lcard" style="cursor:pointer;opacity:.75" data-act="goTo" data-a="#/orders/${o.id}">
     <span class="logo sm" style="background:${cssColor(o.color)}">${esc(o.letter||'מ')}</span>
     <div style="flex:1"><b>${esc(o.tenant_name)}</b> <span class="st-pill st-${o.status}">${HE[o.status]}</span>
-    <div class="mut">${fmtDT(o.created_at)} · ₪${o.total}</div></div>
+    <div class="mut">${fmtDMYT(o.created_at)} · ${fmtShekel(o.total)}</div></div>
     <span style="color:#8a99a3">‹</span></div>`).join('')+`</details>`:''}
  </div>`;
 }
@@ -37,12 +42,12 @@ async function vOrder(id){
  if(isMine){try{const dd=await api('/documents/mine');docs=dd.documents.filter(x=>x.order_id===id||(x.covered_order_ids||[]).includes(id))}catch(e){}}
  let myReports=[];
  if(isMine){try{const rr=await api('/orders/'+id+'/reports');myReports=rr.reports||[]}catch(e){}}
- return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none;display:inline-block;padding:12px 14px;margin:-12px -14px" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDT(o.created_at)}</p></div>
+ return `<div class="hdr"><h2><a href="#/orders" style="color:#fff;text-decoration:none;display:inline-block;padding:12px 14px;margin:-12px -14px" aria-label="חזרה">→</a> הזמנה <span dir="ltr">#${o.id.slice(0,8)}</span></h2><p>${esc(o.tenant_name)} · ${fmtDMYT(o.created_at)}</p></div>
  <div class="body">
   ${o.payment_status==='paid_demo'?'<div class="card" role="status" style="text-align:center"><b>תשלום הדמו אושר</b><div class="mut" style="margin-top:4px">לא בוצע חיוב אמיתי. זהו אישור להדגמה בלבד.</div></div>':''}
-  ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDT(evByStatus.cancelled?evByStatus.cancelled.created_at:o.updated_at)}</div></div>`:`<div class="card">
+  ${o.status==='cancelled'?`<div class="card" style="text-align:center"><b style="color:#c22;font-size:17px">ההזמנה בוטלה</b><div class="mut" style="margin-top:4px">${fmtDMYT(evByStatus.cancelled?evByStatus.cancelled.created_at:o.updated_at)}</div></div>`:`<div class="card">
    <div class="tl">
-    ${FLOW.map((s,i)=>{const ev=evByStatus[s];return `<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${ev?`<div class="mut">${fmtDT(ev.created_at)}</div>`:i===idx?`<div class="mut">${fmtDT(o.updated_at)}</div>`:''}${i===idx&&ev&&ev.note&&ev.note!=='הזמנה נוצרה'?`<div class="mut">${esc(ev.note)}</div>`:''}</div>`}).join('')}
+    ${FLOW.map((s,i)=>{const ev=evByStatus[s];return `<div class="stop ${i<idx?'done':i===idx?'now':''}"><b style="font-size:13px">${HE[s]}</b>${ev?`<div class="mut">${fmtDMYT(ev.created_at)}</div>`:i===idx?`<div class="mut">${fmtDMYT(o.updated_at)}</div>`:''}${i===idx&&ev&&ev.note&&ev.note!=='הזמנה נוצרה'?`<div class="mut">${esc(ev.note)}</div>`:''}</div>`}).join('')}
    </div>
    <div class="mut" style="text-align:center;margin-top:2px">${o.status==='delivered'?'ההזמנה הושלמה':'המעקב נבדק אוטומטית כל 20 שניות'} · <a href="#/orders/${id}" data-act="reroute" style="color:#0e7a8a;display:inline-block;padding:12px 8px;margin:-12px -8px">בדיקה נוספת עכשיו</a></div>
   </div>
@@ -50,16 +55,15 @@ async function vOrder(id){
   ${isMine&&(o.status==='delivered'||o.status==='cancelled')?`<button class="btn" style="margin-bottom:12px" data-act="reorder" data-a="${esc(o.id)}" data-b="${esc(o.slug)}">↻ הזמנה חוזרת — אותם פריטים שוב</button>`:''}
   ${isMine?`<div style="text-align:center;margin-bottom:12px"><button class="btn2" data-act="shareOrder" data-a="${esc(o.id)}">⤴ שיתוף פרטי ההזמנה</button></div>`:''}
   <div class="card">
-   ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${fmtQ(it.qty)} × ₪${it.price}</div></div>`).join('')}
-   <div class="row"><div class="mut">שליחות</div><div>₪${o.delivery_fee}</div></div>
-   ${Number(o.discount)>0?`<div class="row"><div class="mut">הנחת נקודות</div><div>−₪${o.discount}</div></div>`:''}
-   <div class="row"><b>סה״כ</b><b>₪${o.total}</b></div>
+   ${d.items.map(it=>`<div class="row"><div>${esc(it.name)}</div><div>${fmtQ(it.qty)} × ${fmtUnit(it.price)}</div></div>`).join('')}
+   <div class="row"><div class="mut">שליחות</div><div>${feeLbl(o.delivery_fee)}</div></div>
+   ${Number(o.discount)>0?`<div class="row"><div class="mut">הנחת נקודות</div><div>−${fmtShekel(o.discount)}</div></div>`:''}
+   <div class="row"><b>סה״כ</b><b>${fmtShekel(o.total)}</b></div>
    <div class="mut" style="margin-top:6px">תשלום: ${o.payment_method==='cash'?'מזומן לשליח':'מקוון (דמו)'} · ${o.payment_status==='pending'?'טרם שולם':o.payment_status==='paid_demo'?'אושר בדמו — ללא חיוב אמיתי':'שולם'}${o.points_earned?` · תצברו ${o.points_earned} נקודות`:''}</div>
    <div class="mut">כתובת: ${esc(o.address)}</div>
-   <div class="mut">${o.pickup_at?'איסוף: '+fmtDT(o.pickup_at):'איסוף: ללא העדפה — המכבסה תתאם'}${o.delivery_at?' · החזרה: '+fmtDT(o.delivery_at):''}</div>
+   <div class="mut">${o.pickup_at?'איסוף: '+fmtDMYT(o.pickup_at):'איסוף: ללא העדפה — המכבסה תתאם'}${o.delivery_at?' · החזרה: '+fmtDMYT(o.delivery_at):''}</div>
    ${o.return_eta_label?`<div class="mut" style="margin-top:4px;color:#0e7a8a;font-weight:600">🕐 צפי החזרה: ${esc(o.return_eta_label)}</div>`:''}
-   ${o.status==='delivered'&&evByStatus.delivered?`<div class="mut" style="margin-top:4px;color:#178a4c;font-weight:600">✓ הוחזרה בפועל: ${fmtDT(evByStatus.delivered.created_at)}</div>`:''}
-  </div>
+   ${o.status==='delivered'&&evByStatus.delivered?`<div class="mut" style="margin-top:4px;color:#178a4c;font-weight:600">✓ הוחזרה בפועל: ${fmtDMYT(evByStatus.delivered.created_at)}</div>`:''}
   ${isMine?`<div class="card"><b>מסמכים</b>
    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
     <button class="btn2" data-act="openPdf" data-a="/orders/${o.id}/receipt.pdf">קבלה-סיכום (PDF)</button>
@@ -72,7 +76,7 @@ async function vOrder(id){
   ${isMine&&['new','confirmed'].includes(o.status)?`<button class="btn2" style="border-color:#f3c2c2;color:#c22;background:#fdeaea" data-act="cancelOrder" data-a="${esc(o.id)}">ביטול הזמנה</button>`:''}
   ${isMine?`<div class="card"><b>דיווח תקלה</b>
    ${myReports.map(rp=>`<div class="row"><div><span class="tag tb">${({damage:'נזק',missing:'חסר',late:'איחור',other:'אחר'})[rp.kind]||rp.kind}</span> ${esc(rp.text)}
-    <div class="mut">${fmtDT(rp.created_at)} · סטטוס: ${{open:'נפתחה — ממתינה לטיפול המכבסה',in_progress:'בטיפול — נחזור עד מחר',resolved:'טופל ✓'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+(rp.photos===1?'תמונה אחת':rp.photos+' תמונות'):''}</div>
+    <div class="mut">${fmtDMYT(rp.created_at)} · סטטוס: ${{open:'נפתחה — ממתינה לטיפול המכבסה',in_progress:'בטיפול — נחזור עד מחר',resolved:'טופל ✓'}[rp.status]||rp.status}${rp.mediation?' · בגישור אדמין':''}${rp.resolution_note?' · '+esc(rp.resolution_note):''}${rp.photos?' · '+(rp.photos===1?'תמונה אחת':rp.photos+' תמונות'):''}</div>
     ${(rp.photo_ids||[]).length?`<div style="display:flex;gap:6px;margin-top:6px">${rp.photo_ids.map(pid=>`<button class="btn2" style="padding:4px 10px;font-size:12px" data-act="openIssuePhoto" data-a="${esc(pid)}">צפייה בתמונה</button>`).join('')}</div>`:''}</div></div>`).join('')}
    ${myReports.length?'':'<div class="mut" style="margin:6px 0">משהו לא בסדר עם ההזמנה? דווחו ונפתח פנייה מול המכבסה</div>'}
    <button class="btn2" data-act="openReportModal" data-a="${esc(o.id)}">📷 דיווח על תקלה</button>
@@ -109,7 +113,7 @@ async function reorder(orderId,slug){
   go('#/checkout/'+slug);
  }catch(e){toast(e.message)}
 }
-async function cancelOrder(id){if(!await xconfirm('לא ניתן לשחזר הזמנה לאחר הביטול.',{title:'ביטול הזמנה',okText:'כן, לבטל את ההזמנה'}))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
+async function cancelOrder(id){if(!await xmodal({title:'ביטול הזמנה',body:'ההזמנה תבוטל לצמיתות ולא יהיה אפשר לשחזר אותה.',okText:'כן, לבטל',cancelText:'השאירו את ההזמנה'}))return;try{await api('/orders/'+id+'/cancel',{method:'POST',body:'{}'});toast('ההזמנה בוטלה');route()}catch(e){toast(e.message)}}
 async function sendReview(id){try{const ctags=[...document.querySelectorAll('.rv-ctag:checked')].map(x=>x.value);const ltags=[...document.querySelectorAll('.rv-ltag:checked')].map(x=>x.value);const cr=$('#rv-courier')?$('#rv-courier').value:'';const r=await api('/orders/'+id+'/review',{method:'POST',body:JSON.stringify({rating:$('#rv-rating').value,text:$('#rv-text').value,courier_rating:cr||undefined,courier_tags:ctags.length?ctags:undefined,tags:ltags.length?ltags:undefined})});toast(r&&r.points_bonus?`תודה על הדירוג! צברת ${r.points_bonus} נקודות`:'תודה על הדירוג!');route()}catch(e){toast(e.message)}}
 
 

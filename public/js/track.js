@@ -1,3 +1,6 @@
+// T117: גיבוי לסביבות בדיקה שבהן checkout.js לא נטען לפני הקובץ
+var fmtShekel=typeof fmtShekel==='function'?fmtShekel:function(n){return '\u20aa'+Number(n||0).toLocaleString('he-IL',{maximumFractionDigits:2})};
+var fmtDMYT=typeof fmtDMYT==='function'?fmtDMYT:function(s){if(!s)return '\u2014';var d=new Date(s);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Jerusalem'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})};
 /* G3b: מעקב הזמנה ללקוח בלי התחברות לפי קוד (#/track/:code) + שורת קוד מעקב בצפיית הזמנה (עוטף vOrder). */
 (function(){
   window.vTrack = async function(code){
@@ -18,10 +21,9 @@
         : FLOW2.map((s, i) => {
             const ev = d.events.find(e => e.status === s);
             const cls = i <= cur ? '✅' : '◻️';
-            return `<div style="padding:6px 0;border-top:1px solid #edf1f4">${cls} ${HE[s] || s}${ev ? ` <span class="mut">${fmtDT(ev.at)}</span>` : ''}</div>`;
+            return `<div style="padding:6px 0;border-top:1px solid #edf1f4">${cls} ${HE[s] || s}${ev ? ` <span class="mut">${fmtDMYT(ev.at)}</span>` : ''}</div>`;
           }).join('');
-      const eta = d.return_eta_label ? `<div class="mut" style="margin-top:6px">צפי החזרה: <b>${esc(d.return_eta_label)}</b></div>` : (d.delivery_at ? `<div class="mut" style="margin-top:6px">מועד החזרה משוער: ${fmtDT(d.delivery_at)}</div>` : '');
-      // T93: קוד מסירה חד-פעמי — מוצג ללקוח במעקב, מומסר לשליח בקבלת ההזמנה
+      const eta = d.return_eta_label ? `<div class="mut" style="margin-top:6px">צפי החזרה: <b>${esc(d.return_eta_label)}</b></div>` : (d.delivery_at ? `<div class="mut" style="margin-top:6px">מועד החזרה משוער: ${fmtDMYT(d.delivery_at)}</div>` : '');
       const dcode = d.delivery_code && !['delivered','cancelled'].includes(d.status)
         ? `<div class="card" style="border:2px solid #0e7a8a;text-align:center"><div class="mut">קוד המסירה שלך — מסרו אותו לשליח בקבלת ההזמנה</div><div dir="ltr" style="font-size:26px;font-weight:800;letter-spacing:6px;margin-top:4px">${esc(d.delivery_code)}</div></div>` : '';
       return input.replace('<div id="tr-result"></div>', `<div class="card" id="tr-result">

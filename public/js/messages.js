@@ -1,3 +1,6 @@
+// T117: גיבוי לסביבות בדיקה שבהן checkout.js לא נטען לפני הקובץ
+var fmtShekel=typeof fmtShekel==='function'?fmtShekel:function(n){return '\u20aa'+Number(n||0).toLocaleString('he-IL',{maximumFractionDigits:2})};
+var fmtDMYT=typeof fmtDMYT==='function'?fmtDMYT:function(s){if(!s)return '\u2014';var d=new Date(s);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Jerusalem'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})};
 /* N1: מרכז הודעות בתוך האפליקציה — מסך #/messages + פעמון עם מונה לא-נקראו.
    עצמאי: הזרקת קישור לניווט ב-MutationObserver (כמו help.js), בלי עריכת קבצים משותפים. */
 
@@ -15,7 +18,7 @@ async function vMessages() {
      <div style="flex:1;min-width:0;overflow-wrap:anywhere">
       <b>${esc(m.title)}</b>
       <div class="mut" style="margin:4px 0;white-space:pre-wrap">${esc(m.body)}</div>
-      <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${new Date(m.created_at).toLocaleString('he-IL')}</div>
+      <div class="mut" style="font-size:11px">${m.tenant_name ? esc(m.tenant_name) + ' · ' : ''}${fmtDMYT(m.created_at)}</div>
      </div>
      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
       <button class="btn2" style="font-size:11px" data-act="${m.read_at ? 'msgMarkUnread' : 'msgMarkRead'}" data-a="${m.id}">${m.read_at ? 'סמן כלא נקרא' : 'נקרא'}</button>
