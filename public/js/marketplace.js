@@ -153,8 +153,10 @@ async function vLaundry(slug){
  const cartItems=state.cart.filter(c=>c.slug===slug);
  const cartTotal=cartItems.reduce((s,c)=>s+c.price*c.qty,0);
  /* E14.T2: השוואת מחירים מול מכבסות אחרות (אותו פריט, אותה יחידה) */
+ /* T104: באפליקציית המותג הלבן (/b/:slug/app) אין הפניה למתחרים — ההשוואה נשארת במרקטפלייס הראשי בלבד */
+ const brandedView=state.brandSlug===slug;
  let cmp={};
- try{const cd=await api('/laundries/'+slug+'/price-compare');cmp=cd.compare||{}}catch(e){}
+ if(!brandedView){try{const cd=await api('/laundries/'+slug+'/price-compare');cmp=cd.compare||{}}catch(e){}}
  /* E13.T4: מחירון מקובץ לקטגוריות עם קפיצה וחיפוש */
  const cats=[];const byCat={};
  d.items.forEach(it=>{const c=it.category||'כללי';if(!byCat[c]){byCat[c]=[];cats.push(c)}byCat[c].push(it)});
@@ -181,7 +183,7 @@ async function vLaundry(slug){
   ${cats.length>1?`<div style="margin:0 0 6px">${cats.map((c,i)=>`<a class="chip" style="cursor:pointer" data-act="scrollTo" data-a="pcat-${i}">${esc(c)}</a>`).join('')}</div>`:''}
   ${cats.map((c,ci)=>`${cats.length>1?`<div class="sec" id="pcat-${ci}">${esc(c)}</div>`:''}
   <div class="card">
-   ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);const cp=cmp[it.name+'|'+it.unit];return `<div class="row pl-row" data-name="${esc(it.name)}">
+   ${byCat[c].map(it=>{const cr=state.cart.find(x=>x.item_id===it.id);const cp=brandedView?null:cmp[it.name+'|'+it.unit];return `<div class="row pl-row" data-name="${esc(it.name)}">
      <div><b>${esc(it.name)}</b><div class="mut">₪${it.price}${it.unit==='item'?'':' ל'+unitLbl(it.unit)}${it.agreement_price?' · מחיר הסכם':''}</div>${cp?`<a href="#/laundry/${cp.slug}" style="text-decoration:none"><span class="tag tg" style="margin-top:3px">זול יותר ב־₪${cp.other_price} ב${esc(cp.laundry_name)}</span></a>`:''}</div>
      ${cr?`<span class="stepper"><button data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="-1">−</button><b>${cr.qty}</b><button data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="1">+</button></span>`
         :`<button class="btn2" data-act="setQty" data-a="${esc(slug)}" data-b="${esc(it.id)}" data-c="1">הוספה</button>`}
