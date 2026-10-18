@@ -121,19 +121,24 @@ function roleLabel(){if(state.courier)return 'שליח';if(state.memberships&&st
 function ensureIdBanner(){
  const app=document.getElementById('app');if(!app)return;
  let b=document.getElementById('id-banner');
- if(!state.me){if(b)b.remove();document.body.classList.remove('has-idbanner');document.body.style.removeProperty('--idbanner-h');return}
+ if(!state.me){if(b)b.remove();document.body.classList.remove('has-idbanner');const t=document.getElementById('theme-toggle');if(t)t.style.top='';return}
  const html='<span>מחובר כ-<b>'+esc(state.me.name||state.me.phone||state.me.email||'')+'</b> · '+roleLabel()+'</span><a href="#/" data-act="acctLogout" style="color:#0e7a8a;white-space:nowrap">התנתקות</a>';
  if(!b){
   b=document.createElement('div');b.id='id-banner';
   b.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 14px;font-size:12px;background:#f0f7f8;border-bottom:1px solid #d8e6e8;color:#335';
   app.prepend(b);
  }
- if(b.__html!==html){b.innerHTML=html;b.__html=html}
- if(!document.body.classList.contains('has-idbanner')){
-  document.body.classList.add('has-idbanner');
-  const h=b.offsetHeight;if(h)document.body.style.setProperty('--idbanner-h',h+'px'); /* T115: הבאנר הקבוע דורס את כפתור הנושא — דוחפים אותו מתחת לבאנר */
- }
+ const fresh=b.__html!==html;if(fresh){b.innerHTML=html;b.__html=html}
+ document.body.classList.add('has-idbanner');
+ if(fresh||!b.__docked){dockThemeToggle(b);b.__docked=true} /* לא בכל מוטציה — מדידת layout יקרה */
 }
+/* T115: הבאנר הקבוע דורס את כפתור הנושא (fixed) — מעגנים אותו מתחת לתחתית הבאנר בפועל */
+function dockThemeToggle(b){
+ const t=document.getElementById('theme-toggle');if(!t)return;
+ const bottom=b.getBoundingClientRect().bottom+window.scrollY; /* מיקום מסמך, לא ויוופורט — הכפתור fixed */
+ t.style.top=Math.round(bottom+8)+'px';
+}
+addEventListener('resize',()=>{const b=document.getElementById('id-banner');if(b)dockThemeToggle(b)});
 new MutationObserver(()=>{try{ensureIdBanner()}catch(e){}}).observe(document.documentElement,{childList:true,subtree:true});
 /* B7: רישום פעולות להאזנה המרכזת (ללא inline handlers) */
 onAct({
